@@ -1,0 +1,2041 @@
+ <!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Lucky Chat</title>
+
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0b1220">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lucky Chat">
+<link rel="icon" href="/static/pwa/icon-192.png">
+<link rel="apple-touch-icon" href="/static/pwa/icon-192.png">
+
+
+<link rel="preconnect"
+href="https://fonts.googleapis.com">
+
+<link
+href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+rel="stylesheet">
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Poppins,sans-serif;
+}
+
+body{
+background:#0f172a;
+height:100vh;
+overflow:hidden;
+}
+
+.app{
+display:flex;
+width:100%;
+height:100vh;
+}
+
+.sidebar{
+    width:340px;
+    min-width:340px;
+    background:#111827;
+    border-right:1px solid #1f2937;
+    display:flex;
+    flex-direction:column;
+}
+
+.chat{
+flex:1;
+background:#0f172a;
+display:flex;
+flex-direction:column;
+}
+
+.logo{
+    height:80px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    font-size:20px;
+    font-weight:700;
+    color:#60a5fa;
+    white-space:nowrap;
+    border-bottom:1px solid #1f2937;
+}
+
+.search{
+    padding:20px;
+}
+
+.search input{
+    width:100%;
+    padding:14px 18px;
+    background:#1f2937;
+    color:white;
+    border:none;
+    border-radius:14px;
+    outline:none;
+    font-size:15px;
+}
+
+.search input::placeholder{
+    color:#94a3b8;
+}
+
+.chat-header{
+    height:80px;
+    border-bottom:1px solid #1f2937;
+    display:flex;
+    align-items:center;
+    padding:0 25px;
+    gap:15px;
+    background:#111827;
+}
+
+.header-avatar{
+    width:50px;
+    height:50px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid #3b82f6;
+}
+
+.header-info h3{
+    color:white;
+    font-size:20px;
+}
+
+.header-info p{
+    color:#4ade80;
+    font-size:13px;
+    margin-top:4px;
+}
+
+.messages{
+    flex:1;
+    padding:20px;
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    gap:15px;
+}
+
+.message{
+    max-width:70%;
+    padding:14px 18px;
+    border-radius:18px;
+    background:#2563eb;
+    color:white;
+    font-size:16px;
+    word-wrap:break-word;
+}
+
+.message.own{
+    align-self:flex-end;
+}
+
+@media (max-width:768px){
+
+    .sidebar{
+        width:100%;
+        min-width:100%;
+    }
+
+    .chat{
+        display:none;
+    }
+
+}
+
+.chat-meta{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    min-width:45px;
+}
+
+.chat-meta small{
+    color:#888;
+    font-size:14px;
+    white-space:nowrap;
+}
+
+.chat-right{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-left:auto;
+}
+
+.chat-list{
+    flex:1;
+    overflow-y:auto;
+    padding:4px 10px 16px;
+}
+
+.chat-list::-webkit-scrollbar{
+    width:4px;
+}
+
+.chat-list::-webkit-scrollbar-thumb{
+    background:#334155;
+    border-radius:10px;
+}
+
+.chat-item{
+    display:flex;
+    align-items:center;
+    gap:18px;
+    padding:14px 12px;
+    margin:4px 0;
+    border-radius:16px;
+    cursor:pointer;
+    transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.chat-item:hover{
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-item.active{
+    background:rgba(59,130,246,0.12);
+    border:1px solid rgba(59,130,246,0.18);
+}
+
+.chat-item.active .chat-name-row h4,
+.chat-item.active .chat-top h4{
+    color:#60a5fa;
+}
+
+.avatar{
+    width:54px;
+    height:54px;
+    min-width:54px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid #3b82f6;
+    background:#1f2937;
+}
+
+.chat-info{
+    flex:1;
+    min-width:0;
+}
+
+.chat-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    width:100%;
+}
+
+.chat-name-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-width:0;
+}
+
+.chat-name-row h4,
+.chat-top h4{
+    margin:0;
+    color:#f8fafc;
+    font-size:16px;
+    font-weight:600;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.time{
+    color:#64748b;
+    font-size:11px;
+    white-space:nowrap;
+}
+
+.message-preview{
+    color:#94a3b8;
+    font-size:12px;
+    margin:5px 0 5px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.status{
+    color:#94a3b8;
+    font-size:12px;
+    margin:0;
+}
+
+.status.online{
+    color:#4ade80;
+}
+
+.badge {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    border-radius: 50px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #2fb574;
+    color: white;
+
+    font-size: 12px;
+    font-weight: 700;
+
+    box-shadow: 0 4px 12px rgba(47, 181, 116, 0.25);
+    transition: transform 0.2s ease;
+}
+
+.chat-item:hover .badge {
+    transform: scale(1.08);
+}
+
+
+
+
+
+.top-profile-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+}
+
+.profile-btn:active{
+    transform:scale(0.95);
+}
+
+
+/* =========================================================
+   LUCKY CHAT — DASHBOARD MODERN UI
+   Visual layer only: existing dashboard logic is preserved.
+   ========================================================= */
+
+body{
+    background:
+        radial-gradient(circle at 15% 0%, rgba(59,130,246,.10), transparent 28%),
+        #0b1220;
+}
+
+.sidebar{
+    background:rgba(15,23,42,.96);
+    border-right:1px solid rgba(148,163,184,.10);
+    box-shadow:18px 0 45px rgba(0,0,0,.18);
+}
+
+.logo{
+    height:96px;
+    justify-content:flex-start;
+    padding:0 28px;
+    font-size:25px;
+    letter-spacing:-.4px;
+    border-bottom:1px solid rgba(148,163,184,.10);
+    background:linear-gradient(180deg,rgba(17,24,39,.98),rgba(15,23,42,.92));
+}
+
+.logo span{
+    display:flex;
+    align-items:center;
+    gap:9px;
+}
+
+.settings-btn{
+    width:42px;
+    height:42px;
+    margin-left:auto;
+    margin-right:10px;
+    border:1px solid rgba(148,163,184,.13);
+    border-radius:13px;
+    background:#1e293b;
+    color:#e2e8f0;
+    font-size:20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    box-shadow:0 7px 20px rgba(0,0,0,.20);
+    transition:transform .18s ease,background .18s ease,border-color .18s ease;
+}
+
+.settings-btn:hover{
+    background:#24344d;
+    border-color:rgba(96,165,250,.30);
+}
+
+.settings-btn:active{
+    transform:scale(.92) rotate(-8deg);
+}
+
+.profile-btn{
+    width:48px;
+    height:48px;
+    margin-right:0;
+    border:2px solid rgba(255,255,255,.90);
+    background:#1e293b;
+    box-shadow:0 7px 22px rgba(0,0,0,.25);
+    transition:transform .18s ease, box-shadow .18s ease;
+}
+
+.profile-btn img{
+    width:100%;
+    height:100%;
+}
+
+.profile-btn:active{
+    transform:scale(.94);
+}
+
+.search{
+    padding:24px 22px 16px;
+}
+
+.search input{
+    height:58px;
+    padding:0 20px;
+    background:rgba(30,41,59,.92);
+    border:1px solid rgba(148,163,184,.08);
+    border-radius:18px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.025),
+               0 8px 24px rgba(0,0,0,.10);
+    font-size:16px;
+    transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.search input:focus{
+    background:#1e293b;
+    border-color:rgba(96,165,250,.42);
+    box-shadow:0 0 0 4px rgba(59,130,246,.09),
+               0 10px 28px rgba(0,0,0,.15);
+}
+
+.chat-list{
+    padding:6px 14px 20px;
+}
+
+.chat-item{
+    position:relative;
+    gap:15px;
+    padding:14px 12px;
+    margin:5px 0;
+    border:1px solid transparent;
+    border-radius:19px;
+    min-height:82px;
+    transition:background .18s ease, transform .18s ease, border-color .18s ease;
+}
+
+.chat-item:hover{
+    background:rgba(59,130,246,.065);
+    transform:translateY(-1px);
+}
+
+.chat-item:active{
+    transform:scale(.985);
+}
+
+.avatar{
+    width:58px;
+    height:58px;
+    min-width:58px;
+    border:2px solid #3b82f6;
+    box-shadow:0 5px 18px rgba(37,99,235,.16);
+}
+
+.chat-info{
+    padding-right:2px;
+}
+
+.chat-name-row h4,
+.chat-top h4{
+    font-size:17px;
+    font-weight:650;
+    letter-spacing:-.2px;
+}
+
+.message-preview{
+    color:#9aa9bd;
+    font-size:13px;
+    margin:6px 0 5px;
+}
+
+.status{
+    color:#64748b;
+    font-size:12px;
+}
+
+.status.online{
+    color:#4ade80;
+}
+
+.chat-right{
+    gap:9px;
+    align-self:flex-start;
+    padding-top:1px;
+}
+
+.time{
+    color:#718096;
+    font-size:11px;
+}
+
+.badge{
+    min-width:27px;
+    height:27px;
+    padding:0 8px;
+    border-radius:999px;
+    background:linear-gradient(145deg,#34d399,#22a96f);
+    box-shadow:0 5px 15px rgba(34,197,94,.22);
+    font-size:12px;
+}
+
+.chat-item.active{
+    background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(59,130,246,.07));
+    border-color:rgba(96,165,250,.18);
+}
+
+.chat-item.active::before{
+    content:"";
+    position:absolute;
+    left:-1px;
+    top:17px;
+    bottom:17px;
+    width:3px;
+    border-radius:0 4px 4px 0;
+    background:#60a5fa;
+}
+
+.chat{
+    background:
+        radial-gradient(circle at 80% 10%, rgba(37,99,235,.045), transparent 30%),
+        #0b1220;
+}
+
+/* Desktop preview pane */
+.chat-header{
+    height:82px;
+    padding:0 28px;
+    background:rgba(17,24,39,.78);
+    backdrop-filter:blur(14px);
+    border-bottom:1px solid rgba(148,163,184,.08);
+}
+
+.header-avatar{
+    width:52px;
+    height:52px;
+    box-shadow:0 5px 18px rgba(37,99,235,.18);
+}
+
+.header-info h3{
+    font-size:19px;
+}
+
+.header-info p{
+    font-size:12px;
+}
+
+@media (max-width:768px){
+    .sidebar{
+        width:100%;
+        min-width:100%;
+        border-right:none;
+    }
+
+    .logo{
+        height:110px;
+        padding:0 22px;
+        font-size:24px;
+    }
+
+    .settings-btn{
+        width:44px;
+        height:44px;
+        margin-right:9px;
+    }
+
+
+
+    .search{
+        padding:22px 32px 18px;
+    }
+
+    .search input{
+        height:58px;
+        border-radius:19px;
+    }
+
+    .chat-list{
+        padding:8px 24px 24px;
+    }
+
+    .chat-item{
+        min-height:88px;
+        padding:14px 10px;
+        gap:17px;
+    }
+
+    .avatar{
+        width:62px;
+        height:62px;
+        min-width:62px;
+    }
+
+    .chat-name-row h4,
+    .chat-top h4{
+        font-size:18px;
+    }
+
+    .message-preview{
+        font-size:14px;
+        margin-top:6px;
+    }
+
+    .status{
+        font-size:13px;
+    }
+}
+
+/* Smaller phones */
+@media (max-width:390px){
+    .logo{
+        padding:0 17px;
+        font-size:22px;
+    }
+
+    .search{
+        padding-left:17px;
+        padding-right:17px;
+    }
+
+    .chat-list{
+        padding-left:15px;
+        padding-right:15px;
+    }
+
+    .avatar{
+        width:56px;
+        height:56px;
+        min-width:56px;
+    }
+
+    .chat-item{
+        gap:13px;
+    }
+}
+
+
+.chat-list-empty{
+    margin:28px 12px;
+    padding:28px 18px;
+    text-align:center;
+    border:1px solid rgba(148,163,184,.08);
+    border-radius:20px;
+    background:rgba(30,41,59,.48);
+    color:#94a3b8;
+    font-size:14px;
+}
+
+
+/* Dashboard pinned chats */
+.chat-item.is-pinned{
+    background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(30,41,59,.72));
+    border-color:rgba(96,165,250,.18);
+}
+.chat-item.is-pinned::after{
+    content:"📌";
+    position:absolute;
+    right:10px;
+    bottom:9px;
+    font-size:11px;
+    opacity:.9;
+}
+.chat-pin{
+    color:#60a5fa;
+    font-size:11px;
+    margin-left:4px;
+}
+.chat-menu{
+    position:fixed;
+    z-index:9999;
+    min-width:180px;
+    padding:7px;
+    border:1px solid rgba(148,163,184,.16);
+    border-radius:15px;
+    background:rgba(15,23,42,.98);
+    box-shadow:0 18px 45px rgba(0,0,0,.4);
+    backdrop-filter:blur(14px);
+}
+.chat-menu button{
+    width:100%;
+    border:0;
+    background:transparent;
+    color:#e2e8f0;
+    text-align:left;
+    padding:11px 12px;
+    border-radius:10px;
+    font:500 13px Poppins,sans-serif;
+}
+.chat-menu button:active{background:rgba(96,165,250,.12);}
+
+
+/* =========================================================
+   LUCKY CHAT — STATUS / STORIES UI
+   Interface foundation only. Backend status storage/viewing
+   will be connected separately.
+   ========================================================= */
+
+.status-section{
+    padding:2px 22px 8px;
+    border-bottom:1px solid rgba(148,163,184,.08);
+}
+
+.status-heading{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom:11px;
+}
+
+.status-heading h3{
+    margin:0;
+    color:#f8fafc;
+    font-size:15px;
+    font-weight:700;
+}
+
+.status-heading p{
+    margin:3px 0 0;
+    color:#64748b;
+    font-size:10px;
+}
+
+.status-see-all{
+    width:auto;
+    min-width:58px;
+    padding:7px 10px;
+    border:1px solid rgba(96,165,250,.14);
+    border-radius:10px;
+    background:rgba(59,130,246,.07);
+    color:#60a5fa;
+    font:600 10px Poppins,sans-serif;
+    cursor:pointer;
+}
+
+.status-row{
+    display:flex;
+    gap:12px;
+    overflow-x:auto;
+    padding:1px 1px 9px;
+    scrollbar-width:none;
+}
+
+.status-row::-webkit-scrollbar{
+    display:none;
+}
+
+.status-card{
+    flex:0 0 76px;
+    width:76px;
+    padding:0;
+    border:0;
+    background:transparent;
+    color:#e2e8f0;
+    cursor:pointer;
+    text-align:center;
+}
+
+.status-avatar-wrap{
+    position:relative;
+    width:64px;
+    height:64px;
+    margin:0 auto 6px;
+    padding:3px;
+    border-radius:50%;
+    background:#1e293b;
+    border:2px solid #334155;
+}
+
+.status-avatar-wrap.has-status{
+    border-color:#3b82f6;
+    box-shadow:0 0 0 3px rgba(59,130,246,.07);
+}
+
+.status-avatar{
+    display:block;
+    width:100%;
+    height:100%;
+    border-radius:50%;
+    object-fit:cover;
+}
+
+.status-add{
+    position:absolute;
+    right:-3px;
+    bottom:-3px;
+    width:22px;
+    height:22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:2px solid #0f172a;
+    border-radius:50%;
+    background:#3b82f6;
+    color:white;
+    font-size:17px;
+    line-height:1;
+    font-weight:500;
+}
+
+.status-name{
+    display:block;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#e2e8f0;
+    font-size:10px;
+    font-weight:600;
+}
+
+.status-hint{
+    display:block;
+    margin-top:2px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#64748b;
+    font-size:9px;
+}
+
+.status-card:active{
+    transform:scale(.96);
+}
+
+@media(max-width:768px){
+    .status-section{
+        padding:1px 32px 8px;
+    }
+
+    .status-card{
+        flex-basis:80px;
+        width:80px;
+    }
+
+    .status-avatar-wrap{
+        width:68px;
+        height:68px;
+    }
+}
+
+@media(max-width:390px){
+    .status-section{
+        padding-left:17px;
+        padding-right:17px;
+    }
+}
+
+/* =========================================================
+   LUCKY CHAT — FUNCTIONAL STATUS UI
+   ========================================================= */
+
+.status-loading{
+    align-self:center;
+    color:#64748b;
+    font-size:10px;
+    padding:18px 5px;
+    white-space:nowrap;
+}
+
+.status-card.my-status-active .status-avatar-wrap{
+    border-color:#3b82f6;
+    box-shadow:0 0 0 3px rgba(59,130,246,.08);
+}
+
+.status-modal{
+    position:fixed;
+    inset:0;
+    z-index:10000;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+    background:rgba(2,6,23,.78);
+    backdrop-filter:blur(10px);
+}
+
+.status-modal.open{
+    display:flex;
+}
+
+.status-modal-card,
+.status-viewer-card{
+    position:relative;
+    width:min(430px,100%);
+    max-height:92vh;
+    overflow:auto;
+    border:1px solid rgba(148,163,184,.16);
+    border-radius:24px;
+    background:linear-gradient(180deg,#172238,#111a2c);
+    box-shadow:0 25px 70px rgba(0,0,0,.48);
+    padding:24px;
+}
+
+.status-modal-card h3{
+    color:#f8fafc;
+    font-size:20px;
+    margin:0 38px 5px 0;
+}
+
+.status-modal-subtitle{
+    color:#94a3b8;
+    font-size:12px;
+    margin-bottom:18px;
+}
+
+.status-close{
+    position:absolute;
+    right:14px;
+    top:12px;
+    width:36px;
+    height:36px;
+    border:1px solid rgba(148,163,184,.12);
+    border-radius:12px;
+    background:#1e293b;
+    color:#e2e8f0;
+    font-size:24px;
+    line-height:1;
+    cursor:pointer;
+}
+
+.status-upload-box{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height:105px;
+    border:1px dashed rgba(96,165,250,.35);
+    border-radius:17px;
+    background:rgba(59,130,246,.06);
+    color:#60a5fa;
+    cursor:pointer;
+    text-align:center;
+}
+
+.status-upload-box span{
+    font-size:14px;
+    font-weight:600;
+}
+
+.status-upload-box small{
+    margin-top:6px;
+    color:#64748b;
+    font-size:9px;
+}
+
+.status-textarea{
+    width:100%;
+    min-height:85px;
+    margin-top:13px;
+    padding:12px 13px;
+    resize:vertical;
+    border:1px solid rgba(148,163,184,.12);
+    border-radius:15px;
+    outline:none;
+    background:#0f172a;
+    color:#e2e8f0;
+    font:400 12px Poppins,sans-serif;
+}
+
+.status-textarea:focus{
+    border-color:rgba(96,165,250,.42);
+    box-shadow:0 0 0 3px rgba(59,130,246,.08);
+}
+
+.status-preview-wrap{
+    display:none;
+    margin-top:13px;
+    border-radius:16px;
+    overflow:hidden;
+    background:#0b1220;
+}
+
+.status-preview-wrap.show{
+    display:block;
+}
+
+.status-preview{
+    display:block;
+    width:100%;
+    max-height:260px;
+    object-fit:contain;
+}
+
+.status-primary-btn{
+    width:100%;
+    margin-top:14px;
+    min-height:48px;
+    border:0;
+    border-radius:14px;
+    background:linear-gradient(135deg,#2563eb,#3b82f6);
+    color:white;
+    font:600 13px Poppins,sans-serif;
+    cursor:pointer;
+}
+
+.status-primary-btn:disabled{
+    opacity:.55;
+    cursor:not-allowed;
+}
+
+.status-form-message{
+    min-height:18px;
+    margin:9px 2px 0;
+    color:#94a3b8;
+    font-size:11px;
+    text-align:center;
+}
+
+.status-viewer-card{
+    padding:18px;
+    background:#020617;
+}
+
+.status-viewer-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:2px 40px 12px 4px;
+}
+
+.status-viewer-head strong{
+    color:#f8fafc;
+    font-size:14px;
+}
+
+.status-viewer-head span{
+    color:#64748b;
+    font-size:10px;
+}
+
+.status-viewer-image{
+    display:block;
+    width:100%;
+    max-height:68vh;
+    object-fit:contain;
+    border-radius:17px;
+    background:#0f172a;
+}
+
+.status-viewer-text{
+    margin:12px 3px 0;
+    color:#e2e8f0;
+    font-size:13px;
+    line-height:1.55;
+    white-space:pre-wrap;
+}
+
+.status-delete-btn{
+    display:none;
+    width:100%;
+    margin-top:13px;
+    min-height:42px;
+    border:1px solid rgba(248,113,113,.20);
+    border-radius:13px;
+    background:rgba(239,68,68,.08);
+    color:#fca5a5;
+    font:600 12px Poppins,sans-serif;
+    cursor:pointer;
+}
+
+.status-delete-btn.show{
+    display:block;
+}
+
+.status-row .status-card{
+    flex-shrink:0;
+}
+
+@media(max-width:768px){
+    .status-modal{
+        padding:12px;
+    }
+
+    .status-modal-card,
+    .status-viewer-card{
+        border-radius:21px;
+        padding:20px;
+    }
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+
+<div class="logo">
+    <span>🚀 Lucky Chat</span>
+
+    <button class="settings-btn" onclick="openSettings()" aria-label="Settings" title="Settings">
+    ⚙️
+</button>
+
+
+
+</div>
+
+<div class="search">
+    <input
+        type="text"
+        id="chatSearch"
+        placeholder="🔍 Search chats"
+        oninput="searchChats()">
+</div>
+
+
+    <!-- Lucky Chat Status / Stories UI -->
+    <section class="status-section" aria-label="Status">
+        <div class="status-heading">
+            <div>
+                <h3>Status</h3>
+                <p>Share a moment with your friends</p>
+            </div>
+            <button class="status-see-all" type="button" onclick="openStatusPage()">
+                See all
+            </button>
+        </div>
+
+        <div class="status-row" id="statusRow">
+            <button class="status-card your-status" type="button" onclick="createStatus()">
+                <div class="status-avatar-wrap">
+                    <img
+                        class="status-avatar"
+                        src="{{ profile_picture or '/static/profile/default.png' }}"
+                        alt="Your status"
+                        onerror="this.src='/static/profile/default.png'">
+                    <span class="status-add">+</span>
+                </div>
+                <span class="status-name">My Status</span>
+                <span class="status-hint">Add status</span>
+            </button>
+
+            <div class="status-loading">Loading statuses...</div>
+        </div>
+    </section>
+
+    <!-- Create Status modal -->
+    <div class="status-modal" id="statusCreateModal" aria-hidden="true">
+        <div class="status-modal-card">
+            <button class="status-close" type="button" onclick="closeStatusCreate()" aria-label="Close">×</button>
+            <h3>Create status</h3>
+            <p class="status-modal-subtitle">Choose a photo and optionally add a message.</p>
+
+            <label class="status-upload-box" for="statusFile">
+                <span id="statusFileLabel">📸 Choose photo</span>
+                <small>PNG, JPEG or WebP • up to 10 MB</small>
+            </label>
+            <input id="statusFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+
+            <textarea
+                id="statusText"
+                class="status-textarea"
+                maxlength="500"
+                placeholder="Write something..."></textarea>
+
+            <div class="status-preview-wrap" id="statusPreviewWrap">
+                <img id="statusPreview" class="status-preview" alt="Status preview">
+            </div>
+
+            <button class="status-primary-btn" id="statusUploadBtn" type="button" onclick="uploadStatus()">
+                Post status
+            </button>
+
+            <p class="status-form-message" id="statusFormMessage"></p>
+        </div>
+    </div>
+
+    <!-- Status viewer -->
+    <div class="status-modal" id="statusViewerModal" aria-hidden="true">
+        <div class="status-viewer-card">
+            <button class="status-close viewer-close" type="button" onclick="closeStatusViewer()" aria-label="Close">×</button>
+            <div class="status-viewer-head">
+                <strong id="statusViewerName">Status</strong>
+                <span id="statusViewerTime"></span>
+            </div>
+            <img id="statusViewerImage" class="status-viewer-image" alt="Status">
+            <p id="statusViewerText" class="status-viewer-text"></p>
+            <button class="status-delete-btn" id="statusDeleteBtn" type="button" onclick="deleteCurrentStatus()">
+                Delete my status
+            </button>
+        </div>
+    </div>
+
+    <div class="chat-list">
+
+{% for chat in chat_list %}
+{% set user = chat.user %}
+
+{% if user.username != username %}
+
+<div class="chat-item"
+     onclick="openChat('{{ user.username }}')"
+     oncontextmenu="showChatMenu(event, '{{ user.username }}')">
+
+    <img
+    class="avatar"
+    src="{{ user.profile_picture }}"
+    alt="{{ user.username }}"
+    onerror="this.src='/static/profile/default.png'">
+
+<div class="chat-info">
+
+<div class="chat-top">
+
+    <h4>{{ user.display_name or user.username }}</h4>
+
+    <div class="chat-right">
+
+       {% if chat.time %}
+       <small class="time">
+       {{ chat.time[11:16] }}
+       </small>
+       {% endif %}
+
+        {% if unread_counts[user.username] > 0 %}
+        <span class="badge">
+            {{ unread_counts[user.username] }}
+        </span>
+        {% endif %}
+
+    </div>
+
+</div>
+
+    {% if last_messages[user.username] %}
+
+        <small class="message-preview">
+
+            {% if last_messages[user.username].sender == username %}
+               You:
+            {% else %}
+            {{ user.username }}:
+            {% endif %}
+
+            {{ last_messages[user.username].text[:30] }}
+
+            {% if last_messages[user.username].text|length > 30 %}
+                ...
+            {% endif %}
+
+        </small>
+
+    {% else %}
+
+        <small style="color:#777;">
+            No messages yet
+        </small>
+
+    {% endif %}
+
+    <p class="status" id="status-{{ user.username }}">
+    ⚪ Offline
+</p>
+
+</div>
+
+</div>
+
+{% endif %}
+
+{% endfor %}
+
+</div>
+
+    </aside>
+
+    <main class="chat">
+
+    <div class="chat-header">
+
+    <img
+    class="header-avatar"
+    src="/static/profile/default.png"
+    alt="Profile">
+
+    <div class="header-info">
+        <h3>LuckyNova</h3>
+        <p>🟢 Online</p>
+    </div>
+
+</div>
+
+<div id="messages" class="messages">
+
+    <div class="message own">
+        Welcome to Lucky Chat 🚀
+    </div>
+
+</div>
+
+    </main>
+
+</div>
+
+<script>
+
+async function updateOnlineUsers(){
+
+    const res = await fetch("/online");
+
+    const users = await res.json();
+
+    document.querySelectorAll("[id^='status-']").forEach(el=>{
+        el.innerHTML="⚪ Offline";
+    });
+
+    users.forEach(user=>{
+
+        const el=document.getElementById("status-"+user);
+
+        if(el){
+            el.innerHTML="🟢 Online";
+        }
+
+    });
+
+}
+
+setInterval(updateOnlineUsers,1000);
+
+updateOnlineUsers();
+
+function openChat(friend){
+    window.location.href="/chat/"+encodeURIComponent(friend);
+}
+
+let dashboardSocket = null;
+let reconnectTimer = null;
+
+function openSettings(){
+    window.location.href="/settings";
+}
+
+let loadedStatuses = [];
+let currentStatus = null;
+let statusPreviewUrl = null;
+
+function createStatus(){
+    const modal = document.getElementById("statusCreateModal");
+    const fileInput = document.getElementById("statusFile");
+    const textInput = document.getElementById("statusText");
+    const message = document.getElementById("statusFormMessage");
+    const previewWrap = document.getElementById("statusPreviewWrap");
+    const preview = document.getElementById("statusPreview");
+    const label = document.getElementById("statusFileLabel");
+
+    fileInput.value = "";
+    textInput.value = "";
+    message.textContent = "";
+    previewWrap.classList.remove("show");
+    preview.removeAttribute("src");
+    label.textContent = "📸 Choose photo";
+
+    if (statusPreviewUrl) {
+        URL.revokeObjectURL(statusPreviewUrl);
+        statusPreviewUrl = null;
+    }
+
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+}
+
+function closeStatusCreate(){
+    const modal = document.getElementById("statusCreateModal");
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+}
+
+function closeStatusViewer(){
+    const modal = document.getElementById("statusViewerModal");
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+    currentStatus = null;
+}
+
+function setStatusMessage(text, error=false){
+    const el = document.getElementById("statusFormMessage");
+    el.textContent = text || "";
+    el.style.color = error ? "#fca5a5" : "#94a3b8";
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const fileInput = document.getElementById("statusFile");
+
+    if (fileInput) {
+        fileInput.addEventListener("change", () => {
+            const file = fileInput.files && fileInput.files[0];
+            const previewWrap = document.getElementById("statusPreviewWrap");
+            const preview = document.getElementById("statusPreview");
+            const label = document.getElementById("statusFileLabel");
+
+            if (!file) {
+                previewWrap.classList.remove("show");
+                label.textContent = "📸 Choose photo";
+                return;
+            }
+
+            if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+                fileInput.value = "";
+                previewWrap.classList.remove("show");
+                label.textContent = "📸 Choose photo";
+                setStatusMessage("Please choose a PNG, JPEG or WebP image.", true);
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                fileInput.value = "";
+                previewWrap.classList.remove("show");
+                label.textContent = "📸 Choose photo";
+                setStatusMessage("That image is larger than 10 MB.", true);
+                return;
+            }
+
+            if (statusPreviewUrl) URL.revokeObjectURL(statusPreviewUrl);
+            statusPreviewUrl = URL.createObjectURL(file);
+            preview.src = statusPreviewUrl;
+            previewWrap.classList.add("show");
+            label.textContent = "📸 " + file.name;
+            setStatusMessage("");
+        });
+    }
+
+    loadStatuses();
+});
+
+async function uploadStatus(){
+    const fileInput = document.getElementById("statusFile");
+    const textInput = document.getElementById("statusText");
+    const button = document.getElementById("statusUploadBtn");
+    const file = fileInput.files && fileInput.files[0];
+
+    if (!file) {
+        setStatusMessage("Choose a photo first.", true);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("text", textInput.value.trim());
+
+    button.disabled = true;
+    button.textContent = "Posting...";
+    setStatusMessage("Uploading your status...");
+
+    try {
+        const res = await fetch("/upload-status", {
+            method: "POST",
+            credentials: "same-origin",
+            body: formData
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || "Could not upload status");
+        }
+
+        closeStatusCreate();
+        await loadStatuses();
+        setStatusMessage("");
+    } catch (error) {
+        console.error("Status upload error:", error);
+        setStatusMessage(error.message || "Could not upload status.", true);
+    } finally {
+        button.disabled = false;
+        button.textContent = "Post status";
+    }
+}
+
+async function loadStatuses(){
+    const row = document.getElementById("statusRow");
+    if (!row) return;
+
+    try {
+        const res = await fetch("/statuses", { credentials:"same-origin" });
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || "Could not load statuses");
+        }
+
+        loadedStatuses = Array.isArray(data.statuses) ? data.statuses : [];
+        renderStatuses();
+    } catch (error) {
+        console.debug("Status list unavailable:", error);
+        loadedStatuses = [];
+        renderStatuses();
+    }
+}
+
+function renderStatuses(){
+    const row = document.getElementById("statusRow");
+    if (!row) return;
+
+    const myStatuses = loadedStatuses.filter(s => s.is_mine);
+    const otherStatuses = loadedStatuses.filter(s => !s.is_mine);
+
+    const myNewest = myStatuses[0];
+
+    let html = `
+        <button class="status-card your-status ${myNewest ? "my-status-active" : ""}"
+                type="button"
+                onclick="${myNewest ? "openStatusById(" + Number(myNewest.id) + ")" : "createStatus()"}">
+            <div class="status-avatar-wrap ${myNewest ? "has-status" : ""}">
+                <img
+                    class="status-avatar"
+                    src="{{ profile_picture or '/static/profile/default.png' }}"
+                    alt="My status"
+                    onerror="this.src='/static/profile/default.png'">
+                ${myNewest ? '<span class="status-add">+</span>' : '<span class="status-add">+</span>'}
+            </div>
+            <span class="status-name">My Status</span>
+            <span class="status-hint">${myNewest ? "View status" : "Add status"}</span>
+        </button>
+    `;
+
+    otherStatuses.forEach((status, index) => {
+        const safeId = Number(status.id);
+        const label = status.username || "Friend";
+        html += `
+            <button class="status-card" type="button" onclick="openStatusById(${safeId})">
+                <div class="status-avatar-wrap has-status">
+                    <img
+                        class="status-avatar"
+                        src="${escapeHtml(status.media_url || '/static/profile/default.png')}"
+                        alt="${escapeHtml(label)}"
+                        onerror="this.src='/static/profile/default.png'">
+                </div>
+                <span class="status-name">${escapeHtml(label)}</span>
+                <span class="status-hint">${formatStatusAge(status.created_at)}</span>
+            </button>
+        `;
+    });
+
+    if (!otherStatuses.length) {
+        html += `
+            <div class="status-loading" style="padding-left:8px;">
+                No new statuses yet
+            </div>
+        `;
+    }
+
+    row.innerHTML = html;
+}
+
+function escapeHtml(value){
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function formatStatusAge(value){
+    if (!value) return "Recent";
+
+    const time = Date.parse(value);
+    if (Number.isNaN(time)) return "Recent";
+
+    const minutes = Math.max(0, Math.floor((Date.now() - time) / 60000));
+
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return minutes + "m ago";
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + "h ago";
+
+    return "Recent";
+}
+
+function openStatusById(id){
+    const status = loadedStatuses.find(item => Number(item.id) === Number(id));
+    if (!status) return;
+
+    currentStatus = status;
+
+    document.getElementById("statusViewerName").textContent =
+        status.is_mine ? "My Status" : (status.username || "Status");
+
+    document.getElementById("statusViewerTime").textContent =
+        formatStatusAge(status.created_at);
+
+    document.getElementById("statusViewerImage").src =
+        status.media_url || "/static/profile/default.png";
+
+    document.getElementById("statusViewerText").textContent =
+        status.text || "";
+
+    const deleteButton = document.getElementById("statusDeleteBtn");
+    deleteButton.classList.toggle("show", !!status.is_mine);
+
+    const modal = document.getElementById("statusViewerModal");
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+}
+
+function openStatusPage(){
+    if (!loadedStatuses.length) {
+        createStatus();
+        return;
+    }
+
+    const first = loadedStatuses[0];
+    openStatusById(first.id);
+}
+
+async function deleteCurrentStatus(){
+    if (!currentStatus || !currentStatus.is_mine) return;
+
+    if (!confirm("Delete this status?")) return;
+
+    const button = document.getElementById("statusDeleteBtn");
+    button.disabled = true;
+    button.textContent = "Deleting...";
+
+    try {
+        const res = await fetch("/statuses/" + encodeURIComponent(currentStatus.id), {
+            method:"DELETE",
+            credentials:"same-origin"
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || "Could not delete status");
+        }
+
+        closeStatusViewer();
+        await loadStatuses();
+    } catch (error) {
+        alert(error.message || "Could not delete status.");
+    } finally {
+        button.disabled = false;
+        button.textContent = "Delete my status";
+    }
+}
+
+
+
+function connectDashboardSocket() {
+
+    if (
+        dashboardSocket &&
+        (
+            dashboardSocket.readyState === WebSocket.OPEN ||
+            dashboardSocket.readyState === WebSocket.CONNECTING
+        )
+    ) {
+        return;
+    }
+
+    dashboardSocket = new WebSocket(
+    (location.protocol === "https:" ? "wss://" : "ws://") +
+    location.host +
+    "/dashboard_ws"
+);
+
+    dashboardSocket.onopen = () => {
+        console.log("Dashboard WebSocket connected");
+    };
+
+    dashboardSocket.onmessage = (event) => {
+
+        console.log("DASHBOARD EVENT:", event.data);
+
+        try {
+            const data = JSON.parse(event.data);
+
+            if (data.type === "dashboard_update") {
+                refreshDashboard();
+            }
+
+        } catch (error) {
+            console.error("Dashboard message error:", error);
+        }
+    };
+
+    dashboardSocket.onerror = (error) => {
+        console.error("Dashboard WebSocket error:", error);
+    };
+
+    dashboardSocket.onclose = () => {
+
+        console.log("Dashboard WebSocket closed. Reconnecting...");
+
+        clearTimeout(reconnectTimer);
+
+        reconnectTimer = setTimeout(() => {
+            connectDashboardSocket();
+        }, 3000);
+    };
+}
+
+connectDashboardSocket();
+
+loadServerPinnedChats().then(() => refreshDashboard());
+
+setInterval(() => {
+
+    if (
+        dashboardSocket &&
+        dashboardSocket.readyState === WebSocket.OPEN
+    ) {
+        dashboardSocket.send("ping");
+    }
+
+}, 15000);
+
+function getChatTimestamp(value) {
+    if (!value) return 0;
+
+    const text = String(value).trim();
+
+    // Full ISO / server timestamps.
+    const full = Date.parse(text);
+    if (!Number.isNaN(full)) return full;
+
+    // HH:MM timestamps used by the dashboard.
+    const match = text.match(/(\\d{1,2}):(\\d{2})/);
+    if (match) {
+        const now = new Date();
+        const d = new Date(now);
+        d.setHours(Number(match[1]), Number(match[2]), 0, 0);
+
+        // If the time appears to be from yesterday, account for that.
+        if (d.getTime() > now.getTime() + 5 * 60 * 1000) {
+            d.setDate(d.getDate() - 1);
+        }
+
+        return d.getTime();
+    }
+
+    return 0;
+}
+
+
+const PINNED_CHATS_KEY = "lucky_chat_pinned_chats";
+let serverPinnedChats = null;
+
+function getLocalPinnedChats(){
+    try{
+        const value = JSON.parse(localStorage.getItem(PINNED_CHATS_KEY) || "[]");
+        return Array.isArray(value) ? value : [];
+    }catch(e){ return []; }
+}
+
+function getPinnedChats(){
+    return Array.isArray(serverPinnedChats)
+        ? serverPinnedChats
+        : getLocalPinnedChats();
+}
+
+function savePinnedChats(list){
+    localStorage.setItem(PINNED_CHATS_KEY, JSON.stringify(list));
+}
+
+async function loadServerPinnedChats(){
+    try{
+        const res = await fetch("/pinned-chats", { credentials:"same-origin" });
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        if(data.success && Array.isArray(data.pinned)){
+            serverPinnedChats = data.pinned;
+            savePinnedChats(serverPinnedChats);
+            return;
+        }
+    }catch(e){
+        console.debug("Server pinned chats unavailable; using local cache:", e);
+    }
+
+    serverPinnedChats = getLocalPinnedChats();
+}
+
+function isPinned(username){
+    return getPinnedChats().includes(username);
+}
+
+async function togglePinnedChat(username){
+    const pinned = [...getPinnedChats()];
+    const alreadyPinned = pinned.includes(username);
+    const next = alreadyPinned
+        ? pinned.filter(name => name !== username)
+        : [username, ...pinned];
+
+    // Update immediately so the UI feels instant.
+    serverPinnedChats = next;
+    savePinnedChats(next);
+    refreshDashboard();
+
+    try{
+        const res = await fetch("/pinned-chats", {
+            method:"POST",
+            credentials:"same-origin",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({friend:username, pinned:!alreadyPinned})
+        });
+
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+
+        if(data.success && Array.isArray(data.pinned)){
+            serverPinnedChats = data.pinned;
+            savePinnedChats(serverPinnedChats);
+            refreshDashboard();
+        }
+    }catch(e){
+        console.debug("Could not persist pinned chat on server:", e);
+    }
+}
+
+
+function showChatMenu(event, username){
+    event.preventDefault();
+    event.stopPropagation();
+    closeChatMenu();
+
+    const menu=document.createElement("div");
+    menu.className="chat-menu";
+    menu.id="dashboardChatMenu";
+
+    const button=document.createElement("button");
+    button.textContent=isPinned(username) ? "📌 Unpin chat" : "📌 Pin chat";
+    button.onclick=async ()=>{
+        await togglePinnedChat(username);
+        closeChatMenu();
+    };
+    menu.appendChild(button);
+    document.body.appendChild(menu);
+
+    const x=Math.min(event.clientX, window.innerWidth-menu.offsetWidth-8);
+    const y=Math.min(event.clientY, window.innerHeight-menu.offsetHeight-8);
+    menu.style.left=Math.max(8,x)+"px";
+    menu.style.top=Math.max(8,y)+"px";
+}
+
+function closeChatMenu(){
+    const menu=document.getElementById("dashboardChatMenu");
+    if(menu) menu.remove();
+}
+
+document.addEventListener("click", closeChatMenu);
+
+async function refreshDashboard(){
+
+    const res = await fetch("/dashboard-data");
+    const chats = await res.json();
+
+    console.log("DASHBOARD DATA:", chats);
+
+    const chatList = document.querySelector(".chat-list");
+
+    /*
+     * SMART CHAT ORDERING
+     * Newest activity stays at the top.
+     * Unread chats receive a small priority boost when their activity
+     * timestamp is the same, while the unread badge remains visible.
+     */
+    const pinned = getPinnedChats();
+
+    const orderedChats = [...chats].sort((a, b) => {
+        const pinA = pinned.includes(a.username) ? 1 : 0;
+        const pinB = pinned.includes(b.username) ? 1 : 0;
+
+        if (pinA !== pinB) return pinB - pinA;
+
+        const timeA = getChatTimestamp(a.time);
+        const timeB = getChatTimestamp(b.time);
+
+        if (timeA !== timeB) return timeB - timeA;
+
+        const unreadA = Number(a.unread) || 0;
+        const unreadB = Number(b.unread) || 0;
+        return unreadB - unreadA;
+    });
+
+    chatList.innerHTML = "";
+
+    orderedChats.forEach(chat=>{
+
+        const senderName =
+          chat.sender === "{{ username }}"
+          ? "You"
+          : (chat.display_name || chat.username);
+
+        const messageText = chat.last
+          ? chat.last.substring(0, 30)
+          : "";
+
+        const preview = chat.last
+          ? `${senderName}: ${messageText}${chat.last.length > 30 ? "..." : ""}`
+          : "No messages yet";
+
+        const time = chat.time || "";
+
+        const unread = Number(chat.unread) || 0;
+
+        const badge =
+            unread > 0
+            ? `<span class="badge">${unread}</span>`
+            : "";
+
+    chatList.innerHTML += `
+    <div class="chat-item ${unread > 0 ? "has-unread" : ""} ${isPinned(chat.username) ? "is-pinned" : ""}"
+         onclick="openChat('${chat.username}')"
+         oncontextmenu="showChatMenu(event, '${chat.username}')">
+
+        <img
+            class="avatar"
+            src="${chat.profile}"
+            alt="${chat.username}"
+            onerror="this.src='/static/profile/default.png'">
+
+        <div class="chat-info">
+
+        <div class="chat-top">
+    <h4>${chat.display_name || chat.username}${isPinned(chat.username) ? ' <span class="chat-pin">📌</span>' : ''}</h4>
+
+    <div class="chat-right">
+        ${chat.time
+            ? `<small class="time">${chat.time}</small>`
+            : ""
+        }
+
+        ${badge}
+    </div>
+</div>
+
+        <small class="message-preview">
+    ${preview}
+</small>
+
+<p class="status" id="status-${chat.username}">
+    ⚪ Offline
+</p>
+
+        </div>
+
+    </div>
+`;
+
+    });
+
+    updateOnlineUsers();
+
+    // Preserve the current search/filter after a live dashboard refresh.
+    searchChats();
+
+}
+
+
+function animateTopChat() {
+    const first = document.querySelector(".chat-list .chat-item");
+    if (!first) return;
+
+    first.classList.remove("chat-just-moved");
+    void first.offsetWidth;
+    first.classList.add("chat-just-moved");
+}
+
+function searchChats() {
+    const input = document.getElementById("chatSearch");
+
+    if (!input) return;
+
+    const filter = input.value.trim().toLowerCase();
+    const items = document.querySelectorAll(".chat-item");
+    let visible = 0;
+
+    items.forEach(chat => {
+        const nameElement = chat.querySelector(".chat-info h4");
+        const previewElement = chat.querySelector(".message-preview");
+
+        if (!nameElement) return;
+
+        const name = nameElement.textContent.toLowerCase();
+        const preview = previewElement
+            ? previewElement.textContent.toLowerCase()
+            : "";
+
+        const matches =
+            !filter ||
+            name.includes(filter) ||
+            preview.includes(filter);
+
+        chat.style.display = matches ? "flex" : "none";
+
+        if (matches) visible++;
+    });
+
+    let empty = document.querySelector(".chat-list-empty");
+
+    if (filter && visible === 0) {
+        if (!empty) {
+            empty = document.createElement("div");
+            empty.className = "chat-list-empty";
+            empty.textContent = "No chats found";
+            document.querySelector(".chat-list")?.appendChild(empty);
+        }
+    } else if (empty) {
+        empty.remove();
+    }
+}
+
+document.addEventListener("click", (event) => {
+    if (event.target.id === "statusCreateModal") closeStatusCreate();
+    if (event.target.id === "statusViewerModal") closeStatusViewer();
+});
+
+</script>
+
+
+<script>
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
+            .then(reg => console.log("Lucky Chat PWA service worker ready:", reg.scope))
+            .catch(err => console.error("Lucky Chat PWA service worker failed:", err));
+    });
+}
+</script>
+
+</body>
+
+</html>

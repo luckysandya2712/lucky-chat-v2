@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings — Lucky Chat</title>
+
+<style>
+:root{
+    --bg:#0b1220;
+    --card:#182438;
+    --card2:#101a2b;
+    --text:#f8fafc;
+    --muted:#94a3b8;
+    --border:rgba(148,163,184,.12);
+    --blue:#3b82f6;
+}
+
+*{box-sizing:border-box}
+
+body{
+    margin:0;
+    min-height:100vh;
+    padding:10px 10px 30px;
+    background:
+        radial-gradient(circle at 50% -10%,rgba(59,130,246,.16),transparent 35%),
+        var(--bg);
+    color:var(--text);
+    font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+}
+
+.settings-card{
+    width:min(100%,560px);
+    margin:0 auto;
+    overflow:hidden;
+    background:rgba(24,36,56,.97);
+    border:1px solid var(--border);
+    border-radius:24px;
+    box-shadow:0 24px 70px rgba(0,0,0,.34);
+}
+
+.header{
+    height:70px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 17px;
+    background:rgba(15,23,42,.48);
+    border-bottom:1px solid var(--border);
+}
+
+.header-title{
+    font-size:18px;
+    font-weight:750;
+}
+
+.back-btn{
+    width:42px;
+    height:42px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:13px;
+    border:1px solid var(--border);
+    background:#101a2b;
+    color:white;
+    font-size:23px;
+    cursor:pointer;
+}
+
+.header-space{width:42px}
+
+.section{
+    padding:20px 17px 0;
+}
+
+.section-title{
+    margin:0 4px 9px;
+    color:#60a5fa;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1.8px;
+    text-transform:uppercase;
+}
+
+.setting{
+    width:100%;
+    min-height:64px;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:12px 13px;
+    margin-bottom:8px;
+    border:1px solid transparent;
+    border-radius:16px;
+    background:rgba(16,26,43,.66);
+    color:inherit;
+    text-align:left;
+    cursor:pointer;
+    transition:background .16s ease,transform .16s ease,border-color .16s ease;
+}
+
+.setting:hover{
+    background:rgba(30,45,68,.82);
+    border-color:var(--border);
+}
+
+.setting:active{
+    transform:scale(.99);
+}
+
+.icon{
+    width:42px;
+    height:42px;
+    min-width:42px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:13px;
+    background:#1d2b43;
+    font-size:20px;
+}
+
+.setting-text{
+    min-width:0;
+    flex:1;
+}
+
+.setting-name{
+    display:block;
+    font-size:14px;
+    font-weight:700;
+}
+
+.setting-desc{
+    display:block;
+    margin-top:3px;
+    color:var(--muted);
+    font-size:11px;
+    line-height:1.35;
+}
+
+.chevron{
+    color:#64748b;
+    font-size:21px;
+}
+
+.switch{
+    position:relative;
+    width:46px;
+    height:26px;
+    flex:none;
+}
+
+.switch input{
+    opacity:0;
+    width:0;
+    height:0;
+}
+
+.slider{
+    position:absolute;
+    inset:0;
+    border-radius:99px;
+    background:#334155;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.slider:before{
+    content:"";
+    position:absolute;
+    width:20px;
+    height:20px;
+    left:3px;
+    top:3px;
+    border-radius:50%;
+    background:#e2e8f0;
+    transition:.2s;
+}
+
+.switch input:checked + .slider{
+    background:#2563eb;
+}
+
+.switch input:checked + .slider:before{
+    transform:translateX(20px);
+}
+
+.logout{
+    margin:22px 17px 18px;
+    width:calc(100% - 34px);
+    min-height:50px;
+    border:1px solid rgba(248,113,113,.20);
+    border-radius:15px;
+    background:rgba(127,29,29,.16);
+    color:#fca5a5;
+    font-size:14px;
+    font-weight:800;
+    cursor:pointer;
+}
+
+.version{
+    padding:0 0 22px;
+    text-align:center;
+    color:#64748b;
+    font-size:11px;
+}
+
+@media(max-width:480px){
+    body{
+        padding:6px 7px 24px;
+    }
+
+    .settings-card{
+        border-radius:21px;
+    }
+
+    .section{
+        padding-left:13px;
+        padding-right:13px;
+    }
+
+    .logout{
+        margin-left:13px;
+        margin-right:13px;
+        width:calc(100% - 26px);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="settings-card">
+
+    <div class="header">
+        <button class="back-btn" type="button" onclick="history.back()" aria-label="Back">←</button>
+        <div class="header-title">Settings</div>
+        <div class="header-space"></div>
+    </div>
+
+    <section class="section">
+        <h3 class="section-title">Account</h3>
+
+        <button class="setting" type="button" onclick="openProfile()">
+            <span class="icon">👤</span>
+            <span class="setting-text">
+                <span class="setting-name">Profile</span>
+                <span class="setting-desc">Manage your name, bio and profile picture</span>
+            </span>
+            <span class="chevron">›</span>
+        </button>
+
+        <button class="setting" type="button" onclick="showComingSoon('Change password')">
+            <span class="icon">🔑</span>
+            <span class="setting-text">
+                <span class="setting-name">Change Password</span>
+                <span class="setting-desc">Update your account password</span>
+            </span>
+            <span class="chevron">›</span>
+        </button>
+    </section>
+
+    <section class="section">
+        <h3 class="section-title">Notifications</h3>
+
+        <div class="setting">
+            <span class="icon">🔔</span>
+            <span class="setting-text">
+                <span class="setting-name">Message Notifications</span>
+                <span class="setting-desc">Show notifications for new messages</span>
+            </span>
+            <label class="switch">
+                <input type="checkbox" checked onchange="savePreference('notifications',this.checked)">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="setting">
+            <span class="icon">🔊</span>
+            <span class="setting-text">
+                <span class="setting-name">Notification Sound</span>
+                <span class="setting-desc">Play a sound for new messages</span>
+            </span>
+            <label class="switch">
+                <input type="checkbox" checked onchange="savePreference('notificationSound',this.checked)">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </section>
+
+    <section class="section">
+        <h3 class="section-title">Appearance</h3>
+
+        <div class="setting">
+            <span class="icon">🌙</span>
+            <span class="setting-text">
+                <span class="setting-name">Dark Mode</span>
+                <span class="setting-desc">Use the Lucky Chat dark interface</span>
+            </span>
+            <label class="switch">
+                <input type="checkbox" checked onchange="savePreference('darkMode',this.checked)">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </section>
+
+    <section class="section">
+        <h3 class="section-title">Privacy</h3>
+
+        <div class="setting">
+            <span class="icon">🟢</span>
+            <span class="setting-text">
+                <span class="setting-name">Online Status</span>
+                <span class="setting-desc">Allow others to see when you're online</span>
+            </span>
+            <label class="switch">
+                <input type="checkbox" checked onchange="savePreference('onlineStatus',this.checked)">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="setting">
+            <span class="icon">✔️</span>
+            <span class="setting-text">
+                <span class="setting-name">Read Receipts</span>
+                <span class="setting-desc">Show when you've read messages</span>
+            </span>
+            <label class="switch">
+                <input type="checkbox" checked onchange="savePreference('readReceipts',this.checked)">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </section>
+
+    <section class="section">
+        <h3 class="section-title">About</h3>
+
+        <button class="setting" type="button" onclick="showComingSoon('About Lucky Chat')">
+            <span class="icon">🚀</span>
+            <span class="setting-text">
+                <span class="setting-name">Lucky Chat</span>
+                <span class="setting-desc">App information and version</span>
+            </span>
+            <span class="chevron">›</span>
+        </button>
+    </section>
+
+    <button class="logout" type="button" onclick="showComingSoon('Logout')">
+        🚪 Logout
+    </button>
+
+    <div class="version">Lucky Chat • Settings</div>
+
+</div>
+
+<script>
+function openProfile(){
+    window.location.href = "/profile";
+}
+
+function showComingSoon(name){
+    alert(name + " will be connected to the backend next.");
+}
+
+function savePreference(key,value){
+    localStorage.setItem("lucky_setting_" + key, value ? "1" : "0");
+}
+</script>
+
+</body>
+</html>

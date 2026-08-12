@@ -1,0 +1,106 @@
+import json
+from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
+
+
+class ConnectionManager:
+
+    def __init__(self):
+        self.connections = {}
+        self.dashboard_connections = {}
+
+    async def connect(self, username: str, websocket: WebSocket):
+        await websocket.accept()
+
+        self.connections[username] = websocket
+
+        await self.broadcast_online()
+
+    async def disconnect(self, username: str):
+
+        if username in self.connections:
+            del self.connections[username]
+
+        await self.broadcast_online()
+
+    async def send(self, username: str, payload: dict):
+
+        ws = self.connections.get(username)
+
+        if ws:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                pass
+
+    async def send_personal(self, payload: dict, username: str):
+        await self.send(username, payload)
+
+    async def send_dashboard(self, username: str, payload: dict):
+        print("Dashboard update for:", username)
+        print("Connected dashboards:", list(self.dashboard_connections.keys()))
+
+        ws = self.dashboard_connections.get(username)
+
+        if not ws:
+          print("NO DASHBOARD CONNECTION:", username)
+          return
+
+        try:
+          await ws.send_json(payload)
+          print("Dashboard update SUCCESS:", username)
+
+        except Exception as e:
+          print("Dashboard update FAILED:", username, e)
+
+          # Remove the dead socket
+          if self.dashboard_connections.get(username) == ws:
+            self.dashboard_connections.pop(username, None)
+
+    async def broadcast_profile_update(self, username, profile_picture):
+        payload = {
+            "type": "profile_picture_update",
+            "username": username,
+            "profile": profile_picture
+        }
+
+        # Update open chat pages
+        for user, ws in list(self.connections.items()):
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                pass
+
+        # Update open dashboards
+        for user, ws in list(self.dashboard_connections.items()):
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                pass
+
+    async def broadcast_online(self):
+
+        payload = {
+            "type": "online",
+            "users": list(self.connections.keys())
+        }
+
+        dead = []
+
+        for username, ws in self.connections.items():
+
+            try:
+                await ws.send_json(payload)
+
+            except WebSocketDisconnect:
+                dead.append(username)
+
+            except Exception:
+                dead.append(username)
+
+        for username in dead:
+
+            self.connections.pop(username, None)
+
+
+manager = ConnectionManager()

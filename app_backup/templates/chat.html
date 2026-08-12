@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucky Chat</title>
+
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Poppins,sans-serif;
+}
+
+body{
+    background:linear-gradient(
+        180deg,
+        #0f172a,
+        #111827
+    );
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+}
+
+.header{
+    height:70px;
+    background:#111827;
+    display:flex;
+    align-items:center;
+    gap:15px;
+    padding:15px;
+
+    color:white;
+    font-size:22px;
+    font-weight:bold;
+    border-bottom:1px solid #1f2937;
+}
+
+.messages{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    padding:15px;
+    overflow-y:auto;
+    padding-bottom:90px;
+}
+
+.message{
+    max-width:70%;
+    padding:12px 16px;
+    margin:10px;
+    border-radius:22px;
+    word-break:break-word;
+    background:#2f3b52;
+    color:white;
+    align-self:flex-start;
+    box-shadow:0 2px 8px rgba(0,0,0,.2);
+
+    animation:pop .18s ease;
+}
+
+.message-row{
+
+    display:flex;
+
+    align-items:flex-end;
+
+    gap:10px;
+
+}
+
+.message-row:has(.message-own){
+
+    justify-content:flex-end;
+
+}
+
+.msg-avatar{
+
+    width:38px;
+
+    height:38px;
+
+    border-radius:50%;
+
+    object-fit:cover;
+
+    border:2px solid #3b82f6;
+
+    flex-shrink:0;
+
+}
+
+.message-own{
+    background:#2563eb;
+    align-self:flex-end;
+}
+
+.message-other{
+    background:#2f3b52;
+    align-self:flex-start;
+}
+
+.msg-status{
+    margin-top:4px;
+    text-align:right;
+    font-size:12px;
+    color:#d1d5db;
+}
+
+.message strong{
+    display:block;
+    color:#93c5fd;
+    font-size:13px;
+    margin-bottom:5px;
+}
+
+.input-area{
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+
+    display:flex;
+    gap:12px;
+
+    padding:15px;
+    background:#111827;
+    border-top:1px solid #2f3b52;
+}
+
+input{
+flex:1;
+padding:14px;
+border:none;
+outline:none;
+border-radius:12px;
+background:#1f2937;
+color:white;
+}
+
+button{
+padding:14px 22px;
+border:none;
+border-radius:12px;
+background:#2563eb;
+color:white;
+font-size:16px;
+}
+
+#online-users{
+    padding:10px 20px;
+    background:#111827;
+    color:#22c55e;
+    font-size:14px;
+    border-bottom:1px solid #1f2937;
+}
+
+.header-avatar{
+
+    width:50px;
+    height:50px;
+
+    border-radius:50%;
+
+    object-fit:cover;
+
+    border:2px solid #3b82f6;
+}
+
+.header-name{
+
+    color:white;
+
+    font-size:20px;
+
+    font-weight:bold;
+}
+
+.input-area{
+    z-index: 9999;
+}
+
+button{
+    pointer-events: auto;
+}
+
+.message-menu{
+    position:fixed;
+    display:none;
+    background:#232d3f;
+    border-radius:14px;
+    overflow:hidden;
+    box-shadow:0 8px 30px rgba(0,0,0,.45);
+    min-width:220px;
+    z-index:9999;
+}
+
+.message-menu div{
+    padding:14px 18px;
+    color:white;
+    cursor:pointer;
+    border-bottom:1px solid rgba(255,255,255,.08);
+}
+
+.message-menu div:last-child{
+    border-bottom:none;
+}
+
+.message-menu div:hover{
+    background:#2f3d56;
+}
+
+.message-meta{
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
+    gap:6px;
+
+    margin-top:6px;
+
+    font-size:11px;
+    color:#cfd8dc;
+
+    opacity:.85;
+}
+
+.ticks{
+    font-size:13px;
+    font-weight:bold;
+}
+
+.ticks.read{
+    color:#34B7F1;
+}
+
+@keyframes pop{
+    from{
+        transform:scale(.9);
+        opacity:0;
+    }
+    to{
+        transform:scale(1);
+        opacity:1;
+    }
+}
+
+.reply-preview{
+    background:#1f2937;
+    color:white;
+    padding:10px 15px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-top:1px solid #374151;
+}
+
+.reply-preview button{
+    background:none;
+    border:none;
+    color:#ef4444;
+    font-size:18px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+
+    <img
+        class="header-avatar"
+        src="{{ friend_user.profile_picture }}"
+        onerror="this.src='/static/profile/default.png'">
+
+    <div>
+
+        <div class="header-name">
+            {{ friend_user.username }}
+        </div>
+
+        <div id="online-users">
+            🟢 Online
+        </div>
+
+    </div>
+
+</div>
+
+<div class="messages">
+
+<div class="message">
+Welcome to Lucky Chat 🚀
+</div>
+
+</div>
+
+<div id="replyPreview" class="reply-preview" style="display:none;">
+    <div id="replyText"></div>
+
+    <button onclick="cancelReply()">✕</button>
+</div>
+
+<div class="input-area">
+
+<input placeholder="Type a message...">
+
+<button id="sendBtn">Send</button>
+
+</div>
+
+<script>
+
+function getCookie(name){
+    const value="; "+document.cookie;
+    const parts=value.split("; "+name+"=");
+    if(parts.length===2){
+        return parts.pop().split(";").shift();
+    }
+    return "";
+}
+
+const username=getCookie("username");
+const friend="{{ friend }}";
+
+const messages=document.querySelector(".messages");
+const input=document.querySelector("input");
+const button = document.getElementById("sendBtn");
+
+console.log(button);
+button.onclick = function () {
+    sendMessage();
+};
+
+const online=document.getElementById("online-users");
+let selectedMessageId = null;
+let pressTimer = null;
+let replyToId = null;
+let replyPreview = null;
+let messageMap = {};
+
+let socket;
+let reconnectTimer = null;
+
+function connectSocket() {
+
+    console.log("🔌 Connecting WebSocket...");
+
+    socket = new WebSocket(
+        (location.protocol === "https:" ? "wss://" : "ws://") +
+        location.host +
+        "/ws?username=" + encodeURIComponent(username) +
+        "&friend=" + encodeURIComponent(friend) +
+        "&page=chat"
+    );
+
+    socket.onopen = () => {
+        console.log("✅ WebSocket connected");
+
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    };
+
+    socket.onerror = (e) => {
+        console.log("❌ WebSocket error", e);
+    };
+
+    socket.onclose = (e) => {
+
+        console.log(
+            "🔴 WebSocket closed",
+            e.code,
+            e.reason
+        );
+
+        if (!reconnectTimer) {
+
+            reconnectTimer = setTimeout(() => {
+
+                reconnectTimer = null;
+
+                connectSocket();
+
+            }, 2000);
+        }
+    };
+
+    socket.onmessage = (event) => {
+
+        console.log("Received:", event.data);
+
+        const data = JSON.parse(event.data);
+
+        if(data.type === "message"){
+
+            addMessage(data);
+
+            if(data.sender !== username){
+
+                if(socket.readyState === WebSocket.OPEN){
+
+                    socket.send(JSON.stringify({
+                        type: "delivered",
+                        id: data.id
+                    }));
+
+                }
+            }
+
+            return;
+        }
+
+        if(data.type === "read"){
+
+            const tick = document.querySelector(
+                `[data-msg="${data.id}"] .ticks`
+            );
+
+            if(tick){
+
+                tick.innerHTML = "✔✔";
+                tick.classList.add("read");
+
+            }
+
+            return;
+        }
+
+        if(data.type === "typing"){
+
+            online.innerHTML =
+                "⌨️ " + data.sender + " is typing...";
+
+            clearTimeout(window.typingTimer);
+
+            window.typingTimer = setTimeout(() => {
+
+                online.innerHTML = "🟢 Online";
+
+            },1500);
+
+            return;
+        }
+
+        if(data.type === "stop_typing"){
+
+            online.innerHTML = "🟢 Online";
+
+            return;
+        }
+
+        if(data.type === "delivered"){
+
+            const tick = document.querySelector(
+                `[data-msg="${data.id}"] .ticks`
+            );
+
+            if(tick){
+
+                tick.innerHTML = "✓✓";
+
+            }
+
+            return;
+        }
+
+        if(data.type === "delete_everyone"){
+
+            const bubble = document.querySelector(
+                `[data-msg="${data.id}"]`
+            );
+
+            if(bubble){
+
+                bubble.querySelector(".msg-text").innerHTML =
+                    "🚫 <i>This message was deleted</i>";
+
+            }
+
+            return;
+        }
+
+        if(data.type === "online"){
+
+            online.innerHTML =
+                "🟢 Online: " + data.users.join(", ");
+
+            return;
+        }
+    };
+}
+
+connectSocket();
+
+let typing = false;
+let typingTimeout = null;
+
+input.addEventListener("input", () => {
+
+    if (!typing) {
+        typing = true;
+        console.log("Socket state:", socket.readyState);
+
+    if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+        type: "typing"
+    }));
+}    
+
+    }
+
+    clearTimeout(typingTimeout);
+
+    typingTimeout = setTimeout(() => {
+
+        typing = false;
+
+    if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+        type: "stop_typing"
+    }));
+}
+
+    }, 1000);
+
+});
+
+socket.onmessage=(event)=>{
+
+    console.log("Received:", event.data);
+
+    const data=JSON.parse(event.data);
+
+if(data.type==="message"){
+
+    alert("Message received");
+
+    addMessage(data);
+
+    // Only the receiver sends the delivered receipt
+
+if (data.sender !== username) {
+    console.log("Sending delivered for", data.id);
+    socket.send(JSON.stringify({
+        type: "delivered",
+        id: data.id
+    }));
+}
+
+    return;
+}
+
+if(data.type === "read") {
+
+    const tick = document.querySelector(
+        `[data-msg="${data.id}"] .ticks`
+    );
+
+    if (tick) {
+        tick.innerHTML = "✔✔";
+        tick.classList.add("read");
+    }
+
+    return;
+}
+
+    if (data.type === "typing") {
+
+    online.innerHTML = "⌨️ " + data.sender + " is typing...";
+
+    clearTimeout(window.typingTimer);
+
+    window.typingTimer = setTimeout(() => {
+        online.innerHTML = "🟢 Online";
+    }, 1500);
+
+    return;
+}
+
+    if (data.type === "stop_typing") {
+    online.innerHTML = "🟢 Online";
+    return;
+}
+
+    if(data.type==="delivered"){
+
+    const tick = document.querySelector(
+        `[data-msg="${data.id}"] .ticks`
+    );
+
+    if(tick){
+        tick.innerHTML="✓✓";
+    }
+
+    return;
+}
+
+   if(data.type === "delete_everyone"){
+
+    const bubble = document.querySelector(
+        `[data-msg="${data.id}"]`
+    );
+
+    if(bubble){
+
+        bubble.querySelector("div").innerHTML =
+            "🚫 <i>This message was deleted</i>";
+
+    }
+
+    return;
+}
+
+    if(data.type==="online"){
+
+        online.innerHTML="🟢 Online: "+data.users.join(", ");
+
+        return;
+    }
+
+};
+
+input.addEventListener("keypress",function(e){
+
+    if(e.key==="Enter"){
+        sendMessage();
+    }
+
+});
+
+function sendMessage() {
+
+    console.log("Send button clicked");
+
+    const text = input.value.trim();
+
+    if (text === "") return;
+
+    console.log("Sending:", text);
+
+    console.log("Socket state:", socket.readyState);
+
+    if (socket.readyState !== WebSocket.OPEN) {
+    alert("Socket is not connected!");
+    return;
+}
+
+    socket.send(JSON.stringify({
+    type: "message",
+    text: text,
+    reply_to: replyToId
+}));
+
+    input.value = "";
+
+    replyToId = null;
+    document.getElementById("replyPreview").style.display = "none";
+
+}
+
+function addMessage(msg){
+
+    messageMap[msg.id] = msg;
+
+    const row = document.createElement("div");
+    row.className = "message-row";
+
+    let replyHtml = "";
+
+    if (msg.reply_to && messageMap[msg.reply_to]) {
+
+    const replied = messageMap[msg.reply_to];
+
+    replyHtml = `
+        <div class="reply-box">
+            <strong>${replied.sender}</strong>
+            <div>${replied.text}</div>
+        </div>
+    `;
+    }
+
+    if(msg.sender === username){
+
+        if (msg.reply_to && messageMap[msg.reply_to]) {
+        const replied = messageMap[msg.reply_to];
+
+        replyHtml = `
+        <div class="reply-box">
+            <strong>${replied.sender}</strong>
+            <div>${replied.text}</div>
+        </div>
+    `;
+}
+
+        let ticks = `<span class="ticks">✔</span>`;
+
+        if(msg.delivered){
+            ticks = `<span class="ticks">✔✔</span>`;
+        }
+
+        if(msg.read){
+            ticks = `<span class="ticks read">✔✔</span>`;
+        }
+
+        row.innerHTML = `
+            <div class="message message-own"
+                 data-msg="${msg.id}"
+                 ontouchstart="startPress(event, ${msg.id})"
+                 ontouchend="cancelPress()"
+                 ontouchmove="cancelPress()">
+
+                 ${replyHtml}
+
+                 <div class="msg-text">
+                 ${msg.text}
+                 </div>
+
+                <div class="msg-meta">
+                    <span class="msg-time">${msg.timestamp}</span>
+                    ${ticks}
+                </div>
+
+            </div>
+        `;
+
+    }else{
+
+        row.innerHTML = `
+            <img class="msg-avatar"
+                 src="{{ friend_user.profile_picture }}"
+                 onerror="this.src='/static/profile/default.png'">
+
+            <div class="message message-other"
+                 data-msg="${msg.id}"
+                 ontouchstart="startPress(event, ${msg.id})"
+                 ontouchend="cancelPress()"
+                 ontouchmove="cancelPress()">
+
+                ${replyHtml}
+
+                <div class="msg-text">
+                ${msg.text}
+                </div>
+
+                <div class="msg-meta">
+                    <span class="msg-time">${msg.timestamp}</span>
+                </div>
+
+            </div>
+        `;
+    }
+
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+}
+
+async function loadMessages(){
+
+    const res=await fetch("/messages/"+friend);
+
+    const data=await res.json();
+
+    messages.innerHTML="";
+ 
+    messageMap = {};
+
+    data.forEach(msg => {
+    messageMap[msg.id] = msg;
+});
+
+    data.forEach(addMessage);
+
+    data.forEach(msg => {
+
+    if(msg.sender !== username){
+
+    if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+        type: "read",
+        id: msg.id
+    }));
+}
+
+    }
+
+});
+
+}
+
+function startPress(e,id){
+    pressTimer = setTimeout(()=>{
+        showDeleteMenu(e,id);
+    },500); // 500ms long press
+}
+
+function cancelPress(){
+    clearTimeout(pressTimer);
+}
+
+function showDeleteMenu(e, id){
+    e.preventDefault();
+
+    selectedMessageId = id;
+
+    const menu = document.getElementById("messageMenu");
+
+    let x = 0;
+    let y = 0;
+
+    if(e.touches && e.touches.length > 0){
+        x = e.touches[0].clientX;
+        y = e.touches[0].clientY;
+    }else{
+        x = e.clientX;
+        y = e.clientY;
+    }
+
+    const menuWidth = 180;
+    const menuHeight = 170;
+
+    let left = x;
+    let top = y;
+
+    if(left + menuWidth > window.innerWidth){
+    left = window.innerWidth - menuWidth - 10;
+    }
+
+    if(top + menuHeight > window.innerHeight){
+    top = window.innerHeight - menuHeight - 10;
+    }
+
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+    menu.style.display = "block";
+    }
+
+    document.addEventListener("click", function(e){
+    const menu = document.getElementById("messageMenu");
+
+    if(menu && !menu.contains(e.target)){
+        hideMenu();
+    }
+});
+
+function hideMenu(){
+    const menu = document.getElementById("messageMenu");
+
+    menu.style.display = "none";
+    selectedMessageId = null;
+    clearTimeout(pressTimer);
+}
+
+function deleteForEveryone(){
+    if(selectedMessageId == null) return;
+
+    socket.send(JSON.stringify({
+        type:"delete_everyone",
+        id:selectedMessageId
+    }));
+
+    hideMenu();
+}
+
+function deleteForMe(){
+    alert("Coming soon");
+    hideMenu();
+}
+
+function copyMessage(){
+    const bubble = document.querySelector(
+        `[data-msg="${selectedMessageId}"]`
+    );
+
+    if(bubble){
+        navigator.clipboard.writeText(
+            bubble.innerText.replace("✔","").replace("✔✔","").trim()
+        );
+    }
+
+    hideMenu();
+}
+
+function replyMessage(){
+
+    alert("Selected ID = " + selectedMessageId);
+
+    const bubble = document.querySelector(
+        `[data-msg="${selectedMessageId}"] .msg-text`
+    );
+
+    alert(bubble);
+
+    if(bubble){
+
+    replyToId = selectedMessageId;
+
+    document.getElementById("replyText").innerText =
+        "Replying to: " + bubble.innerText;
+
+    document.getElementById("replyPreview").style.display = "flex";
+
+}
+
+    hideMenu();
+
+}
+
+function cancelReply(){
+
+    replyToId = null;
+
+    document.getElementById("replyPreview").style.display = "none";
+
+}
+
+loadMessages();
+
+</script>
+
+<div id="messageMenu"
+     class="message-menu"
+     onclick="event.stopPropagation()">
+
+    <div onclick="deleteForEveryone()">
+        🗑 Delete for Everyone
+    </div>
+
+    <div onclick="deleteForMe()">
+        👤 Delete for Me
+    </div>
+
+    <div onclick="copyMessage()">
+        📋 Copy
+    </div>
+
+    <div onclick="replyMessage()">
+    ↩ Reply
+</div>
+
+</div>
+
+</body>
+</html>
+

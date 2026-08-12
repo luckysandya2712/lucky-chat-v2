@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Login</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+body{
+background:#0f172a;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+font-family:Arial;
+margin:0;
+}
+
+.card{
+background:#1e293b;
+padding:30px;
+width:340px;
+border-radius:18px;
+box-shadow:0 0 20px rgba(0,0,0,.3);
+}
+
+h1{
+color:white;
+text-align:center;
+margin-bottom:25px;
+}
+
+input{
+width:100%;
+padding:12px;
+margin:10px 0;
+border:none;
+border-radius:10px;
+font-size:16px;
+box-sizing:border-box;
+}
+
+button{
+width:100%;
+padding:12px;
+margin-top:15px;
+background:#2563eb;
+color:white;
+border:none;
+border-radius:10px;
+font-size:17px;
+font-weight:bold;
+}
+
+p{
+color:white;
+text-align:center;
+margin-top:20px;
+}
+
+a{
+color:#60a5fa;
+text-decoration:none;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="card">
+
+<h1>🔐 Login</h1>
+
+<form method="POST" action="/login">
+
+<input
+type="text"
+name="username"
+placeholder="Username">
+
+<input
+type="password"
+name="password"
+placeholder="Password">
+
+<button>Login</button>
+
+</form>
+
+<p>
+Don't have an account?
+
+<a href="/register">
+Register
+</a>
+
+</p>
+
+</div>
+
+</body>
+</html>

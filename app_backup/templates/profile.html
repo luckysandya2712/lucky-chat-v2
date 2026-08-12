@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My Profile</title>
+    <style>
+        body{
+            background:#0f172a;
+            color:white;
+            font-family:Arial;
+            text-align:center;
+        }
+
+        .card{
+            width:350px;
+            margin:50px auto;
+            background:#1e293b;
+            padding:30px;
+            border-radius:15px;
+        }
+
+        img{
+            width:150px;
+            height:150px;
+            border-radius:50%;
+            object-fit:cover;
+            border:4px solid #3b82f6;
+        }
+
+        input{
+            margin-top:20px;
+        }
+
+        button{
+            margin-top:20px;
+            padding:10px 25px;
+            border:none;
+            border-radius:10px;
+            background:#2563eb;
+            color:white;
+            cursor:pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+
+<h2>{{ user.username }}</h2>
+
+<img src="{{ user.profile_picture }}" id="preview">
+
+<form action="/upload-profile" method="post" enctype="multipart/form-data">
+
+<input
+type="file"
+name="file"
+accept="image/*"
+onchange="preview.src=window.URL.createObjectURL(this.files[0])">
+
+<br>
+
+<button type="submit">
+Upload Profile Picture
+</button>
+
+</form>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Lucky Chat</title>
+
+<link rel="preconnect"
+href="https://fonts.googleapis.com">
+
+<link
+href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+rel="stylesheet">
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Poppins,sans-serif;
+}
+
+body{
+background:#0f172a;
+height:100vh;
+overflow:hidden;
+}
+
+.app{
+display:flex;
+width:100%;
+height:100vh;
+}
+
+.sidebar{
+    width:340px;
+    min-width:340px;
+    background:#111827;
+    border-right:1px solid #1f2937;
+    display:flex;
+    flex-direction:column;
+}
+
+.chat{
+flex:1;
+background:#0f172a;
+display:flex;
+flex-direction:column;
+}
+
+.logo{
+    height:80px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    font-size:20px;
+    font-weight:700;
+    color:#60a5fa;
+    white-space:nowrap;
+    border-bottom:1px solid #1f2937;
+}
+
+.search{
+    padding:20px;
+}
+
+.search input{
+    width:100%;
+    padding:14px 18px;
+    background:#1f2937;
+    color:white;
+    border:none;
+    border-radius:14px;
+    outline:none;
+    font-size:15px;
+}
+
+.search input::placeholder{
+    color:#94a3b8;
+}
+
+.chat-list{
+    flex:1;
+    overflow-y:auto;
+}
+
+.chat-item{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:18px 20px;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.chat-item:hover{
+    background:#1f2937;
+}
+
+.chat-item.active{
+    background:#2563eb;
+}
+
+.avatar{
+    width:50px;
+    height:50px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid #3b82f6;
+    background:#1f2937;
+}
+
+.chat-info h4{
+    color:white;
+    font-size:17px;
+}
+
+.chat-info p{
+    color:#4ade80;
+    font-size:13px;
+    margin-top:3px;
+}
+
+.chat-header{
+    height:80px;
+    border-bottom:1px solid #1f2937;
+    display:flex;
+    align-items:center;
+    padding:0 25px;
+    gap:15px;
+    background:#111827;
+}
+
+.header-avatar{
+    width:50px;
+    height:50px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid #3b82f6;
+}
+
+.header-info h3{
+    color:white;
+    font-size:20px;
+}
+
+.header-info p{
+    color:#4ade80;
+    font-size:13px;
+    margin-top:4px;
+}
+
+.messages{
+    flex:1;
+    padding:20px;
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    gap:15px;
+}
+
+.message{
+    max-width:70%;
+    padding:14px 18px;
+    border-radius:18px;
+    background:#2563eb;
+    color:white;
+    font-size:16px;
+    word-wrap:break-word;
+}
+
+.message.own{
+    align-self:flex-end;
+}
+
+@media (max-width:768px){
+
+    .sidebar{
+        width:100%;
+        min-width:100%;
+    }
+
+    .chat{
+        display:none;
+    }
+
+}
+
+.badge{
+    min-width:22px;
+    height:22px;
+    background:#25D366;
+    color:white;
+    border-radius:50%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:12px;
+    font-weight:bold;
+    padding:2px 6px;
+}
+
+.chat-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+}
+
+.chat-right{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:4px;
+}
+
+.time{
+    font-size:11px;
+    color:#8d96a8;
+}
+
+.badge{
+    background:#22c55e;
+    color:white;
+    min-width:20px;
+    height:20px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:11px;
+    font-weight:bold;
+    padding:0 5px;
+}
+
+.chat-item{
+    transition:0.2s;
+}
+
+.chat-item:hover{
+    background:#242f43;
+}
+
+.chat-item:active{
+    transform:scale(0.98);
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+
+    <div class="logo">
+    🚀 Lucky Chat
+</div>
+
+    <div class="search">
+    <input
+        type="text"
+        placeholder="🔍 Search chats">
+</div>
+
+    <div class="chat-list">
+
+{% for chat in chat_list %}
+{% set user = chat.user %}
+
+{% if user.username != username %}
+
+<div class="chat-item"
+     onclick="openChat('{{ user.username }}')">
+
+    <img
+    class="avatar"
+    src="{{ user.profile_picture }}"
+    alt="{{ user.username }}"
+    onerror="this.src='/static/profile/default.png'">
+
+<div class="chat-info">
+
+<div class="chat-top">
+
+    <h4>{{ user.username }}</h4>
+
+    <div class="chat-right">
+
+       {% if chat.time %}
+       <small class="time">
+       {{ chat.time[11:16] }}
+       </small>
+       {% endif %}
+
+        {% if unread_counts[user.username] > 0 %}
+        <span class="badge">
+            {{ unread_counts[user.username] }}
+        </span>
+        {% endif %}
+
+    </div>
+
+</div>
+
+    {% if last_messages[user.username] %}
+
+        <small style="color:#999;display:block;margin:4px 0;">
+
+            {% if last_messages[user.username].sender == username %}
+               You:
+            {% else %}
+            {{ user.username }}:
+            {% endif %}
+
+            {{ last_messages[user.username].text[:30] }}
+
+            {% if last_messages[user.username].text|length > 30 %}
+                ...
+            {% endif %}
+
+        </small>
+
+    {% else %}
+
+        <small style="color:#777;">
+            No messages yet
+        </small>
+
+    {% endif %}
+
+    <p id="status-{{ user.username }}">
+        ⚪ Offline
+    </p>
+
+</div>
+
+</div>
+
+{% endif %}
+
+{% endfor %}
+
+</div>
+
+    </aside>
+
+    <main class="chat">
+
+    <div class="chat-header">
+
+    <img
+    class="header-avatar"
+    src="/static/profile/default.png"
+    alt="Profile">
+
+    <div class="header-info">
+        <h3>LuckyNova</h3>
+        <p>🟢 Online</p>
+    </div>
+
+</div>
+
+<div id="messages" class="messages">
+
+    <div class="message own">
+        Welcome to Lucky Chat 🚀
+    </div>
+
+</div>
+
+    </main>
+
+</div>
+
+<script>
+
+async function updateOnlineUsers(){
+
+    const res = await fetch("/online");
+
+    const users = await res.json();
+
+    document.querySelectorAll("[id^='status-']").forEach(el=>{
+        el.innerHTML="⚪ Offline";
+    });
+
+    users.forEach(user=>{
+
+        const el=document.getElementById("status-"+user);
+
+        if(el){
+            el.innerHTML="🟢 Online";
+        }
+
+    });
+
+}
+
+setInterval(updateOnlineUsers,1000);
+
+updateOnlineUsers();
+
+function openChat(friend){
+    window.location.href="/chat/"+encodeURIComponent(friend);
+}
+
+const dashboardSocket = new WebSocket(
+    (location.protocol === "https:" ? "wss://" : "ws://") +
+    location.host +
+    "/ws?username={{ username }}&page=dashboard"
+);
+
+async function refreshDashboard(){
+
+    const res = await fetch("/dashboard-data");
+    const chats = await res.json();
+
+    console.log("DASHBOARD DATA:", chats);
+
+    const chatList = document.querySelector(".chat-list");
+
+    chatList.innerHTML = "";
+
+    chats.forEach(chat=>{
+
+        const preview =
+            chat.last
+            ? (chat.sender=="{{ username }}" ? "You: " : chat.username + ": ")
+              + chat.last.substring(0,30)
+            : "No messages yet";
+
+        const badge =
+            chat.unread>0
+            ? `<span class="badge">${chat.unread}</span>`
+            : "";
+
+        chatList.innerHTML += `
+        <div class="chat-item"
+             onclick="openChat('${chat.username}')">
+
+            <img
+                class="avatar"
+                src="${chat.profile}"
+                onerror="this.src='/static/profile/default.png'">
+
+            <div class="chat-info">
+
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+
+    <div>
+        <h4 style="margin:0;">${chat.username}</h4>
+
+        <small style="color:#888;">
+            ${chat.time || ""}
+        </small>
+    </div>
+
+    ${badge}
+
+</div>
+
+                <small style="color:#999;display:block;margin:4px 0;">
+                    ${preview}
+                </small>
+
+                <p id="status-${chat.username}">
+                    ⚪ Offline
+                </p>
+
+            </div>
+
+        </div>
+        `;
+
+    });
+
+    updateOnlineUsers();
+
+}
+
+dashboardSocket.onmessage=(event)=>{
+
+    const data=JSON.parse(event.data);
+
+    if(data.type=="dashboard_update"){
+        refreshDashboard();
+    }
+
+};
+
+dashboardSocket.onopen = () => {
+    console.log("Dashboard WebSocket connected");
+};
+
+setInterval(() => {
+    if (dashboardSocket.readyState === WebSocket.OPEN) {
+        dashboardSocket.send("ping");
+    }
+}, 15000);
+
+dashboardSocket.onerror = (e) => {
+    console.log("Dashboard WebSocket error", e);
+};
+
+dashboardSocket.onclose = () => {
+    console.log("Dashboard WebSocket closed");
+};
+
+</script>
+
+</body>
+
+</html>

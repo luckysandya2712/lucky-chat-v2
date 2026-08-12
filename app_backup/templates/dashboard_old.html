@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Lucky Chat v2</title>
+
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Arial,sans-serif;
+}
+
+body{
+height:100vh;
+display:flex;
+background:#0f172a;
+color:white;
+}
+
+.container{
+    display:flex;
+    width:100%;
+    height:100vh;
+}
+
+.sidebar{
+width:320px;
+min-width:320px;
+background:#1e293b;
+display:flex;
+flex-direction:column;
+}
+
+.logo{
+padding:20px;
+font-size:24px;
+font-weight:bold;
+background:#2563eb;
+text-align:center;
+}
+
+.search{
+padding:15px;
+}
+
+.search input{
+width:100%;
+padding:10px;
+border:none;
+border-radius:8px;
+}
+
+.chat-list{
+flex:1;
+overflow:auto;
+}
+
+.chat-item{
+padding:15px;
+border-bottom:1px solid #334155;
+cursor:pointer;
+}
+
+.chat-item:hover{
+background:#334155;
+}
+
+.chat-area{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+}
+
+.chat-header{
+    height:70px;
+    background:#1f2937;
+    border-bottom:1px solid #374151;
+
+    display:flex;
+    align-items:center;
+
+    padding:0 20px;
+
+    color:white;
+}
+
+.messages{
+flex:1;
+padding:20px;
+overflow:auto;
+}
+
+.message{
+background:#2563eb;
+padding:12px;
+margin:10px 0;
+border-radius:12px;
+width:fit-content;
+max-width:70%;
+}
+
+.message.own{
+    margin-left:auto;
+    background:#2563eb;
+    color:white;
+}
+
+.input-area{
+display:flex;
+padding:15px;
+background:#1e293b;
+}
+
+.input-area input{
+flex:1;
+padding:12px;
+border:none;
+border-radius:10px;
+}
+
+.input-area button{
+margin-left:10px;
+padding:12px 20px;
+background:#2563eb;
+color:white;
+border:none;
+border-radius:10px;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="sidebar">
+
+<div class="logo">
+🚀 Lucky Chat
+</div>
+
+<div class="search">
+
+<input
+    type="text"
+    id="searchInput"
+    placeholder="Search chats">
+
+</div>
+
+<div class="chat-list" id="userList">
+
+</div>
+
+<div class="chat-area">
+
+<div class="chat-header">
+
+    <div style="display:flex;align-items:center;gap:12px;">
+
+        <div style="
+            width:45px;
+            height:45px;
+            border-radius:50%;
+            background:#2563eb;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            font-size:22px;
+            color:white;">
+            👤
+        </div>
+
+        <div>
+            <div id="chatName"
+                 style="font-size:20px;font-weight:bold;">
+                General Chat
+            </div>
+
+            <div
+                style="color:#4ade80;font-size:13px;">
+                ● Online
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<div class="messages" id="messages">
+
+<div class="message">
+Welcome to Lucky Chat v2 🎉
+</div>
+
+</div>
+
+<div class="input-area">
+
+<input
+id="messageInput"
+placeholder="Type a message...">
+
+<button onclick="sendMessage()">
+Send
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+const messages = document.getElementById("messages");
+const input = document.getElementById("messageInput");
+
+// Connect to WebSocket
+const ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+// Load old messages
+fetch("/messages")
+.then(response => response.json())
+.then(data => {
+    messages.innerHTML = "";
+
+    data.forEach(msg => {
+        messages.innerHTML += `
+            <div class="message own">
+                <strong>${msg.sender}</strong><br>
+                ${msg.text}
+            </div>
+        `;
+    });
+
+    messages.scrollTop = messages.scrollHeight;
+});
+
+// Receive new message
+ws.onmessage = function(event) {
+
+    messages.innerHTML += `
+        <div class="message own">
+            <strong>Guest</strong><br>
+            ${event.data}
+        </div>
+    `;
+
+    messages.scrollTop = messages.scrollHeight;
+};
+
+// Send message
+function sendMessage() {
+
+    if(input.value.trim() === "")
+        return;
+
+    ws.send(input.value);
+
+    input.value = "";
+}
+
+fetch("/users")
+.then(res => res.json())
+.then(users => {
+    const userList = document.getElementById("userList");
+
+    users.forEach(user => {
+        const div = document.createElement("div");
+        div.className = "chat-item";
+        div.innerHTML = "👤 " + user.username;
+
+        div.onclick = function () {
+            document.querySelector(".chat-header").innerText = user.username;
+        };
+
+        userList.appendChild(div);
+    });
+});
+
+</script>
+
+</body>
+</html>
