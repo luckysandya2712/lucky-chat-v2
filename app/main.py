@@ -21,7 +21,7 @@ import os
 import asyncio
 import traceback
 from pathlib import Path
-from notification import add_subscription
+from .notification import add_subscription
 
 Base.metadata.create_all(bind=engine)
 
