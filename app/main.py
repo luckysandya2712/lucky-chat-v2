@@ -579,6 +579,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     db.commit()
                     db.refresh(message)
 
+                    all_msgs = db.query(Message).all()
+                    print("TOTAL MESSAGES:", len(all_msgs))
+                    for m in all_msgs:
+                        print(m.id, m.sender, "->", m.receiver, m.text)
+
                     print(
                         "MESSAGE SAVED:",
                         message.id,
