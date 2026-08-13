@@ -669,6 +669,8 @@ async def get_messages(friend: str, request: Request):
 
     username=request.cookies.get("username")
 
+    print("COOKIE USERNAME =", username, "FRIEND =", friend)
+
     db=SessionLocal()
 
     msgs=db.query(Message).filter(
