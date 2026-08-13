@@ -474,7 +474,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     sender=username,
                     receiver=friend,
                     text=text,
-                    timestamp=datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%I:%M %p")
+                    timestamp=datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%I:%M %p"),
                     unread=1,
                     seen_in_chat=0,
                     reply_to=data.get("reply_to"),
@@ -564,7 +564,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         sender=username,
                         receiver=friend,
                         text=text,
-                        timestamp=datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%I:%M %p")
+                        timestamp=datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%I:%M %p"),
                         unread=1,
                         seen_in_chat=0,
                         reply_to=data.get("reply_to"),
