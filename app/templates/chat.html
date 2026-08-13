@@ -3497,6 +3497,12 @@ function sendMessage() {
     document.getElementById("replyPreview").style.display = "none";
 }
 
+
+function formatMessageTimestamp(ts){
+ const d=new Date(ts);
+ if(!isNaN(d)) return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+ return ts;
+}
 function escapeHTML(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -3710,7 +3716,7 @@ if (msg.reaction) {
                  </div>
 
                 <div class="msg-meta">
-                    <span class="msg-time">${escapeHTML(msg.timestamp)}</span>
+                    <span class="msg-time">${formatMessageTimestamp(msg.timestamp)}</span>
                     ${renderEditedLabel(msg)}
                     ${ticks}
                 </div>
@@ -3744,7 +3750,7 @@ if (msg.reaction) {
                 </div>
 
                 <div class="msg-meta">
-                    <span class="msg-time">${escapeHTML(msg.timestamp)}</span>
+                    <span class="msg-time">${formatMessageTimestamp(msg.timestamp)}</span>
                     ${renderEditedLabel(msg)}
                 </div>
 
