@@ -691,6 +691,10 @@ async def get_messages(friend: str, request: Request):
 
     ).order_by(Message.id.asc()).all()
 
+    print("USERNAME:", username)
+    print("FRIEND:", friend)
+    print("FOUND MESSAGES:", len(msgs))
+
     result=[]
 
     for m in msgs:
