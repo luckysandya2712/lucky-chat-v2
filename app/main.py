@@ -486,6 +486,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 db.commit()
                 db.refresh(message)
 
+                print("SAVED SENDER:", message.sender)
+                print("SAVED RECEIVER:", message.receiver)
+
                 payload = {
                     "type": "message",
                     "id": message.id,
