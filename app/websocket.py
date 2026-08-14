@@ -77,8 +77,10 @@ class ConnectionManager:
         if ws:
             try:
                 await ws.send_json(payload)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"SEND ERROR ({username}):", e)
+                import traceback
+                traceback.print_exc()
 
     async def send_personal(self, payload: dict, username: str):
         await self.send(username, payload)
