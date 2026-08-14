@@ -1577,10 +1577,12 @@ function addMessage(msg){
 
 }
 
-        let ticks = `<span class="ticks">✔</span>`;
+        let ticks = `<span class="ticks">✓</span>`;
 
-        if(msg.delivered){
-            ticks = `<span class="ticks">✔✔</span>`;
+        if (msg.read) {
+            ticks = `<span class="ticks read">✓✓</span>`;
+        } else if (msg.delivered) {
+            ticks = `<span class="ticks">✓✓</span>`;
         }
 
         if(msg.read){

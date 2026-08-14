@@ -324,8 +324,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     msg.delivered = 1
                     db.commit()
 
+                    print("Sending READ event:", msg.id, "to", msg.sender)
+
                     await manager.send(msg.sender, {
-                        "type": "delivered",
+                        "type": "read",
                         "id": msg.id
                     })
 
