@@ -355,7 +355,15 @@ async function updateFriendStatus() {
             return;
         }
 
-        const date = new Date(data.last_seen);
+        // The backend stores naive timestamps in the database. Treat a
+        // timezone-less value as UTC so the browser converts it to the
+        // device's local timezone (IST on your phone).
+        let rawLastSeen = String(data.last_seen || "").trim();
+        if (rawLastSeen && !/[zZ]|[+-]\d{2}:\d{2}$/.test(rawLastSeen)) {
+            rawLastSeen += "Z";
+        }
+
+        const date = new Date(rawLastSeen);
         const now = new Date();
 
         const sameDay =
