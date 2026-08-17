@@ -31,6 +31,7 @@ let recordingMimeType = "";
 
 let socket = null;
 let reconnectTimer = null;
+let pendingReadIds = new Set();
 
 function formatAudioTime(totalSeconds) {
     const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -616,6 +617,10 @@ async function loadMessages(){
 
     const res = await fetch("/messages/" + friend);
 
+    if (!res.ok) {
+        throw new Error("Failed to load messages (HTTP " + res.status + ")");
+    }
+
     const data = await res.json();
 
     messages.innerHTML = "";
@@ -626,46 +631,56 @@ async function loadMessages(){
 
     data.forEach(msg => {
 
-    if (deletedMessages[msg.id]) {
-        return;
-    }
+        if (deletedMessages[msg.id]) {
+            return;
+        }
 
-    if (savedReactions[msg.id]) {
-        msg.reaction = savedReactions[msg.id];
-    }
+        if (savedReactions[msg.id]) {
+            msg.reaction = savedReactions[msg.id];
+        }
 
-    messageMap[msg.id] = msg;
-});
+        messageMap[msg.id] = msg;
+    });
 
     pinnedMessages = pinnedMessages.filter(id => messageMap[id]);
     savePinnedMessages();
 
     data.forEach(msg => {
 
-    if (deletedMessages[msg.id]) {
+        if (deletedMessages[msg.id]) {
+            return;
+        }
+
+        addMessage(msg);
+    });
+
+    // Queue read acknowledgements until the WebSocket is connected.
+    // This prevents loadMessages() from racing the live socket startup.
+    data.forEach(msg => {
+
+        if (msg.sender !== username && !deletedMessages[msg.id]) {
+            pendingReadIds.add(Number(msg.id));
+        }
+
+    });
+
+    flushPendingReadAcknowledgements();
+}
+
+function flushPendingReadAcknowledgements() {
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
         return;
     }
 
-    addMessage(msg);
-});
- 
-    data.forEach(msg => {
+    pendingReadIds.forEach(id => {
+        sendSocket({
+            type: "read",
+            id
+        });
+    });
 
-    if(msg.sender !== username){
-
-    if (socket.readyState === WebSocket.OPEN) {
-
-    sendSocket({
-        type: "read",
-        id: msg.id
-});
-
-}
-
-    }
-
-});
-
+    pendingReadIds.clear();
 }
 
 function startReply(id) {
@@ -955,6 +970,7 @@ console.log("WebSocket URL:",
     console.log("Chat WebSocket connected");
 
     updateFriendStatus();
+    flushPendingReadAcknowledgements();
 
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -1219,9 +1235,17 @@ function handleSocketMessage(event) {
 
 } // closes handleSocketMessage()
 
-function initChatCore() {
+async function initChatCore() {
+    try {
+        // Load the existing conversation first so the initial DOM render
+        // cannot overwrite a live delivery/read status update.
+        await loadMessages();
+    } catch (error) {
+        console.error("Initial message load failed:", error);
+    }
+
+    // Only open the live socket after the initial message history is rendered.
     connectSocket();
-    loadMessages();
     updateFriendStatus();
     bindImageAndSendControls();
     setupPushNotifications();
