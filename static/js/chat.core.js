@@ -32,6 +32,7 @@ let recordingMimeType = "";
 let socket = null;
 let reconnectTimer = null;
 let pendingReadIds = new Set();
+let pendingDeliveredIds = new Set();
 
 function formatAudioTime(totalSeconds) {
     const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -654,24 +655,33 @@ async function loadMessages(){
         addMessage(msg);
     });
 
-    // Queue read acknowledgements until the WebSocket is connected.
-    // This prevents loadMessages() from racing the live socket startup.
+    // Queue delivery/read acknowledgements until the WebSocket is connected.
+    // This guarantees that messages loaded from history are acknowledged even
+    // when the live socket was not ready during the initial render.
     data.forEach(msg => {
 
         if (msg.sender !== username && !deletedMessages[msg.id]) {
+            pendingDeliveredIds.add(Number(msg.id));
             pendingReadIds.add(Number(msg.id));
         }
 
     });
 
-    flushPendingReadAcknowledgements();
+    flushPendingReceiptAcknowledgements();
 }
 
-function flushPendingReadAcknowledgements() {
+function flushPendingReceiptAcknowledgements() {
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
         return;
     }
+
+    pendingDeliveredIds.forEach(id => {
+        sendSocket({
+            type: "delivered",
+            id
+        });
+    });
 
     pendingReadIds.forEach(id => {
         sendSocket({
@@ -680,7 +690,20 @@ function flushPendingReadAcknowledgements() {
         });
     });
 
+    pendingDeliveredIds.clear();
     pendingReadIds.clear();
+}
+
+function queueMessageReceipt(id) {
+    if (id == null) return;
+
+    const numericId = Number(id);
+    pendingDeliveredIds.add(numericId);
+    if (friend) {
+        pendingReadIds.add(numericId);
+    }
+
+    flushPendingReceiptAcknowledgements();
 }
 
 function startReply(id) {
@@ -970,7 +993,7 @@ console.log("WebSocket URL:",
     console.log("Chat WebSocket connected");
 
     updateFriendStatus();
-    flushPendingReadAcknowledgements();
+    flushPendingReceiptAcknowledgements();
 
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -1033,20 +1056,9 @@ function handleSocketMessage(event) {
     addMessage(data);
 
     if (data.sender !== username) {
-
-        // Message has reached the user's device
-        sendSocket({
-            type: "delivered",
-            id: data.id
-        });
-
-        // Mark as read ONLY if this is the chat currently open
-        if (data.sender === friend) {
-            sendSocket({
-                type: "read",
-                id: data.id
-            });
-        }
+        // The message reached this device. Queue both receipts so they are
+        // sent reliably even during a WebSocket reconnect.
+        queueMessageReceipt(data.id);
     }
 
     return;
