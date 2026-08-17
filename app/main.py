@@ -645,7 +645,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
             print(f"{username} disconnected")
-            await manager.disconnect(username)
+            await manager.disconnect(username, websocket)
 
 @app.websocket("/dashboard_ws")
 async def dashboard_ws(websocket: WebSocket):
