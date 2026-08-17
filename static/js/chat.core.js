@@ -1096,6 +1096,11 @@ function handleSocketMessage(event) {
     return;
 }
 
+    if (data.type === "online") {
+        updateFriendStatus();
+        return;
+    }
+
     if (data.type === "typing") {
 
         document.getElementById("online-users").innerHTML =
