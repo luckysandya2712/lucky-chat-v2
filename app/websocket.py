@@ -1,6 +1,5 @@
 import json
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
@@ -53,7 +52,7 @@ class ConnectionManager:
             ).first()
 
             if user:
-                user.last_seen = datetime.now(ZoneInfo("Asia/Kolkata"))
+                user.last_seen = datetime.utcnow()
                 db.commit()
 
                 print(
