@@ -121,6 +121,92 @@ async def register_user(
 
     return RedirectResponse(url="/login", status_code=303)
 
+from pydantic import BaseModel
+
+class PublicKeyUpload(BaseModel):
+    public_key: str
+
+
+@app.post("/keys/upload")
+async def upload_public_key(
+    data: PublicKeyUpload,
+    request: Request
+):
+    username = request.session.get("username")
+
+    if not username:
+        return {
+            "success": False,
+            "error": "Not logged in"
+        }
+
+    public_key = (data.public_key or "").strip()
+
+    if not public_key:
+        return {
+            "success": False,
+            "error": "Public key is required"
+        }
+
+    db = SessionLocal()
+
+    try:
+        user = db.query(User).filter(
+            User.username == username
+        ).first()
+
+        if not user:
+            return {
+                "success": False,
+                "error": "User not found"
+            }
+
+        user.public_key = public_key
+        db.commit()
+
+        return {
+            "success": True,
+            "username": username
+        }
+
+    except Exception as e:
+        db.rollback()
+        print("PUBLIC KEY UPLOAD ERROR:", e)
+        traceback.print_exc()
+
+        return {
+            "success": False,
+            "error": "Could not save public key"
+        }
+
+    finally:
+        db.close()
+
+
+@app.get("/keys/{username}")
+async def get_public_key(username: str):
+    db = SessionLocal()
+
+    try:
+        user = db.query(User).filter(
+            User.username == username
+        ).first()
+
+        if not user:
+            return {
+                "success": False,
+                "error": "User not found"
+            }
+
+        return {
+            "success": True,
+            "username": username,
+            "public_key": user.public_key
+        }
+
+    finally:
+        db.close()
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
     db = SessionLocal()

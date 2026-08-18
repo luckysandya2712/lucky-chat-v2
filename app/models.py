@@ -22,6 +22,8 @@ class User(Base):
 
     last_seen = Column(DateTime, nullable=True)
 
+    public_key = Column(String, nullable=True)
+
 class Message(Base):
     __tablename__ = "messages"
 
