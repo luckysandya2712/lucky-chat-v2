@@ -1723,6 +1723,10 @@ setInterval(() => {
 
 }, 15000);
 
+setInterval(() => {
+    refreshDashboard();
+}, 2000);
+
 function getChatTimestamp(value) {
     if (!value) return 0;
 
@@ -1750,6 +1754,29 @@ function getChatTimestamp(value) {
     return 0;
 }
 
+function formatDashboardTime(value) {
+    if (!value) return "";
+
+    const raw = String(value).trim();
+
+    // Old dashboard values such as "10:10 PM"
+    if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
+        return raw;
+    }
+
+    // New ISO/UTC timestamps
+    const date = new Date(raw);
+
+    if (!Number.isNaN(date.getTime())) {
+        return date.toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true
+        });
+    }
+
+    return raw;
+}
 
 const PINNED_CHATS_KEY = "lucky_chat_pinned_chats";
 let serverPinnedChats = null;
@@ -1934,7 +1961,7 @@ async function refreshDashboard(){
 
     <div class="chat-right">
         ${chat.time
-            ? `<small class="time">${chat.time}</small>`
+            ? `<small class="time">${formatDashboardTime(chat.time)}</small>`
             : ""
         }
 

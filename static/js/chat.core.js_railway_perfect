@@ -622,7 +622,7 @@ function saveReactions() {
     );
 }
 
-async function loadMessages() {
+async function loadMessages(){
 
     const res = await fetch("/messages/" + friend);
 
@@ -1261,20 +1261,15 @@ function handleSocketMessage(event) {
 } // closes handleSocketMessage()
 
 async function initChatCore() {
-    // Crypto must never prevent the chat history from loading.
     try {
-        await LuckyCrypto.init();
-        console.log("✅ LuckyCrypto ready");
-    } catch (error) {
-        console.warn("⚠️ LuckyCrypto unavailable:", error);
-    }
-
-    try {
+        // Load the existing conversation first so the initial DOM render
+        // cannot overwrite a live delivery/read status update.
         await loadMessages();
     } catch (error) {
         console.error("Initial message load failed:", error);
     }
 
+    // Only open the live socket after the initial message history is rendered.
     connectSocket();
     updateFriendStatus();
     bindImageAndSendControls();
@@ -2075,35 +2070,10 @@ function removeSelectedImage() {
     }
 }
 
-function formatMessageTimestamp(ts) {
-    const raw = String(ts ?? "").trim();
-
-    if (!raw) return "";
-
-    // Legacy messages contain only a time such as "09:45 AM".
-    // Keep them unchanged because they have no date/timezone information.
-    if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
-        return raw;
-    }
-
-    // New messages contain a complete UTC timestamp.
-    let iso = raw;
-
-    if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(iso)) {
-        iso += "Z";
-    }
-
-    const date = new Date(iso);
-
-    if (!Number.isNaN(date.getTime())) {
-        return date.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true
-        });
-    }
-
-    return raw;
+function formatMessageTimestamp(ts){
+    const d = new Date(ts);
+    if (!isNaN(d)) return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    return ts;
 }
 
 function escapeHTML(value) {
