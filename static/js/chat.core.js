@@ -34,6 +34,11 @@ let reconnectTimer = null;
 let pendingReadIds = new Set();
 let pendingDeliveredIds = new Set();
 
+// Messages rendered locally before the server echoes them back.
+// The queue lets us reconcile the server's real message id/timestamp
+// without showing the same outgoing message twice.
+let pendingOutgoingMessages = [];
+
 function formatAudioTime(totalSeconds) {
     const seconds = Math.max(0, Math.floor(totalSeconds || 0));
     const minutes = Math.floor(seconds / 60);
@@ -622,57 +627,209 @@ function saveReactions() {
     );
 }
 
+
+const DASHBOARD_PREVIEW_PREFIX = "lucky_chat_dashboard_preview:";
+
+function getDashboardPreviewKey(otherUser) {
+    return DASHBOARD_PREVIEW_PREFIX +
+        String(username || "") + ":" +
+        String(otherUser || "");
+}
+
+function saveDashboardPreview(msg) {
+    if (!msg || !friend) return;
+
+    const preview = {
+        id: Number(msg.id) || 0,
+        sender: msg.sender || username,
+        receiver: msg.receiver || friend,
+        text: msg.text || "",
+        timestamp: msg.timestamp || new Date().toISOString(),
+        media_url: msg.media_url || null,
+        media_type: msg.media_type || null
+    };
+
+    try {
+        localStorage.setItem(
+            getDashboardPreviewKey(friend),
+            JSON.stringify(preview)
+        );
+    } catch (error) {
+        console.warn("Dashboard preview cache write failed:", error);
+    }
+}
+
 async function loadMessages() {
 
-    const res = await fetch("/messages/" + friend);
+    const res = await fetch("/messages/" + friend, {
+        cache: "no-store",
+        credentials: "same-origin"
+    });
 
     if (!res.ok) {
         throw new Error("Failed to load messages (HTTP " + res.status + ")");
     }
 
     const data = await res.json();
-
-    messages.innerHTML = "";
-
-    messageMap = {};
-
     const savedReactions = loadSavedReactions();
 
-    data.forEach(msg => {
+    // IMPORTANT: Do not clear the chat while history is being decrypted.
+    // A user can send a message while the initial history is loading; the
+    // optimistic bubble must stay visible immediately instead of disappearing
+    // until a later message causes another render.
+    const existingLiveMessages = new Map();
 
-        if (deletedMessages[msg.id]) {
-            return;
+    messages.querySelectorAll(".message-row").forEach(row => {
+        const bubble = row.querySelector("[data-msg]");
+        if (!bubble) return;
+
+        const id = String(bubble.getAttribute("data-msg"));
+        const numericId = Number(id);
+        const msg = messageMap[numericId];
+
+        if (msg) {
+            existingLiveMessages.set(id, msg);
         }
+    });
 
-        if (savedReactions[msg.id]) {
-            msg.reaction = savedReactions[msg.id];
+    // Remove the static welcome bubble only. Keep every live/optimistic message.
+    messages.querySelectorAll(".message:not(.message-own):not(.message-other)").forEach(el => {
+        if (el.textContent.trim() === "Welcome to Lucky Chat 🚀") {
+            el.closest(".message-row")?.remove();
+            el.remove();
         }
+    });
 
+    // Decrypt history in small batches with browser paint opportunities in
+    // between. Large chats can contain hundreds of RSA/AES envelopes; starting
+    // all decryptions in one Promise.all can starve Android Chrome long enough
+    // to make a newly-sent message appear only after a later interaction.
+    const HISTORY_BATCH_SIZE = 12;
+    const decrypted = [];
+
+    const yieldToBrowser = () => new Promise(resolve => {
+        if (window.requestAnimationFrame) {
+            requestAnimationFrame(() => resolve());
+        } else {
+            setTimeout(resolve, 0);
+        }
+    });
+
+    for (let start = 0; start < data.length; start += HISTORY_BATCH_SIZE) {
+        const batch = data.slice(start, start + HISTORY_BATCH_SIZE);
+
+        const batchResults = await Promise.all(
+            batch.map(async rawMsg => {
+                const msg = { ...rawMsg };
+
+                if (deletedMessages[msg.id]) {
+                    return null;
+                }
+
+                if (savedReactions[msg.id]) {
+                    msg.reaction = savedReactions[msg.id];
+                }
+
+                try {
+                    msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
+                } catch (error) {
+                    console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
+                    msg.text = "🔒 Unable to decrypt this message";
+                }
+
+                return msg;
+            })
+        );
+
+        decrypted.push(...batchResults);
+        await yieldToBrowser();
+    }
+
+    const history = decrypted.filter(Boolean);
+
+    // IMPORTANT: loadMessages() can overlap with a live WebSocket message.
+    // During the many async decrypt/yield steps above, socket.onmessage may
+    // have already inserted newer messages into messageMap. The old
+    // implementation replaced messageMap with the HTTP history and therefore
+    // could erase a newly-sent/received message until another event caused a
+    // later refresh.
+    //
+    // Snapshot ALL live state that exists at the end of the history request,
+    // not just what happened to be in the DOM when loadMessages() started.
+    const liveMessagesAfterHistoryLoad = Object.values(messageMap);
+
+    const merged = new Map();
+
+    // Server history is the durable source of truth.
+    history.forEach(msg => {
+        merged.set(String(msg.id), msg);
+    });
+
+    // Live/optimistic state wins for matching IDs because it can contain a
+    // newer delivery/read state or a message that was created after the HTTP
+    // history response was taken.
+    liveMessagesAfterHistoryLoad.forEach(msg => {
+        if (!msg || deletedMessages[msg.id]) return;
+        merged.set(String(msg.id), msg);
+    });
+
+    // Also retain the live DOM snapshot as a final fallback. This covers the
+    // tiny window where a bubble exists but messageMap was not populated yet.
+    existingLiveMessages.forEach(msg => {
+        if (!msg || deletedMessages[msg.id]) return;
+        merged.set(String(msg.id), msg);
+    });
+
+    const combinedMessages = Array.from(merged.values())
+        .filter(msg => !deletedMessages[msg.id])
+        .sort((a, b) => {
+            const ai = Number(a.id);
+            const bi = Number(b.id);
+
+            if (Number.isFinite(ai) && Number.isFinite(bi)) {
+                return ai - bi;
+            }
+
+            return String(a.timestamp || "").localeCompare(
+                String(b.timestamp || "")
+            );
+        });
+
+    // Rebuild the canonical in-memory map from the merged set.
+    messageMap = {};
+    combinedMessages.forEach(msg => {
         messageMap[msg.id] = msg;
     });
 
     pinnedMessages = pinnedMessages.filter(id => messageMap[id]);
     savePinnedMessages();
 
-    data.forEach(msg => {
+    // Re-render once, not once per message. This avoids hundreds of layout/
+    // scroll operations on large conversations.
+    messages.innerHTML = "";
+    window.__suppressChatAutoScroll = true;
 
-        if (deletedMessages[msg.id]) {
-            return;
-        }
-
+    combinedMessages.forEach(msg => {
         addMessage(msg);
     });
 
-    // Queue delivery/read acknowledgements until the WebSocket is connected.
-    // This guarantees that messages loaded from history are acknowledged even
-    // when the live socket was not ready during the initial render.
-    data.forEach(msg => {
+    window.__suppressChatAutoScroll = false;
+    messages.scrollTop = messages.scrollHeight;
 
+    // Update the dashboard preview exactly once from the newest merged
+    // conversation message. This prevents an older history item from
+    // overwriting a newer live message while history is being decrypted.
+    const latestMessage = combinedMessages[combinedMessages.length - 1];
+    if (latestMessage) {
+        saveDashboardPreview(latestMessage);
+    }
+
+    // Queue delivery/read acknowledgements until the WebSocket is connected.
+    history.forEach(msg => {
         if (msg.sender !== username && !deletedMessages[msg.id]) {
             pendingDeliveredIds.add(Number(msg.id));
             pendingReadIds.add(Number(msg.id));
         }
-
     });
 
     flushPendingReceiptAcknowledgements();
@@ -881,7 +1038,7 @@ function closeEditModal(){
 }
 
 
-function saveEditedMessage(){
+async function saveEditedMessage(){
 
     if (editingMessageId == null) {
         closeEditModal();
@@ -916,10 +1073,24 @@ function saveEditedMessage(){
         return;
     }
 
+    let encryptedText;
+    try {
+        await LuckyCrypto.ensureReady();
+        encryptedText = await LuckyCrypto.encryptMessage(
+            text,
+            friend,
+            username
+        );
+    } catch (error) {
+        console.error("EDIT ENCRYPTION ERROR:", error);
+        closeEditModal();
+        return;
+    }
+
     const sent = sendSocket({
         type: "edit_message",
         id: editingMessageId,
-        text: text
+        text: encryptedText
     });
 
     if (sent) {
@@ -1003,13 +1174,43 @@ console.log("WebSocket URL:",
     updateFriendStatus();
     flushPendingReceiptAcknowledgements();
 
+    // Messages created while the socket was still connecting must be sent
+    // immediately after the connection opens. Start each send in a separate
+    // task so crypto work cannot block the browser from painting the already
+    // rendered optimistic bubble.
+    const queued = pendingOutgoingMessages.slice();
+    queued.forEach(item => {
+        if (!item.attempted && item.message) {
+            setTimeout(() => {
+                void sendOptimisticMessage(
+                    item.message,
+                    item.message.media_type === "image" ? {
+                        url: item.message.media_url,
+                        media_type: item.message.media_type
+                    } : null,
+                    item.message.media_type === "audio" ? {
+                        url: item.message.media_url,
+                        media_type: item.message.media_type,
+                        duration: item.message.media_duration || 0
+                    } : null
+                );
+            }, 0);
+        }
+    });
+
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
 };
 
-    socket.onmessage = (event) => {
-        console.log("Received:", event.data);
-        handleSocketMessage(event);
+    socket.onmessage = async (event) => {
+        // Do not log every WebSocket receipt/read event.
+        // The chat can receive hundreds of acknowledgements and excessive
+        // console logging on mobile can delay visible UI updates.
+        try {
+            await handleSocketMessage(event);
+        } catch (error) {
+            console.error("Socket message handling error:", error);
+        }
     };
 
     socket.onerror = (error) => {
@@ -1053,24 +1254,51 @@ function sendSocket(data) {
     return false;
 }
 
-function handleSocketMessage(event) {
-
-    console.log("Received:", event.data);
+async function handleSocketMessage(event) {
 
     const data = JSON.parse(event.data);
 
     if (data.type === "message") {
+        // Outgoing messages are already rendered locally. Never make the
+        // sender's own message wait for another encryption/decryption cycle.
+        // The old flow decrypted the echoed ciphertext before reconciling it,
+        // which could visibly delay the just-sent message on mobile.
+        if (data.sender === username) {
+            // Newer backend: reconcile immediately using client_id.
+            if (reconcileOutgoingMessage(data)) {
+                return;
+            }
 
-    addMessage(data);
+            // Older backend: it may not echo client_id. Decrypt the echoed
+            // ciphertext and then retry reconciliation using plaintext.
+            try {
+                data.text = await LuckyCrypto.decryptMessage(data.text, username);
+            } catch (error) {
+                console.error("LIVE MESSAGE DECRYPTION ERROR:", error, data.id);
+                data.text = "🔒 Unable to decrypt this message";
+            }
 
-    if (data.sender !== username) {
-        // The message reached this device. Queue both receipts so they are
-        // sent reliably even during a WebSocket reconnect.
+            if (reconcileOutgoingMessage(data)) {
+                return;
+            }
+
+            // Not one of our locally pending messages: render it normally.
+            addMessage(data);
+            return;
+        }
+
+        try {
+            data.text = await LuckyCrypto.decryptMessage(data.text, username);
+        } catch (error) {
+            console.error("LIVE MESSAGE DECRYPTION ERROR:", error, data.id);
+            data.text = "🔒 Unable to decrypt this message";
+        }
+
+        addMessage(data);
+        saveDashboardPreview(data);
         queueMessageReceipt(data.id);
+        return;
     }
-
-    return;
-}
 
     if (data.type === "read") {
 
@@ -1185,6 +1413,13 @@ function handleSocketMessage(event) {
 
     if (data.type === "edit_message") {
 
+        try {
+            data.text = await LuckyCrypto.decryptMessage(data.text, username);
+        } catch (error) {
+            console.error("LIVE EDIT DECRYPTION ERROR:", error, data.id);
+            data.text = "🔒 Unable to decrypt this message";
+        }
+
         const bubble = document.querySelector(
             `[data-msg="${data.id}"]`
         );
@@ -1261,21 +1496,29 @@ function handleSocketMessage(event) {
 } // closes handleSocketMessage()
 
 async function initChatCore() {
-    // Crypto must never prevent the chat history from loading.
-    try {
-        await LuckyCrypto.init();
-        console.log("✅ LuckyCrypto ready");
-    } catch (error) {
-        console.warn("⚠️ LuckyCrypto unavailable:", error);
-    }
+    // Open the live socket FIRST. Crypto/history work must never block the
+    // browser from accepting and painting a new outgoing message.
+    connectSocket();
 
+    const cryptoReadyPromise = LuckyCrypto.init()
+        .then(() => {
+            console.log("✅ LuckyCrypto ready");
+            return true;
+        })
+        .catch(error => {
+            console.warn("⚠️ LuckyCrypto unavailable:", error);
+            return false;
+        });
+
+    // History decryption needs crypto, but the socket is already live so a
+    // user can send immediately even on a large conversation.
     try {
+        await cryptoReadyPromise;
         await loadMessages();
     } catch (error) {
         console.error("Initial message load failed:", error);
     }
 
-    connectSocket();
     updateFriendStatus();
     bindImageAndSendControls();
     setupPushNotifications();
@@ -1392,82 +1635,309 @@ input.addEventListener("keypress",function(e){
 
 });
 
-console.log("JavaScript loaded");
-function sendMessage() {
+window.LUCKY_CHAT_CORE_VERSION = "immediate-send-v6";
+console.log("JavaScript loaded | Lucky Chat core v6");
 
-    console.log("Send button clicked");
+function createOptimisticMessage(text, image, audio) {
+    const tempId = -Date.now() - Math.floor(Math.random() * 1000);
+    const clientId =
+        (window.crypto && typeof window.crypto.randomUUID === "function")
+            ? window.crypto.randomUUID()
+            : String(Date.now()) + "-" + Math.random().toString(36).slice(2);
+
+    return {
+        id: tempId,
+        client_id: clientId,
+        sender: username,
+        text: text || "",
+        timestamp: new Date().toISOString(),
+        reply_to: replyToId,
+        media_url: image?.url || audio?.url || null,
+        media_type: image?.media_type || audio?.media_type || null,
+        media_duration: audio?.duration || 0,
+        delivered: 0,
+        read: 0,
+        _optimistic: true
+    };
+}
+
+function queueOptimisticMessage(msg) {
+    pendingOutgoingMessages.push({
+        tempId: msg.id,
+        clientId: msg.client_id || null,
+        text: msg.text || "",
+        media_url: msg.media_url || null,
+        media_type: msg.media_type || null,
+        message: msg,
+        attempted: false
+    });
+
+    addMessage(msg);
+
+    // Do not keep stale reconciliation entries forever.
+    setTimeout(() => {
+        const index = pendingOutgoingMessages.findIndex(
+            item => item.tempId === msg.id
+        );
+        if (index !== -1) {
+            pendingOutgoingMessages.splice(index, 1);
+        }
+    }, 30000);
+}
+
+function removeOptimisticMessage(tempId) {
+    const bubble = document.querySelector(`[data-msg="${tempId}"]`);
+    if (bubble) {
+        const row = bubble.closest(".message-row");
+        if (row) row.remove();
+        else bubble.remove();
+    }
+    delete messageMap[tempId];
+    pendingOutgoingMessages = pendingOutgoingMessages.filter(
+        item => item.tempId !== tempId
+    );
+}
+
+function reconcileOutgoingMessage(msg) {
+    if (msg.sender !== username || !pendingOutgoingMessages.length) {
+        return false;
+    }
+
+    let index = -1;
+
+    // Prefer a stable client ID when the backend echoes it.
+    if (msg.client_id) {
+        index = pendingOutgoingMessages.findIndex(
+            item => item.clientId === msg.client_id
+        );
+    }
+
+    // Backward-compatible fallback for servers that do not echo client_id.
+    if (index === -1) {
+        const incomingText = msg.text || "";
+        const incomingMediaUrl = msg.media_url || null;
+        const incomingMediaType = msg.media_type || null;
+
+        index = pendingOutgoingMessages.findIndex(item =>
+            item.text === incomingText &&
+            item.media_url === incomingMediaUrl &&
+            item.media_type === incomingMediaType
+        );
+    }
+
+    if (index === -1) {
+        return false;
+    }
+
+    const pending = pendingOutgoingMessages[index];
+    pendingOutgoingMessages.splice(index, 1);
+
+    const bubble = document.querySelector(
+        `[data-msg="${pending.tempId}"]`
+    );
+
+    // Keep the already-visible DOM node. Only swap its temporary ID/time/status.
+    // Removing and re-adding the bubble caused the visible-message lag/flicker.
+    if (bubble) {
+        bubble.dataset.msg = String(msg.id);
+
+        const row = bubble.closest(".message-row");
+        if (row) {
+            const message = row.querySelector(".message");
+            if (message) message.dataset.msg = String(msg.id);
+        }
+
+        const timeElement = bubble.querySelector(".msg-time");
+        if (timeElement && msg.timestamp != null) {
+            timeElement.textContent = formatMessageTimestamp(msg.timestamp);
+        }
+
+        const ticks = bubble.querySelector(".ticks");
+        if (ticks) {
+            if (msg.read) {
+                ticks.innerHTML = "✔✔";
+                ticks.classList.add("read");
+            } else if (msg.delivered) {
+                ticks.innerHTML = "✓✓";
+                ticks.classList.remove("read");
+            }
+        }
+    }
+
+    const optimistic = messageMap[pending.tempId];
+    if (optimistic) {
+        delete messageMap[pending.tempId];
+        optimistic.id = msg.id;
+        optimistic.timestamp = msg.timestamp || optimistic.timestamp;
+        optimistic.delivered = msg.delivered || 0;
+        optimistic.read = msg.read || 0;
+        optimistic._optimistic = false;
+        messageMap[msg.id] = optimistic;
+        saveDashboardPreview(optimistic);
+
+        // If a history refresh/reconnect removed the optimistic bubble before
+        // the server echo arrived, put the reconciled message back immediately.
+        if (!bubble) {
+            addMessage(optimistic);
+        }
+    }
+
+    return true;
+}
+
+async function sendMessage() {
 
     const text = input.value.trim();
     const image = window.selectedChatImage;
     const audio = window.selectedChatAudio;
 
-    console.log("TEXT:", text);
-    console.log("SELECTED IMAGE:", image);
-
-    // Don't send anything if there is neither text nor image
+    // Don't send anything if there is neither text nor image/audio.
     if (text === "" && !image && !audio) {
         return;
     }
 
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    // Render the outgoing bubble first. Network/crypto work is deliberately
+    // deferred to a later task so Android Chrome can paint this bubble before
+    // anything else occupies the main thread.
+    const optimisticMessage = createOptimisticMessage(text, image, audio);
+    queueOptimisticMessage(optimisticMessage);
+    saveDashboardPreview(optimisticMessage);
 
-        console.log("Socket disconnected. Reconnecting...");
+    // Clear the composer immediately so the UI is responsive.
+    input.value = "";
+    window.selectedChatImage = null;
+    window.selectedChatAudio = null;
 
-        connectSocket();
+    const imagePreview = document.getElementById("imagePreview");
+    const previewImage = document.getElementById("previewImage");
+    const replyPreviewEl = document.getElementById("replyPreview");
 
-        setTimeout(() => {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                sendMessage();
-            }
-        }, 2500);
+    if (imagePreview) imagePreview.style.display = "none";
+    if (previewImage) previewImage.src = "";
+    clearAudioPreview();
 
-        return;
-    }
+    replyToId = null;
+    if (replyPreviewEl) replyPreviewEl.style.display = "none";
 
-    const payload = {
-        type: "message",
-        text: text,
-        reply_to: replyToId
+    const sendLater = () => {
+        void sendOptimisticMessage(optimisticMessage, image, audio);
     };
 
-    // Add image information if an image was uploaded
-    if (image) {
-        payload.media_url = image.url;
-        payload.media_type = image.media_type;
+    // The optimistic message is already in the DOM. Give the browser a
+    // guaranteed paint opportunity before RSA/AES work starts. Two frames
+    // makes this reliable on slower Android devices instead of relying on a
+    // single rAF + timer race.
+    if (window.requestAnimationFrame) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(sendLater);
+        });
+    } else {
+        setTimeout(sendLater, 0);
     }
+}
 
-    if (audio) {
-        payload.media_url = audio.url;
-        payload.media_type = audio.media_type;
-        payload.media_duration = audio.duration || 0;
+async function sendOptimisticMessage(optimisticMessage, image, audio) {
+    try {
+        const pending = pendingOutgoingMessages.find(
+            item => item.tempId === optimisticMessage.id
+        );
+
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            connectSocket();
+
+            // Keep the optimistic bubble visible and retry once the socket is
+            // actually connected.
+            const waitForSocket = () => {
+                const livePending = pendingOutgoingMessages.find(
+                    item => item.tempId === optimisticMessage.id
+                );
+
+                if (!livePending || livePending.attempted) return;
+
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    void sendOptimisticMessage(optimisticMessage, image, audio);
+                    return;
+                }
+
+                setTimeout(waitForSocket, socket &&
+                    socket.readyState === WebSocket.CONNECTING ? 50 : 100);
+            };
+
+            setTimeout(waitForSocket, 50);
+            return;
+        }
+
+        if (pending?.attempted) {
+            return;
+        }
+
+        await LuckyCrypto.ensureReady();
+
+        let encryptedText = optimisticMessage.text;
+        if (optimisticMessage.text) {
+            encryptedText = await LuckyCrypto.encryptMessage(
+                optimisticMessage.text,
+                friend,
+                username
+            );
+        }
+
+        const payload = {
+            type: "message",
+            text: encryptedText,
+            reply_to: optimisticMessage.reply_to,
+            client_id: optimisticMessage.client_id
+        };
+
+        if (image) {
+            payload.media_url = image.url;
+            payload.media_type = image.media_type;
+        }
+
+        if (audio) {
+            payload.media_url = audio.url;
+            payload.media_type = audio.media_type;
+            payload.media_duration = audio.duration || 0;
+        }
+
+        if (!sendSocket(payload)) {
+            connectSocket();
+            return;
+        }
+
+        if (pending) {
+            pending.attempted = true;
+        }
+    } catch (error) {
+        console.error("MESSAGE SEND ERROR:", error);
+        removeOptimisticMessage(optimisticMessage.id);
+        alert(error.message || "Could not send message");
     }
-
-    console.log("Sending message:", payload);
-
-    if (!sendSocket(payload)) {
-        console.log("Connection lost. Reconnecting...");
-        connectSocket();
-        return;
-    }
-
-    // Clear message input
-    input.value = "";
-
-    // Clear selected image
-    window.selectedChatImage = null;
-
-    document.getElementById("imagePreview").style.display = "none";
-    document.getElementById("previewImage").src = "";
-
-    // Clear reply
-    replyToId = null;
-
-    document.getElementById("replyPreview").style.display = "none";
 }
 
 function addMessage(msg){
 
     if (deletedMessages[msg.id]) {
+        return;
+    }
+
+    // Idempotent rendering: a server echo/reconnect must never append a
+    // second DOM copy of a message that is already visible.
+    const existingBubble = document.querySelector(`[data-msg="${msg.id}"]`);
+    if (existingBubble) {
+        messageMap[msg.id] = msg;
+
+        const existingText = existingBubble.querySelector(".msg-text");
+        const existingTime = existingBubble.querySelector(".msg-time");
+
+        if (existingText && msg.text != null) {
+            existingText.textContent = msg.text;
+        }
+
+        if (existingTime && msg.timestamp != null) {
+            existingTime.textContent = formatMessageTimestamp(msg.timestamp);
+        }
+
         return;
     }
 
@@ -1689,7 +2159,10 @@ function addMessage(msg){
 
     renderPinnedBadge(msg.id);
     renderPinnedBar();
-    messages.scrollTop = messages.scrollHeight;
+
+    if (!window.__suppressChatAutoScroll) {
+        messages.scrollTop = messages.scrollHeight;
+    }
 }
 
 
@@ -1964,7 +2437,7 @@ async function forwardMessage(){
     }
 }
 
-function sendForward(target){
+async function sendForward(target){
 
     if(!window.forwardMessageData) return;
 
@@ -1972,9 +2445,23 @@ function sendForward(target){
 
     if(!text) return;
 
+    let encryptedText;
+    try {
+        await LuckyCrypto.ensureReady();
+        encryptedText = await LuckyCrypto.encryptMessage(
+            text,
+            target,
+            username
+        );
+    } catch (error) {
+        console.error("FORWARD ENCRYPTION ERROR:", error);
+        alert(error.message || "Could not encrypt forwarded message");
+        return;
+    }
+
     if(!sendSocket({
         type:"forward_message",
-        text:text,
+        text:encryptedText,
         target:target
     })){
         alert("Connection lost. Please try again.");
@@ -2080,20 +2567,19 @@ function formatMessageTimestamp(ts) {
 
     if (!raw) return "";
 
-    // Legacy messages contain only a time such as "09:45 AM".
-    // Keep them unchanged because they have no date/timezone information.
+    // Legacy values that already contain a formatted clock time.
     if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
         return raw;
     }
 
-    // New messages contain a complete UTC timestamp.
-    let iso = raw;
+    // ISO timestamps with an explicit timezone (Z or +/-HH:MM) are UTC/offset
+    // values and should be converted to the device's local time.
+    // Timezone-less ISO values are legacy local timestamps and must NOT be
+    // force-suffixed with Z, otherwise they shift by +5:30 on IST devices.
+    const hasExplicitTimezone =
+        /[zZ]|[+-]\d{2}:\d{2}$/.test(raw);
 
-    if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(iso)) {
-        iso += "Z";
-    }
-
-    const date = new Date(iso);
+    const date = new Date(raw);
 
     if (!Number.isNaN(date.getTime())) {
         return date.toLocaleTimeString([], {
