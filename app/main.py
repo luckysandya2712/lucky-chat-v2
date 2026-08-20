@@ -12,10 +12,10 @@ from app.models import User, Status
 from app.auth import hash_password
 from app.database import Base, engine
 from starlette.middleware.sessions import SessionMiddleware
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text
 from fastapi.staticfiles import StaticFiles
 from fastapi import UploadFile, File
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import shutil
 import os
@@ -25,6 +25,11 @@ from pathlib import Path
 from .notification import add_subscription
 
 Base.metadata.create_all(bind=engine)
+
+def utc_now_iso():
+    """Return a canonical UTC ISO-8601 timestamp for new messages."""
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
 
 app = FastAPI(title="Lucky Chat v2")
 
@@ -42,6 +47,40 @@ app.add_middleware(
 )
 
 models.Base.metadata.create_all(bind=engine)
+
+
+def _ensure_message_media_columns():
+    """Add voice metadata columns to existing databases without deleting data."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("messages"):
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("messages")}
+        statements = []
+
+        if "media_duration" not in columns:
+            statements.append(
+                "ALTER TABLE messages ADD COLUMN media_duration INTEGER DEFAULT 0"
+            )
+
+        if "media_waveform" not in columns:
+            statements.append(
+                "ALTER TABLE messages ADD COLUMN media_waveform TEXT"
+            )
+
+        if statements:
+            with engine.begin() as connection:
+                for statement in statements:
+                    connection.execute(sqlalchemy_text(statement))
+
+            print("MESSAGE MEDIA SCHEMA: voice metadata columns added")
+    except Exception as exc:
+        print("MESSAGE MEDIA SCHEMA ERROR:", exc)
+        traceback.print_exc()
+
+
+_ensure_message_media_columns()
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -562,7 +601,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     sender=username,
                     receiver=friend,
                     text=text,
-                    timestamp=datetime.utcnow().isoformat() + "Z",
+                    timestamp=utc_now_iso(),
                     unread=1,
                     seen_in_chat=0,
                     reply_to=data.get("reply_to"),
@@ -655,23 +694,23 @@ async def websocket_endpoint(websocket: WebSocket):
                         sender=username,
                         receiver=friend,
                         text=text,
-                        timestamp=datetime.utcnow().isoformat() + "Z",
+                        timestamp=utc_now_iso(),
                         unread=1,
                         seen_in_chat=0,
                         reply_to=data.get("reply_to"),
                         media_url=media_url,
                         media_type=media_type,
+                        media_duration=int(data.get("media_duration") or 0),
+                        media_waveform=data.get("media_waveform"),
                     )
 
                     db.add(message)
                     db.commit()
                     db.refresh(message)
 
-                    all_msgs = db.query(Message).all()
-                    print("TOTAL MESSAGES:", len(all_msgs))
-                    for m in all_msgs:
-                        print(m.id, m.sender, "->", m.receiver, m.text)
-
+                    # Do not scan/print the entire message table here.
+                    # That synchronous debug loop became increasingly expensive
+                    # as the chat grew and could delay the WebSocket echo.
                     print(
                         "MESSAGE SAVED:",
                         message.id,
@@ -692,11 +731,19 @@ async def websocket_endpoint(websocket: WebSocket):
                         "reply_to": message.reply_to,
                         "media_url": message.media_url,
                         "media_type": message.media_type,
-                        "media_duration": data.get("media_duration", 0)
-
+                        "media_duration": message.media_duration or 0,
+                        "media_waveform": message.media_waveform,
+                        "client_id": data.get("client_id")
                     }
 
-                    # Update dashboard
+                    # Deliver the actual chat message first. Dashboard
+                    # notifications must never delay message delivery.
+                    await manager.send(username, payload)
+
+                    if friend != username:
+                        await manager.send(friend, payload)
+
+                    # Dashboard updates are secondary.
                     await manager.send_dashboard(
                         friend,
                         {
@@ -712,13 +759,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             "from": friend
                         }
                     )
-
-                    # Send the message to the current user's chat
-                    await manager.send(username, payload)
-
-                    # Send the message to the friend's chat
-                    if friend != username:
-                        await manager.send(friend, payload)
 
                 except Exception as e:
                     print("MESSAGE ERROR:", e)
@@ -806,6 +846,8 @@ async def get_messages(friend: str, request: Request):
             "reply_to": m.reply_to,
             "media_url": m.media_url,
             "media_type": m.media_type,
+            "media_duration": getattr(m, "media_duration", 0) or 0,
+            "media_waveform": getattr(m, "media_waveform", None),
             "edited": m.edited,
             "reaction": getattr(m, "reaction", ""),
         })
@@ -864,12 +906,15 @@ async def dashboard_data(request: Request):
 
         result.append({
            "username": user.username,
+           "display_name": user.display_name or user.username,
            "profile": user.profile_picture,
            "unread": unread,
            "last": last.text if last else "",
            "sender": last.sender if last else "",
            "time": last.timestamp if last else "",
-           "id": last.id if last else 0
+           "id": last.id if last else 0,
+           "media_url": last.media_url if last else None,
+           "media_type": last.media_type if last else None
         })
 
     result.sort(key=lambda x: x["id"], reverse=True)

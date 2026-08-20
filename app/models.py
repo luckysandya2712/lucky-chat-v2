@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Text
 from .database import Base
 
 class User(Base):
@@ -36,6 +36,8 @@ class Message(Base):
 
     media_url = Column(String, nullable=True)
     media_type = Column(String, nullable=True)
+    media_duration = Column(Integer, nullable=True, default=0)
+    media_waveform = Column(Text, nullable=True)
 
     timestamp = Column(String)
 

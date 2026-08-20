@@ -46,6 +46,236 @@ function formatAudioTime(totalSeconds) {
     return `${minutes}:${rest}`;
 }
 
+const voiceAnalysisCache = new Map();
+const voiceAnalysisPromises = new Map();
+
+function clampAudioDuration(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    return Math.min(120, value);
+}
+
+function normalizeWaveform(values, bars = 28) {
+    if (!Array.isArray(values) || !values.length) return [];
+
+    const cleaned = values
+        .map(value => Number(value))
+        .filter(value => Number.isFinite(value) && value >= 0);
+
+    if (!cleaned.length) return [];
+
+    const max = Math.max(...cleaned, 1);
+    const output = cleaned.slice(0, bars).map(value =>
+        Math.max(0.08, Math.min(1, value / max))
+    );
+
+    while (output.length < bars) {
+        output.push(output[output.length - 1] || 0.08);
+    }
+
+    return output;
+}
+
+function parseStoredWaveform(value) {
+    if (Array.isArray(value)) {
+        return normalizeWaveform(value);
+    }
+
+    if (typeof value !== "string" || !value.trim()) {
+        return [];
+    }
+
+    try {
+        return normalizeWaveform(JSON.parse(value));
+    } catch (_) {
+        return [];
+    }
+}
+
+async function analyzeAudioBlob(blob) {
+    if (!blob || !blob.size) {
+        throw new Error("Empty audio data");
+    }
+
+    const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextClass) {
+        throw new Error("Web Audio API is not available");
+    }
+
+    const context = new AudioContextClass();
+
+    try {
+        const buffer = await blob.arrayBuffer();
+        const audioBuffer = await context.decodeAudioData(buffer.slice(0));
+        const duration = clampAudioDuration(audioBuffer.duration);
+        const bars = 28;
+        const length = audioBuffer.length;
+
+        if (!duration || !length) {
+            throw new Error("Audio duration could not be determined");
+        }
+
+        const channels = audioBuffer.numberOfChannels;
+        const blockSize = Math.max(1, Math.floor(length / bars));
+        const waveform = [];
+
+        for (let bar = 0; bar < bars; bar++) {
+            const start = bar * blockSize;
+            const end = bar === bars - 1
+                ? length
+                : Math.min(length, start + blockSize);
+
+            let sum = 0;
+            let peak = 0;
+            let count = 0;
+
+            for (let index = start; index < end; index += 1) {
+                let sample = 0;
+
+                for (let channel = 0; channel < channels; channel += 1) {
+                    sample += Math.abs(audioBuffer.getChannelData(channel)[index] || 0);
+                }
+
+                sample /= channels || 1;
+                sum += sample * sample;
+                peak = Math.max(peak, sample);
+                count += 1;
+            }
+
+            const rms = count ? Math.sqrt(sum / count) : 0;
+            waveform.push(Math.max(rms, peak * 0.65));
+        }
+
+        const max = Math.max(...waveform, 0.0001);
+        return {
+            duration,
+            waveform: waveform.map(value => value / max)
+        };
+    } finally {
+        try {
+            await context.close();
+        } catch (_) {}
+    }
+}
+
+async function analyzeAudioUrl(url) {
+    if (!url) throw new Error("Missing audio URL");
+
+    if (voiceAnalysisCache.has(url)) {
+        return voiceAnalysisCache.get(url);
+    }
+
+    if (voiceAnalysisPromises.has(url)) {
+        return voiceAnalysisPromises.get(url);
+    }
+
+    const promise = (async () => {
+        const response = await fetch(url, {
+            credentials: "same-origin",
+            cache: "force-cache"
+        });
+
+        if (!response.ok) {
+            throw new Error("Audio metadata request failed");
+        }
+
+        const blob = await response.blob();
+        const result = await analyzeAudioBlob(blob);
+        voiceAnalysisCache.set(url, result);
+        return result;
+    })();
+
+    voiceAnalysisPromises.set(url, promise);
+
+    try {
+        return await promise;
+    } finally {
+        voiceAnalysisPromises.delete(url);
+    }
+}
+
+let voiceHydrationObserver = null;
+
+function scheduleVoiceHydration(row, msg) {
+    if (!row || !msg || !msg.media_url) return;
+
+    if (voiceHydrationObserver) {
+        row.__voiceHydrationMessage = msg;
+        voiceHydrationObserver.observe(row);
+        return;
+    }
+
+    void hydrateVoiceMessage(row, msg);
+}
+
+if ("IntersectionObserver" in window && messages) {
+    voiceHydrationObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+
+            const row = entry.target;
+            const msg = row.__voiceHydrationMessage;
+            observer.unobserve(row);
+            delete row.__voiceHydrationMessage;
+
+            if (msg) {
+                void hydrateVoiceMessage(row, msg);
+            }
+        });
+    }, {
+        root: messages,
+        rootMargin: "400px 0px",
+        threshold: 0.01
+    });
+}
+
+function renderVoiceWaveform(row, waveform) {
+    const wave = row?.querySelector(".voice-wave");
+    if (!wave) return;
+
+    const values = normalizeWaveform(waveform);
+    if (!values.length) return;
+
+    wave.innerHTML = values.map(value => {
+        const height = Math.round(6 + value * 20);
+        return `<span style="height:${height}px"></span>`;
+    }).join("");
+}
+
+async function hydrateVoiceMessage(row, msg) {
+    const voiceAudio = row?.querySelector("audio[data-voice-audio='1']");
+    if (!voiceAudio || !msg?.media_url) return;
+
+    const durationLabel = row.querySelector(".voice-duration");
+    const storedDuration = clampAudioDuration(msg.media_duration);
+    const storedWaveform = parseStoredWaveform(msg.media_waveform);
+
+    if (storedWaveform.length) {
+        renderVoiceWaveform(row, storedWaveform);
+    }
+
+    if (storedDuration && durationLabel) {
+        durationLabel.textContent = formatAudioTime(storedDuration);
+    }
+
+    try {
+        const analysis = await analyzeAudioUrl(msg.media_url);
+
+        if (durationLabel && analysis.duration) {
+            durationLabel.textContent = formatAudioTime(analysis.duration);
+        }
+
+        if (!storedWaveform.length) {
+            renderVoiceWaveform(row, analysis.waveform);
+        }
+    } catch (error) {
+        // Keep the stored duration/waveform or browser metadata fallback.
+        console.debug("VOICE VISUAL ANALYSIS FALLBACK:", error);
+    }
+}
+
 function setAudioPreview(seconds) {
     if (audioPreviewTime) {
         audioPreviewTime.textContent = formatAudioTime(seconds);
@@ -150,9 +380,8 @@ async function startVoiceRecording() {
         mediaRecorder.addEventListener("stop", async () => {
             stream.getTracks().forEach(track => track.stop());
 
-            const duration = Math.min(
-                120,
-                Math.max(0, Math.round((Date.now() - recordingStartedAt) / 1000))
+            const timerDuration = clampAudioDuration(
+                (Date.now() - recordingStartedAt) / 1000
             );
 
             hideRecordingBar();
@@ -165,6 +394,17 @@ async function startVoiceRecording() {
             const blob = new Blob(recordingChunks, { type: actualType });
 
             recordingChunks = [];
+
+            let duration = timerDuration;
+            let waveform = [];
+
+            try {
+                const analysis = await analyzeAudioBlob(blob);
+                duration = analysis.duration || timerDuration;
+                waveform = analysis.waveform || [];
+            } catch (analysisError) {
+                console.warn("VOICE AUDIO ANALYSIS FALLBACK:", analysisError);
+            }
 
             if (!blob.size) {
                 alert("No audio was recorded.");
@@ -207,7 +447,8 @@ async function startVoiceRecording() {
                 window.selectedChatAudio = {
                     url: result.url,
                     media_type: result.media_type,
-                    duration
+                    duration: Math.round(duration),
+                    waveform
                 };
 
                 showAudioPreview(duration);
@@ -627,205 +868,67 @@ function saveReactions() {
     );
 }
 
-
-const DASHBOARD_PREVIEW_PREFIX = "lucky_chat_dashboard_preview:";
-
-function getDashboardPreviewKey(otherUser) {
-    return DASHBOARD_PREVIEW_PREFIX +
-        String(username || "") + ":" +
-        String(otherUser || "");
-}
-
-function saveDashboardPreview(msg) {
-    if (!msg || !friend) return;
-
-    const preview = {
-        id: Number(msg.id) || 0,
-        sender: msg.sender || username,
-        receiver: msg.receiver || friend,
-        text: msg.text || "",
-        timestamp: msg.timestamp || new Date().toISOString(),
-        media_url: msg.media_url || null,
-        media_type: msg.media_type || null
-    };
-
-    try {
-        localStorage.setItem(
-            getDashboardPreviewKey(friend),
-            JSON.stringify(preview)
-        );
-    } catch (error) {
-        console.warn("Dashboard preview cache write failed:", error);
-    }
-}
-
 async function loadMessages() {
 
-    const res = await fetch("/messages/" + friend, {
-        cache: "no-store",
-        credentials: "same-origin"
-    });
+    const res = await fetch("/messages/" + friend);
 
     if (!res.ok) {
         throw new Error("Failed to load messages (HTTP " + res.status + ")");
     }
 
     const data = await res.json();
+
+    // Initial history loading can take noticeable time because messages are
+    // decrypted one-by-one. Preserve any outgoing bubbles created while that
+    // work is in progress so they are not wiped out by messages.innerHTML = "".
+    const pendingOptimistic = pendingOutgoingMessages
+        .map(item => item.message)
+        .filter(Boolean);
+
+    messages.innerHTML = "";
+    messageMap = {};
+
     const savedReactions = loadSavedReactions();
 
-    // IMPORTANT: Do not clear the chat while history is being decrypted.
-    // A user can send a message while the initial history is loading; the
-    // optimistic bubble must stay visible immediately instead of disappearing
-    // until a later message causes another render.
-    const existingLiveMessages = new Map();
-
-    messages.querySelectorAll(".message-row").forEach(row => {
-        const bubble = row.querySelector("[data-msg]");
-        if (!bubble) return;
-
-        const id = String(bubble.getAttribute("data-msg"));
-        const numericId = Number(id);
-        const msg = messageMap[numericId];
-
-        if (msg) {
-            existingLiveMessages.set(id, msg);
+    for (const msg of data) {
+        if (deletedMessages[msg.id]) {
+            continue;
         }
-    });
 
-    // Remove the static welcome bubble only. Keep every live/optimistic message.
-    messages.querySelectorAll(".message:not(.message-own):not(.message-other)").forEach(el => {
-        if (el.textContent.trim() === "Welcome to Lucky Chat 🚀") {
-            el.closest(".message-row")?.remove();
-            el.remove();
+        if (savedReactions[msg.id]) {
+            msg.reaction = savedReactions[msg.id];
         }
-    });
 
-    // Decrypt history in small batches with browser paint opportunities in
-    // between. Large chats can contain hundreds of RSA/AES envelopes; starting
-    // all decryptions in one Promise.all can starve Android Chrome long enough
-    // to make a newly-sent message appear only after a later interaction.
-    const HISTORY_BATCH_SIZE = 12;
-    const decrypted = [];
-
-    const yieldToBrowser = () => new Promise(resolve => {
-        if (window.requestAnimationFrame) {
-            requestAnimationFrame(() => resolve());
-        } else {
-            setTimeout(resolve, 0);
+        try {
+            msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
+        } catch (error) {
+            console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
+            msg.text = "🔒 Unable to decrypt this message";
         }
-    });
 
-    for (let start = 0; start < data.length; start += HISTORY_BATCH_SIZE) {
-        const batch = data.slice(start, start + HISTORY_BATCH_SIZE);
-
-        const batchResults = await Promise.all(
-            batch.map(async rawMsg => {
-                const msg = { ...rawMsg };
-
-                if (deletedMessages[msg.id]) {
-                    return null;
-                }
-
-                if (savedReactions[msg.id]) {
-                    msg.reaction = savedReactions[msg.id];
-                }
-
-                try {
-                    msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
-                } catch (error) {
-                    console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
-                    msg.text = "🔒 Unable to decrypt this message";
-                }
-
-                return msg;
-            })
-        );
-
-        decrypted.push(...batchResults);
-        await yieldToBrowser();
-    }
-
-    const history = decrypted.filter(Boolean);
-
-    // IMPORTANT: loadMessages() can overlap with a live WebSocket message.
-    // During the many async decrypt/yield steps above, socket.onmessage may
-    // have already inserted newer messages into messageMap. The old
-    // implementation replaced messageMap with the HTTP history and therefore
-    // could erase a newly-sent/received message until another event caused a
-    // later refresh.
-    //
-    // Snapshot ALL live state that exists at the end of the history request,
-    // not just what happened to be in the DOM when loadMessages() started.
-    const liveMessagesAfterHistoryLoad = Object.values(messageMap);
-
-    const merged = new Map();
-
-    // Server history is the durable source of truth.
-    history.forEach(msg => {
-        merged.set(String(msg.id), msg);
-    });
-
-    // Live/optimistic state wins for matching IDs because it can contain a
-    // newer delivery/read state or a message that was created after the HTTP
-    // history response was taken.
-    liveMessagesAfterHistoryLoad.forEach(msg => {
-        if (!msg || deletedMessages[msg.id]) return;
-        merged.set(String(msg.id), msg);
-    });
-
-    // Also retain the live DOM snapshot as a final fallback. This covers the
-    // tiny window where a bubble exists but messageMap was not populated yet.
-    existingLiveMessages.forEach(msg => {
-        if (!msg || deletedMessages[msg.id]) return;
-        merged.set(String(msg.id), msg);
-    });
-
-    const combinedMessages = Array.from(merged.values())
-        .filter(msg => !deletedMessages[msg.id])
-        .sort((a, b) => {
-            const ai = Number(a.id);
-            const bi = Number(b.id);
-
-            if (Number.isFinite(ai) && Number.isFinite(bi)) {
-                return ai - bi;
-            }
-
-            return String(a.timestamp || "").localeCompare(
-                String(b.timestamp || "")
-            );
-        });
-
-    // Rebuild the canonical in-memory map from the merged set.
-    messageMap = {};
-    combinedMessages.forEach(msg => {
         messageMap[msg.id] = msg;
-    });
+    }
 
     pinnedMessages = pinnedMessages.filter(id => messageMap[id]);
     savePinnedMessages();
 
-    // Re-render once, not once per message. This avoids hundreds of layout/
-    // scroll operations on large conversations.
-    messages.innerHTML = "";
-    window.__suppressChatAutoScroll = true;
-
-    combinedMessages.forEach(msg => {
+    data.forEach(msg => {
+        if (deletedMessages[msg.id]) {
+            return;
+        }
         addMessage(msg);
     });
 
-    window.__suppressChatAutoScroll = false;
-    messages.scrollTop = messages.scrollHeight;
-
-    // Update the dashboard preview exactly once from the newest merged
-    // conversation message. This prevents an older history item from
-    // overwriting a newer live message while history is being decrypted.
-    const latestMessage = combinedMessages[combinedMessages.length - 1];
-    if (latestMessage) {
-        saveDashboardPreview(latestMessage);
-    }
+    // Restore any optimistic outgoing messages that were created while the
+    // history request/decryption was still running.
+    pendingOptimistic.forEach(msg => {
+        if (msg && !document.querySelector(`[data-msg="${msg.id}"]`)) {
+            addMessage(msg);
+        }
+    });
 
     // Queue delivery/read acknowledgements until the WebSocket is connected.
-    history.forEach(msg => {
+    data.forEach(msg => {
         if (msg.sender !== username && !deletedMessages[msg.id]) {
             pendingDeliveredIds.add(Number(msg.id));
             pendingReadIds.add(Number(msg.id));
@@ -1191,7 +1294,8 @@ console.log("WebSocket URL:",
                     item.message.media_type === "audio" ? {
                         url: item.message.media_url,
                         media_type: item.message.media_type,
-                        duration: item.message.media_duration || 0
+                        duration: item.message.media_duration || 0,
+                        waveform: item.message.media_waveform || null
                     } : null
                 );
             }, 0);
@@ -1295,7 +1399,6 @@ async function handleSocketMessage(event) {
         }
 
         addMessage(data);
-        saveDashboardPreview(data);
         queueMessageReceipt(data.id);
         return;
     }
@@ -1496,24 +1599,19 @@ async function handleSocketMessage(event) {
 } // closes handleSocketMessage()
 
 async function initChatCore() {
-    // Open the live socket FIRST. Crypto/history work must never block the
-    // browser from accepting and painting a new outgoing message.
+    // Crypto must never prevent the chat history from loading.
+    try {
+        await LuckyCrypto.init();
+        console.log("✅ LuckyCrypto ready");
+    } catch (error) {
+        console.warn("⚠️ LuckyCrypto unavailable:", error);
+    }
+
+    // Open the live socket before loading/decrypting history so the first
+    // outgoing message is never stranded waiting for a later connection.
     connectSocket();
 
-    const cryptoReadyPromise = LuckyCrypto.init()
-        .then(() => {
-            console.log("✅ LuckyCrypto ready");
-            return true;
-        })
-        .catch(error => {
-            console.warn("⚠️ LuckyCrypto unavailable:", error);
-            return false;
-        });
-
-    // History decryption needs crypto, but the socket is already live so a
-    // user can send immediately even on a large conversation.
     try {
-        await cryptoReadyPromise;
         await loadMessages();
     } catch (error) {
         console.error("Initial message load failed:", error);
@@ -1655,6 +1753,7 @@ function createOptimisticMessage(text, image, audio) {
         media_url: image?.url || audio?.url || null,
         media_type: image?.media_type || audio?.media_type || null,
         media_duration: audio?.duration || 0,
+        media_waveform: audio?.waveform?.length ? JSON.stringify(audio.waveform) : null,
         delivered: 0,
         read: 0,
         _optimistic: true
@@ -1773,7 +1872,6 @@ function reconcileOutgoingMessage(msg) {
         optimistic.read = msg.read || 0;
         optimistic._optimistic = false;
         messageMap[msg.id] = optimistic;
-        saveDashboardPreview(optimistic);
 
         // If a history refresh/reconnect removed the optimistic bubble before
         // the server echo arrived, put the reconciled message back immediately.
@@ -1801,7 +1899,6 @@ async function sendMessage() {
     // anything else occupies the main thread.
     const optimisticMessage = createOptimisticMessage(text, image, audio);
     queueOptimisticMessage(optimisticMessage);
-    saveDashboardPreview(optimisticMessage);
 
     // Clear the composer immediately so the UI is responsive.
     input.value = "";
@@ -1844,26 +1941,6 @@ async function sendOptimisticMessage(optimisticMessage, image, audio) {
 
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             connectSocket();
-
-            // Keep the optimistic bubble visible and retry once the socket is
-            // actually connected.
-            const waitForSocket = () => {
-                const livePending = pendingOutgoingMessages.find(
-                    item => item.tempId === optimisticMessage.id
-                );
-
-                if (!livePending || livePending.attempted) return;
-
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    void sendOptimisticMessage(optimisticMessage, image, audio);
-                    return;
-                }
-
-                setTimeout(waitForSocket, socket &&
-                    socket.readyState === WebSocket.CONNECTING ? 50 : 100);
-            };
-
-            setTimeout(waitForSocket, 50);
             return;
         }
 
@@ -1898,6 +1975,9 @@ async function sendOptimisticMessage(optimisticMessage, image, audio) {
             payload.media_url = audio.url;
             payload.media_type = audio.media_type;
             payload.media_duration = audio.duration || 0;
+            payload.media_waveform = audio.waveform?.length
+                ? JSON.stringify(audio.waveform)
+                : null;
         }
 
         if (!sendSocket(payload)) {
@@ -2049,9 +2129,9 @@ function addMessage(msg){
                     >▶</button>
 
                     <div class="voice-wave" aria-hidden="true">
-                        <span></span><span></span><span></span><span></span>
-                        <span></span><span></span><span></span><span></span>
-                        <span></span><span></span><span></span><span></span>
+                        ${parseStoredWaveform(msg.media_waveform)
+                            .map(value => `<span style="height:${Math.round(6 + value * 20)}px"></span>`)
+                            .join("")}
                     </div>
 
                     <span class="voice-duration">
@@ -2134,8 +2214,6 @@ function addMessage(msg){
 
     messages.appendChild(row);
 
-    // Audio duration is read from the actual file, so it also works
-    // after a page refresh when the server does not persist duration.
     const voiceAudio = row.querySelector("audio[data-voice-audio='1']");
     if (voiceAudio) {
         const durationLabel = row.querySelector(".voice-duration");
@@ -2155,14 +2233,13 @@ function addMessage(msg){
         if (voiceAudio.readyState >= 1) {
             updateVoiceDuration();
         }
+
+        scheduleVoiceHydration(row, msg);
     }
 
     renderPinnedBadge(msg.id);
     renderPinnedBar();
-
-    if (!window.__suppressChatAutoScroll) {
-        messages.scrollTop = messages.scrollHeight;
-    }
+    messages.scrollTop = messages.scrollHeight;
 }
 
 
@@ -2567,19 +2644,20 @@ function formatMessageTimestamp(ts) {
 
     if (!raw) return "";
 
-    // Legacy values that already contain a formatted clock time.
+    // Legacy messages contain only a time such as "09:45 AM".
+    // Keep them unchanged because they have no date/timezone information.
     if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
         return raw;
     }
 
-    // ISO timestamps with an explicit timezone (Z or +/-HH:MM) are UTC/offset
-    // values and should be converted to the device's local time.
-    // Timezone-less ISO values are legacy local timestamps and must NOT be
-    // force-suffixed with Z, otherwise they shift by +5:30 on IST devices.
-    const hasExplicitTimezone =
-        /[zZ]|[+-]\d{2}:\d{2}$/.test(raw);
+    // New messages contain a complete UTC timestamp.
+    let iso = raw;
 
-    const date = new Date(raw);
+    if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(iso)) {
+        iso += "Z";
+    }
+
+    const date = new Date(iso);
 
     if (!Number.isNaN(date.getTime())) {
         return date.toLocaleTimeString([], {
