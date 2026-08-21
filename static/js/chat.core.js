@@ -17,6 +17,11 @@ const button = document.getElementById("sendBtn");
 
 const imageBtn = document.getElementById("imageBtn");
 const imageInput = document.getElementById("imageInput");
+const videoBtn = document.getElementById("videoBtn");
+const videoInput = document.getElementById("videoInput");
+const videoPreview = document.getElementById("videoPreview");
+const videoPreviewName = document.getElementById("videoPreviewName");
+const removeVideoBtn = document.getElementById("removeVideoBtn");
 
 const voiceBtn = document.getElementById("voiceBtn");
 const audioPreview = document.getElementById("audioPreview");
@@ -831,6 +836,8 @@ function renderPinnedBar(){
     const sender = latest.sender === username ? "You" : latest.sender;
     const preview = latest.media_type === "image" && latest.media_url
         ? "📷 Photo"
+        : latest.media_type === "video" && latest.media_url
+        ? "🎬 Video"
         : (latest.text || "Message");
 
     text.textContent = sender + ": " + preview;
@@ -1383,6 +1390,10 @@ console.log("WebSocket URL:",
                         media_type: item.message.media_type,
                         duration: item.message.media_duration || 0,
                         waveform: item.message.media_waveform || null
+                    } : null,
+                    item.message.media_type === "video" ? {
+                        url: item.message.media_url,
+                        media_type: item.message.media_type
                     } : null
                 );
             }, 0);
@@ -1727,6 +1738,21 @@ function bindImageAndSendControls() {
         });
     }
 
+    // Video attach button
+    if (videoBtn && videoInput) {
+        videoBtn.addEventListener("click", () => {
+            videoInput.click();
+        });
+    }
+
+    if (videoInput) {
+        videoInput.addEventListener("change", async () => {
+            await uploadChatVideo();
+        });
+    }
+
+    removeVideoBtn?.addEventListener("click", clearVideoPreview);
+
     // Remove selected image / audio preview
     const removeImageBtn = document.getElementById("removeImageBtn");
     if (removeImageBtn) {
@@ -1820,10 +1846,10 @@ input.addEventListener("keypress",function(e){
 
 });
 
-window.LUCKY_CHAT_CORE_VERSION = "media-voice-v1";
+window.LUCKY_CHAT_CORE_VERSION = "media-video-v1";
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
-function createOptimisticMessage(text, image, audio) {
+function createOptimisticMessage(text, image, audio, video) {
     const tempId = -Date.now() - Math.floor(Math.random() * 1000);
     const clientId =
         (window.crypto && typeof window.crypto.randomUUID === "function")
@@ -1837,8 +1863,8 @@ function createOptimisticMessage(text, image, audio) {
         text: text || "",
         timestamp: new Date().toISOString(),
         reply_to: replyToId,
-        media_url: image?.url || audio?.url || null,
-        media_type: image?.media_type || audio?.media_type || null,
+        media_url: image?.url || audio?.url || video?.url || null,
+        media_type: image?.media_type || audio?.media_type || video?.media_type || null,
         media_duration: audio?.duration || 0,
         media_waveform: audio?.waveform?.length ? JSON.stringify(audio.waveform) : null,
         delivered: 0,
@@ -1975,22 +2001,24 @@ async function sendMessage() {
     const text = input.value.trim();
     const image = window.selectedChatImage;
     const audio = window.selectedChatAudio;
+    const video = window.selectedChatVideo;
 
-    // Don't send anything if there is neither text nor image/audio.
-    if (text === "" && !image && !audio) {
+    // Don't send anything if there is neither text nor image/audio/video.
+    if (text === "" && !image && !audio && !video) {
         return;
     }
 
     // Render the outgoing bubble first. Network/crypto work is deliberately
     // deferred to a later task so Android Chrome can paint this bubble before
     // anything else occupies the main thread.
-    const optimisticMessage = createOptimisticMessage(text, image, audio);
+    const optimisticMessage = createOptimisticMessage(text, image, audio, video);
     queueOptimisticMessage(optimisticMessage);
 
     // Clear the composer immediately so the UI is responsive.
     input.value = "";
     window.selectedChatImage = null;
     window.selectedChatAudio = null;
+    window.selectedChatVideo = null;
 
     const imagePreview = document.getElementById("imagePreview");
     const previewImage = document.getElementById("previewImage");
@@ -1999,12 +2027,13 @@ async function sendMessage() {
     if (imagePreview) imagePreview.style.display = "none";
     if (previewImage) previewImage.src = "";
     clearAudioPreview();
+    clearVideoPreview();
 
     replyToId = null;
     if (replyPreviewEl) replyPreviewEl.style.display = "none";
 
     const sendLater = () => {
-        void sendOptimisticMessage(optimisticMessage, image, audio);
+        void sendOptimisticMessage(optimisticMessage, image, audio, video);
     };
 
     // The optimistic message is already in the DOM. Give the browser a
@@ -2020,7 +2049,7 @@ async function sendMessage() {
     }
 }
 
-async function sendOptimisticMessage(optimisticMessage, image, audio) {
+async function sendOptimisticMessage(optimisticMessage, image, audio, video) {
     try {
         const pending = pendingOutgoingMessages.find(
             item => item.tempId === optimisticMessage.id
@@ -2065,6 +2094,11 @@ async function sendOptimisticMessage(optimisticMessage, image, audio) {
             payload.media_waveform = audio.waveform?.length
                 ? JSON.stringify(audio.waveform)
                 : null;
+        }
+
+        if (video) {
+            payload.media_url = video.url;
+            payload.media_type = video.media_type;
         }
 
         if (!sendSocket(payload)) {
@@ -2205,6 +2239,19 @@ function addMessage(msg){
                     tabindex="0"
                     aria-label="Open photo"
                 >
+            `;
+        } else if (msg.media_url && msg.media_type === "video") {
+            mediaHtml = `
+                <div class="video-message">
+                    <video
+                        class="chat-video"
+                        src="${escapeHTML(msg.media_url)}"
+                        controls
+                        playsinline
+                        preload="metadata"
+                        aria-label="Video message"
+                    ></video>
+                </div>
             `;
         } else if (msg.media_url && msg.media_type === "audio") {
             const duration = Number(msg.media_duration || 0);
@@ -2656,6 +2703,62 @@ function closeForwardModal(){
     window.forwardMessageData = null;
 }
 
+
+async function uploadChatVideo() {
+    const file = videoInput?.files?.[0];
+    if (!file) return;
+
+    const allowed = new Set(["video/mp4", "video/webm", "video/ogg"]);
+    const maxSize = 30 * 1024 * 1024;
+
+    if (!allowed.has(file.type)) {
+        alert("Only MP4, WebM, and OGG videos are allowed");
+        if (videoInput) videoInput.value = "";
+        return;
+    }
+
+    if (file.size > maxSize) {
+        alert("Video is too large. Maximum size is 30 MB");
+        if (videoInput) videoInput.value = "";
+        return;
+    }
+
+    if (videoPreview) videoPreview.style.display = "flex";
+    if (videoPreviewName) videoPreviewName.textContent = file.name || "Video";
+
+    try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/upload-chat-video", {
+            method: "POST",
+            credentials: "same-origin",
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || "Video upload failed");
+        }
+
+        window.selectedChatVideo = result;
+        console.log("VIDEO UPLOADED:", result);
+    } catch (error) {
+        console.error("VIDEO UPLOAD ERROR:", error);
+        alert(error.message || "Could not upload video");
+        clearVideoPreview();
+    } finally {
+        if (videoInput) videoInput.value = "";
+    }
+}
+
+function clearVideoPreview() {
+    window.selectedChatVideo = null;
+    if (videoPreview) videoPreview.style.display = "none";
+    if (videoPreviewName) videoPreviewName.textContent = "Video";
+}
+
 async function uploadChatImage() {
     const file = imageInput?.files?.[0];
 
@@ -2713,6 +2816,7 @@ async function uploadChatImage() {
 function removeSelectedImage() {
     window.selectedChatImage = null;
     window.selectedChatAudio = null;
+    window.selectedChatVideo = null;
 
     const preview = document.getElementById("imagePreview");
     const previewImage = document.getElementById("previewImage");
@@ -2962,6 +3066,10 @@ function chooseReaction(emoji) {
         if (msg.media_type === "audio" && msg.media_url) {
             const text = (msg.text || "").trim();
             return text ? "🎙️ " + text : "🎙️ Voice message";
+        }
+        if (msg.media_type === "video" && msg.media_url) {
+            const text = (msg.text || "").trim();
+            return text ? "🎬 " + text : "🎬 Video";
         }
         return (msg.text || "").trim() || "Message";
     }

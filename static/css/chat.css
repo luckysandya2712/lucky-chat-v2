@@ -3241,3 +3241,111 @@ body.photo-viewer-open{
 .photo-viewer-close{
     z-index:11;
 }
+
+
+/* =========================================================
+   LUCKY CHAT — VIDEO MEDIA V1
+   ========================================================= */
+
+.video-preview{
+    position:fixed;
+    left:10px;
+    right:10px;
+    bottom:78px;
+    min-height:58px;
+    display:none;
+    align-items:center;
+    gap:10px;
+    padding:9px 10px;
+    background:rgba(17,27,45,.98);
+    border:1px solid rgba(96,165,250,.22);
+    border-radius:15px;
+    box-shadow:0 12px 30px rgba(0,0,0,.40);
+    z-index:9998;
+    backdrop-filter:blur(12px);
+}
+
+.video-preview-icon{
+    width:42px;
+    height:42px;
+    border-radius:12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(168,85,247,.16);
+    font-size:21px;
+    flex-shrink:0;
+}
+
+.video-preview-info{
+    flex:1;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+}
+
+.video-preview-info strong{
+    color:#f8fafc;
+    font-size:13px;
+}
+
+.video-preview-info span{
+    color:#94a3b8;
+    font-size:12px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.video-preview > button{
+    width:38px;
+    height:38px;
+    padding:0;
+    border-radius:11px;
+    background:#273449;
+    color:#e2e8f0;
+    font-size:18px;
+}
+
+.video-message{
+    width:min(100%, 330px);
+    max-width:330px;
+    margin:0 0 7px;
+    overflow:hidden;
+    border-radius:14px;
+    background:#0b1220;
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 5px 18px rgba(0,0,0,.16);
+}
+
+.chat-video{
+    display:block;
+    width:100%;
+    max-width:330px;
+    max-height:390px;
+    background:#000;
+    object-fit:contain;
+    border:0;
+    border-radius:13px;
+}
+
+.video-message video::-webkit-media-controls-panel{
+    background:linear-gradient(transparent,rgba(0,0,0,.68));
+}
+
+@media (max-width:480px){
+    .video-preview{
+        left:8px;
+        right:8px;
+    }
+
+    .video-message,
+    .chat-video{
+        max-width:290px;
+    }
+
+    .chat-video{
+        max-height:360px;
+    }
+}

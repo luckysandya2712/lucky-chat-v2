@@ -977,6 +977,74 @@ async def upload_chat_image(
         "media_type": "image"
     }
 
+
+@app.post("/upload-chat-video")
+async def upload_chat_video(
+    request: Request,
+    file: UploadFile = File(...)
+):
+    """Receive and validate a chat video upload."""
+    username = request.session.get("username")
+
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    allowed_types = {
+        "video/mp4": ".mp4",
+        "video/webm": ".webm",
+        "video/ogg": ".ogv",
+    }
+
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+
+    if content_type not in allowed_types:
+        return {
+            "success": False,
+            "error": "Only MP4, WebM, and OGG videos are allowed"
+        }
+
+    max_size = 30 * 1024 * 1024
+    data = await file.read(max_size + 1)
+
+    if len(data) > max_size:
+        return {
+            "success": False,
+            "error": "Video is too large. Maximum size is 30 MB"
+        }
+
+    if not data:
+        return {"success": False, "error": "Empty video file"}
+
+    valid = False
+
+    if content_type == "video/mp4":
+        valid = len(data) >= 12 and data[4:8] == b"ftyp"
+    elif content_type == "video/webm":
+        valid = data.startswith(b"\x1a\x45\xdf\xa3")
+    elif content_type == "video/ogg":
+        valid = data.startswith(b"OggS")
+
+    if not valid:
+        return {"success": False, "error": "Invalid video file"}
+
+    extension = allowed_types[content_type]
+    filename = (
+        f"{username}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        f"{extension}"
+    )
+
+    filepath = UPLOAD_DIR / filename
+
+    with open(filepath, "wb") as buffer:
+        buffer.write(data)
+
+    return {
+        "success": True,
+        "url": "/static/uploads/chat/" + filename,
+        "media_type": "video"
+    }
+
+
 @app.post("/upload-chat-audio")
 async def upload_chat_audio(request: Request):
     """Receive a voice recording as the raw request body.

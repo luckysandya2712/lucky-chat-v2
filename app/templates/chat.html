@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lucky Chat</title>
 
-<link rel="stylesheet" href="/static/css/chat.css?v=20260821-media-photo-v2">
+<link rel="stylesheet" href="/static/css/chat.css?v=20260822-media-video-v1">
 
 </head>
 
@@ -114,12 +114,21 @@ Welcome to Lucky Chat 🚀
 
     <button id="imageBtn" type="button" aria-label="Attach image">🖼️</button>
 
+    <button id="videoBtn" type="button" aria-label="Attach video">🎬</button>
+
     <button id="voiceBtn" type="button" aria-label="Record voice message">🎙️</button>
 
     <input
         type="file"
         id="imageInput"
         accept="image/png,image/jpeg,image/webp"
+        style="display:none;"
+    >
+
+    <input
+        type="file"
+        id="videoInput"
+        accept="video/mp4,video/webm,video/ogg"
         style="display:none;"
     >
 
@@ -131,6 +140,15 @@ Welcome to Lucky Chat 🚀
 
     <button id="sendBtn" type="button">Send</button>
 
+</div>
+
+<div id="videoPreview" class="video-preview" aria-live="polite">
+    <div class="video-preview-icon">🎬</div>
+    <div class="video-preview-info">
+        <strong>Video ready</strong>
+        <span id="videoPreviewName">Video</span>
+    </div>
+    <button type="button" id="removeVideoBtn" aria-label="Remove video">✕</button>
 </div>
 
 <div id="audioPreview" class="audio-preview" aria-live="polite">
@@ -938,7 +956,7 @@ Welcome to Lucky Chat 🚀
 
 
 <script src="/static/js/crypto.core.js?v=20260820-fix7"></script>
-<script src="/static/js/chat.core.js?v=20260822-media-photo-v2"></script>
+<script src="/static/js/chat.core.js?v=20260822-media-video-v1"></script>
 
 </body>
 </html>
