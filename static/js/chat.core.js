@@ -29,6 +29,10 @@ let recordingStartedAt = 0;
 let recordingTimer = null;
 let recordingMimeType = "";
 
+// Keeps track of the current photo upload so Send can wait for it
+// when the user taps Send immediately after choosing a photo.
+let imageUploadPromise = null;
+
 let socket = null;
 let reconnectTimer = null;
 let pendingReadIds = new Set();
@@ -1885,6 +1889,18 @@ function reconcileOutgoingMessage(msg) {
 
 async function sendMessage() {
 
+    // A photo upload is asynchronous. If the user taps Send before the
+    // upload finishes, wait for that upload so the outgoing message keeps
+    // the uploaded image URL instead of becoming a text-only message.
+    if (!window.selectedChatImage && imageUploadPromise) {
+        try {
+            await imageUploadPromise;
+        } catch (error) {
+            console.error("WAITING FOR IMAGE UPLOAD FAILED:", error);
+            return;
+        }
+    }
+
     const text = input.value.trim();
     const image = window.selectedChatImage;
     const audio = window.selectedChatAudio;
@@ -2564,12 +2580,12 @@ function closeForwardModal(){
 async function uploadChatImage() {
     const file = imageInput?.files?.[0];
 
-    if (!file) return;
+    if (!file) return null;
 
     const preview = document.getElementById("imagePreview");
     const previewImage = document.getElementById("previewImage");
 
-    // Show preview immediately
+    // Show preview immediately while the upload is in progress.
     if (previewImage) {
         previewImage.src = URL.createObjectURL(file);
     }
@@ -2577,41 +2593,56 @@ async function uploadChatImage() {
         preview.style.display = "block";
     }
 
-    try {
-        const formData = new FormData();
-        formData.append("file", file);
+    const uploadPromise = (async () => {
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
 
-        const response = await fetch("/upload-chat-image", {
-            method: "POST",
-            body: formData
-        });
+            const response = await fetch("/upload-chat-image", {
+                method: "POST",
+                credentials: "same-origin",
+                body: formData
+            });
 
-        const result = await response.json();
+            let result = null;
+            try {
+                result = await response.json();
+            } catch (_) {
+                result = null;
+            }
 
-        if (!response.ok || !result.success) {
-            console.error("IMAGE UPLOAD FAILED:", result);
-            alert(result.error || "Image upload failed");
+            if (!response.ok || !result?.success) {
+                console.error("IMAGE UPLOAD FAILED:", result);
+                throw new Error(result?.error || "Image upload failed");
+            }
 
+            console.log("IMAGE UPLOADED:", result);
+            window.selectedChatImage = result;
+            return result;
+        } catch (error) {
+            console.error("IMAGE UPLOAD ERROR:", error);
+
+            window.selectedChatImage = null;
             if (preview) preview.style.display = "none";
             if (previewImage) previewImage.src = "";
-            return;
+
+            alert(error.message || "Could not upload image");
+            throw error;
+        } finally {
+            if (imageInput) {
+                imageInput.value = "";
+            }
         }
+    })();
 
-        console.log("IMAGE UPLOADED:", result);
+    imageUploadPromise = uploadPromise;
 
-        window.selectedChatImage = result;
-
-    } catch (error) {
-        console.error("IMAGE UPLOAD ERROR:", error);
-
-        alert("Could not upload image");
-
-        if (preview) preview.style.display = "none";
-        if (previewImage) previewImage.src = "";
-    }
-
-    if (imageInput) {
-        imageInput.value = "";
+    try {
+        return await uploadPromise;
+    } finally {
+        if (imageUploadPromise === uploadPromise) {
+            imageUploadPromise = null;
+        }
     }
 }
 
