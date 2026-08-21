@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lucky Chat</title>
 
-<link rel="stylesheet" href="/static/css/chat.css">
+<link rel="stylesheet" href="/static/css/chat.css?v=20260821-media-photo-v2">
 
 </head>
 
@@ -88,18 +88,13 @@ Welcome to Lucky Chat 🚀
 
 </div>
 
-<div id="replyPreview" class="reply-preview" style="display:none;">
-
+<div id="replyPreview" class="reply-preview" style="display:none;" aria-live="polite">
+    <div class="reply-preview-accent reply-accent-text" aria-hidden="true"></div>
     <div class="reply-preview-content">
-
         <div id="replySender" class="reply-preview-sender"></div>
-
         <div id="replyText" class="reply-preview-text"></div>
-
     </div>
-
-    <button onclick="cancelReply()">✕</button>
-
+    <button class="reply-preview-close" type="button" onclick="cancelReply()" aria-label="Cancel reply">✕</button>
 </div>
 
 
@@ -327,18 +322,58 @@ Welcome to Lucky Chat 🚀
 }
 
 .voice-wave{
+    position:relative;
     flex:1;
     min-width:80px;
-    height:28px;
+    height:30px;
     display:flex;
     align-items:center;
     gap:3px;
+    overflow:hidden;
+    padding:0 1px;
+}
+
+.voice-wave::before{
+    content:"";
+    position:absolute;
+    left:0;
+    top:50%;
+    width:var(--voice-progress, 0%);
+    height:100%;
+    transform:translateY(-50%);
+    background:rgba(96,165,250,.10);
+    border-radius:8px;
+    pointer-events:none;
+    transition:width .08s linear;
 }
 
 .voice-wave span{
+    position:relative;
+    z-index:1;
     width:3px;
     border-radius:4px;
-    background:rgba(255,255,255,.68);
+    background:rgba(255,255,255,.30);
+    transition:
+        background .08s linear,
+        transform .08s linear,
+        opacity .08s linear;
+}
+
+.voice-wave span.played{
+    background:#bfdbfe;
+    opacity:1;
+}
+
+.voice-play-btn{
+    transition:
+        transform .15s ease,
+        background .18s ease,
+        box-shadow .18s ease;
+}
+
+.voice-play-btn.is-playing{
+    background:rgba(96,165,250,.28);
+    box-shadow:0 0 0 4px rgba(96,165,250,.10);
 }
 
 .voice-wave span:nth-child(1){height:9px}
@@ -378,6 +413,319 @@ Welcome to Lucky Chat 🚀
         max-width:260px;
     }
 }
+
+/* =========================================================
+   LUCKY CHAT — REPLY UI
+   Cleaner composer preview + richer quoted-message cards.
+   ========================================================= */
+
+/* =========================================================
+   REPLY UI — ISOLATED MOBILE LAYOUT FIX
+   Prevents existing chat/message CSS from collapsing
+   sender + quoted content into the same line.
+   ========================================================= */
+
+.reply-preview{
+    flex-direction:row !important;
+    align-items:stretch !important;
+}
+
+.reply-preview-content{
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:flex-start !important;
+    justify-content:center !important;
+}
+
+.reply-preview-sender{
+    display:block !important;
+    width:100% !important;
+    flex:0 0 auto !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+.reply-preview-text{
+    display:block !important;
+    width:100% !important;
+    min-width:0 !important;
+}
+
+.reply-preview-text-content{
+    display:block !important;
+    width:100% !important;
+}
+
+.reply-preview-media{
+    display:flex !important;
+    width:100% !important;
+    min-width:0 !important;
+    align-items:center !important;
+}
+
+.reply-preview-media-label,
+.reply-preview-duration{
+    display:block !important;
+}
+
+.reply-box{
+    display:flex !important;
+    flex-direction:row !important;
+    align-items:stretch !important;
+    width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+}
+
+.reply-box-content{
+    display:flex !important;
+    flex:1 1 auto !important;
+    flex-direction:column !important;
+    align-items:flex-start !important;
+    justify-content:center !important;
+    min-width:0 !important;
+    width:100% !important;
+    box-sizing:border-box !important;
+}
+
+.reply-box .reply-sender{
+    display:block !important;
+    width:100% !important;
+    flex:0 0 auto !important;
+    margin:0 0 5px 0 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    line-height:1.15 !important;
+}
+
+.reply-box .reply-text{
+    display:block !important;
+    width:100% !important;
+    min-width:0 !important;
+    line-height:1.25 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+.reply-box .reply-media{
+    display:flex !important;
+    width:100% !important;
+    min-width:0 !important;
+    align-items:center !important;
+    gap:9px !important;
+}
+
+.reply-box .reply-media-text{
+    display:block !important;
+    min-width:0 !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap !important;
+    line-height:1.2 !important;
+}
+
+.reply-box .reply-media-icon,
+.reply-box .reply-media-thumb{
+    flex:0 0 auto !important;
+}
+
+.reply-box-deleted .reply-media-text,
+.reply-box-missing .reply-media-text{
+    white-space:nowrap !important;
+}
+
+
+
+.reply-preview{
+    position:fixed;
+    left:10px;
+    right:10px;
+    bottom:78px;
+    min-height:62px;
+    display:none;
+    align-items:stretch;
+    gap:0;
+    padding:0;
+    background:rgba(11,20,36,.97);
+    border:1px solid rgba(96,165,250,.28);
+    border-radius:18px;
+    box-shadow:0 14px 34px rgba(0,0,0,.44);
+    z-index:9997;
+    overflow:hidden;
+    backdrop-filter:blur(14px);
+}
+
+.reply-preview-accent,.reply-accent{
+    width:4px;
+    flex:0 0 4px;
+    border-radius:4px;
+    background:#60a5fa;
+}
+
+.reply-accent-text{background:#60a5fa}
+.reply-accent-image{background:#a78bfa}
+.reply-accent-audio{background:#4ade80}
+.reply-accent-deleted,.reply-accent-missing{background:#f87171}
+
+.reply-preview-content{
+    flex:1;
+    min-width:0;
+    padding:9px 12px 9px 13px;
+}
+
+.reply-preview-sender,.reply-sender{
+    color:#60a5fa;
+    font-weight:750;
+    font-size:13px;
+    line-height:1.2;
+    margin-bottom:3px;
+}
+
+.reply-preview-text{
+    min-width:0;
+    color:#dbeafe;
+    font-size:13px;
+    line-height:1.25;
+    overflow:hidden;
+}
+
+.reply-preview-text-content,.reply-text{
+    display:block;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.reply-preview-media,.reply-media{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    min-width:0;
+}
+
+.reply-preview-thumb,.reply-media-thumb{
+    width:42px;
+    height:42px;
+    border-radius:9px;
+    object-fit:cover;
+    flex:0 0 42px;
+    border:1px solid rgba(255,255,255,.10);
+}
+
+.reply-preview-media-label,.reply-media-text{
+    color:#e2e8f0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.reply-media-icon{
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(74,222,128,.16);
+    flex:0 0 34px;
+    font-size:17px;
+}
+
+.reply-preview-duration{
+    color:#94a3b8;
+    font-size:11px;
+    margin-left:auto;
+}
+
+.reply-preview-deleted{
+    color:#fca5a5;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.reply-preview-close{
+    width:44px;
+    min-width:44px;
+    border:0;
+    background:transparent;
+    color:#e2e8f0;
+    font-size:26px;
+    cursor:pointer;
+}
+
+.reply-box{
+    display:flex;
+    align-items:stretch;
+    gap:0;
+    margin:0 0 8px 0;
+    padding:0;
+    border-radius:13px;
+    overflow:hidden;
+    background:rgba(15,23,42,.43);
+    border:1px solid rgba(148,163,184,.12);
+    cursor:pointer;
+    transition:transform .16s ease, background .16s ease, border-color .16s ease;
+}
+
+.reply-box:hover,.reply-box:active{
+    background:rgba(37,99,235,.18);
+    border-color:rgba(96,165,250,.35);
+    transform:translateY(-1px);
+}
+
+.reply-box-content{
+    min-width:0;
+    flex:1;
+    padding:8px 10px 8px 11px;
+}
+
+.reply-box .reply-sender{
+    margin-bottom:4px;
+}
+
+.reply-box .reply-text{
+    color:#e2e8f0;
+}
+
+.reply-box .reply-media{
+    color:#cbd5e1;
+}
+
+.reply-box-deleted .reply-sender,.reply-box-deleted .reply-media-text{
+    color:#f87171;
+}
+
+.reply-box-missing .reply-sender,.reply-box-missing .reply-media-text{
+    color:#fbbf24;
+}
+
+.reply-highlight{
+    animation:replyPulse 1.2s ease;
+}
+
+@keyframes replyPulse{
+    0%{box-shadow:0 0 0 0 rgba(96,165,250,0);}
+    22%{box-shadow:0 0 0 5px rgba(96,165,250,.36);}
+    55%{box-shadow:0 0 26px rgba(96,165,250,.38);}
+    100%{box-shadow:0 0 0 0 rgba(96,165,250,0);}
+}
+
+@media (max-width:480px){
+    .reply-preview{
+        left:8px;
+        right:8px;
+        bottom:78px;
+    }
+
+    .reply-preview-content{
+        padding-left:11px;
+    }
+}
+
 </style>
 
 <!-- Image/send controls, notifications, and all chat logic
@@ -561,8 +909,36 @@ Welcome to Lucky Chat 🚀
 
 <!-- Push notifications moved to /static/js/chat.core.js -->
 
-<script src="/static/js/crypto.core.js?v=e2ee2"></script>
-<script src="/static/js/chat.core.js?v=e2ee2"></script>
+
+<!-- Full-screen photo viewer -->
+<div id="photoViewer"
+     class="photo-viewer"
+     aria-hidden="true"
+     role="dialog"
+     aria-modal="true">
+    <div class="photo-viewer-backdrop" data-photo-viewer-close="1"></div>
+
+    <div class="photo-viewer-toolbar">
+        <button id="photoViewerClose"
+                class="photo-viewer-close"
+                type="button"
+                aria-label="Close photo viewer">✕</button>
+    </div>
+
+    <div id="photoViewerStage" class="photo-viewer-stage">
+        <div id="photoViewerSpinner" class="photo-viewer-spinner" aria-hidden="true">
+            <span></span>
+        </div>
+        <img id="photoViewerImage"
+             class="photo-viewer-image"
+             alt="Full-size photo"
+             draggable="false">
+    </div>
+</div>
+
+
+<script src="/static/js/crypto.core.js?v=20260820-fix7"></script>
+<script src="/static/js/chat.core.js?v=20260822-media-photo-v2"></script>
 
 </body>
 </html>

@@ -1222,7 +1222,11 @@ body{
 
     <div class="chat-right">
 
-       <small class="time"></small>
+       {% if chat.time %}
+       <small class="time initial-dashboard-time" data-timestamp="{{ chat.time }}">
+       {{ chat.time }}
+       </small>
+       {% endif %}
 
         {% if unread_counts[user.username] > 0 %}
         <span class="badge">
@@ -1234,13 +1238,35 @@ body{
 
 </div>
 
-    <small class="message-preview">
-        {% if last_messages[user.username] %}
-            Loading message preview…
-        {% else %}
+    {% if last_messages[user.username] %}
+
+        <small class="message-preview">
+
+            {% if last_messages[user.username].sender == username %}
+               You:
+            {% else %}
+            {{ user.username }}:
+            {% endif %}
+
+            {% if last_messages[user.username].text and last_messages[user.username].text.startswith('LCE1:') %}
+                Encrypted message
+            {% else %}
+                {{ last_messages[user.username].text[:30] }}
+
+                {% if last_messages[user.username].text|length > 30 %}
+                    ...
+                {% endif %}
+            {% endif %}
+
+        </small>
+
+    {% else %}
+
+        <small style="color:#777;">
             No messages yet
-        {% endif %}
-    </small>
+        </small>
+
+    {% endif %}
 
     <p class="status" id="status-{{ user.username }}">
     ⚪ Offline
@@ -1286,7 +1312,7 @@ body{
 
 </div>
 
-<script src="/static/js/crypto.core.js?v=20260819-fix6"></script>
+<script src="/static/js/crypto.core.js?v=e2ee5"></script>
 
 <script>
 
@@ -1690,8 +1716,12 @@ function connectDashboardSocket() {
 
 connectDashboardSocket();
 
-void loadServerPinnedChats();
-void refreshDashboard();
+hydrateInitialDashboardTimes();
+
+loadServerPinnedChats().then(async () => {
+    await ensureDashboardCrypto();
+    await refreshDashboard();
+});
 
 setInterval(() => {
 
@@ -1706,15 +1736,14 @@ setInterval(() => {
 
 setInterval(() => {
     refreshDashboard();
-}, 10000);
+}, 2000);
 
 function getChatTimestamp(value) {
     if (!value) return 0;
 
     const text = String(value).trim();
 
-    // Full ISO/server timestamps. JavaScript treats timezone-less ISO values
-    // as local time; explicit Z/offset values are converted from that offset.
+    // Full ISO / server timestamps.
     const full = Date.parse(text);
     if (!Number.isNaN(full)) return full;
 
@@ -1874,14 +1903,10 @@ async function ensureDashboardCrypto(){
     if (!dashboardCryptoReady) {
         dashboardCryptoReady = (async () => {
             try {
-                // Explicitly initialize here so the dashboard does not depend
-                // on the timing of another page's crypto initialization.
-                await LuckyCrypto.init();
                 await LuckyCrypto.ensureReady();
                 return true;
             } catch (error) {
                 console.error("Dashboard crypto initialization failed:", error);
-                dashboardCryptoReady = null;
                 return false;
             }
         })();
@@ -1890,233 +1915,107 @@ async function ensureDashboardCrypto(){
     return dashboardCryptoReady;
 }
 
-
-const DASHBOARD_PREVIEW_PREFIX = "lucky_chat_dashboard_preview:";
-
-function getCachedDashboardPreview(otherUser) {
-    try {
-        const raw = localStorage.getItem(
-            DASHBOARD_PREVIEW_PREFIX +
-            String("{{ username }}") + ":" +
-            String(otherUser || "")
-        );
-
-        if (!raw) return null;
-
-        const parsed = JSON.parse(raw);
-        if (!parsed || !parsed.id) return null;
-
-        return parsed;
-    } catch (error) {
-        console.warn("Dashboard preview cache read failed:", error);
-        return null;
-    }
-}
-
-function saveCachedDashboardPreview(chat) {
-    if (!chat || !chat.username) return;
-
-    try {
-        localStorage.setItem(
-            DASHBOARD_PREVIEW_PREFIX +
-            String("{{ username }}") + ":" +
-            String(chat.username),
-            JSON.stringify({
-                id: Number(chat.id) || 0,
-                sender: chat.sender || "",
-                receiver: "{{ username }}",
-                text: chat.last || "",
-                timestamp: chat.time || "",
-                media_url: chat.media_url || null,
-                media_type: chat.media_type || null
-            })
-        );
-    } catch (error) {
-        console.warn("Dashboard preview cache write failed:", error);
-    }
-}
-
 async function decryptDashboardPreview(chat){
-    if (!chat) return chat;
-
-    const cached = getCachedDashboardPreview(chat.username);
-
-    // The local device may already know the decrypted plaintext. Prefer it
-    // when it is at least as new as the server row, but NEVER trust an old
-    // "Encrypted message" placeholder as if it were decrypted plaintext.
-    const cachedText = String(cached?.text || "").trim();
-    const cachedIsUsable =
-        !!cached &&
-        cachedText !== "🔒 Encrypted message" &&
-        cachedText !== "Encrypted message";
-
-    if (cachedIsUsable && Number(cached.id) >= Number(chat.id || 0)) {
-        chat.last = cached.text || "";
-        chat.sender = cached.sender || chat.sender || "";
-        chat.time = cached.timestamp || chat.time || "";
-        chat.id = Math.max(Number(chat.id || 0), Number(cached.id || 0));
-        chat.media_url = cached.media_url || chat.media_url || null;
-        chat.media_type = cached.media_type || chat.media_type || null;
-        return chat;
-    }
-
-    if (!chat.last) {
-        return chat;
-    }
+    if (!chat || !chat.last) return chat;
 
     const raw = String(chat.last);
+    if (!raw.startsWith("LCE1:")) return chat;
 
-    if (!raw.startsWith("LCE1:")) {
-        saveCachedDashboardPreview(chat);
-        return chat;
-    }
+    if (!(await ensureDashboardCrypto())) return chat;
 
-    if (await ensureDashboardCrypto()) {
-        try {
-            chat.last = await LuckyCrypto.decryptMessage(
-                raw,
-                "{{ username }}"
-            );
-            saveCachedDashboardPreview(chat);
-            return chat;
-        } catch (error) {
-            console.error(
-                "DASHBOARD MESSAGE DECRYPTION ERROR:",
-                error,
-                chat.id
-            );
-        }
-    }
-
-    // Never leak ciphertext into the dashboard preview. Also do not let an
-    // old placeholder permanently poison the cache.
-    if (cachedIsUsable) {
-        chat.last = cached.text || "";
-        chat.sender = cached.sender || chat.sender || "";
-        chat.time = cached.timestamp || chat.time || "";
-    } else {
-        chat.last = "🔒 Encrypted message";
+    try {
+        chat.last = await LuckyCrypto.decryptMessage(raw, "{{ username }}");
+    } catch (error) {
+        console.error("DASHBOARD MESSAGE DECRYPTION ERROR:", error, chat.id);
+        chat.last = "🔒 Unable to decrypt message";
     }
 
     return chat;
 }
 
-function escapeDashboardText(value){
-    return String(value ?? "").replace(/[&<>"']/g, char => ({
-        "&":"&amp;",
-        "<":"&lt;",
-        ">":"&gt;",
-        '"':"&quot;",
-        "'":"&#39;"
-    })[char]);
+function hydrateInitialDashboardTimes(){
+    document.querySelectorAll(".initial-dashboard-time[data-timestamp]").forEach(el => {
+        el.textContent = formatDashboardTime(el.getAttribute("data-timestamp") || "");
+    });
 }
-
-let dashboardRefreshGeneration = 0;
-let dashboardRefreshInFlight = false;
 
 async function refreshDashboard(){
 
-    const generation = ++dashboardRefreshGeneration;
+    const res = await fetch("/dashboard-data", { credentials: "same-origin" });
+    if (!res.ok) throw new Error("Dashboard data request failed (HTTP " + res.status + ")");
+    const chats = await res.json();
 
-    // Multiple dashboard_update events plus the 10-second timer can otherwise
-    // overlap. A slower, older refresh could finish last and overwrite a newer
-    // message preview with stale data.
-    try {
-        const res = await fetch("/dashboard-data", {
-            cache: "no-store",
-            credentials: "same-origin"
-        });
+    await Promise.all(chats.map(decryptDashboardPreview));
 
-        if (!res.ok) {
-            throw new Error("Dashboard data request failed (HTTP " + res.status + ")");
-        }
+    console.log("DASHBOARD DATA:", chats);
 
-        const chats = await res.json();
+    const chatList = document.querySelector(".chat-list");
 
-        const settled = await Promise.allSettled(
-            chats.map(decryptDashboardPreview)
-        );
+    /*
+     * SMART CHAT ORDERING
+     * Newest activity stays at the top.
+     * Unread chats receive a small priority boost when their activity
+     * timestamp is the same, while the unread badge remains visible.
+     */
+    const pinned = getPinnedChats();
 
-        // Ignore results from an older refresh once a newer request started.
-        if (generation !== dashboardRefreshGeneration) {
-            return;
-        }
+    const orderedChats = [...chats].sort((a, b) => {
+        const pinA = pinned.includes(a.username) ? 1 : 0;
+        const pinB = pinned.includes(b.username) ? 1 : 0;
 
-        // A failed decrypt must never leak the ciphertext into the visible UI.
-        settled.forEach((result, index) => {
-            if (result.status === "rejected") {
-                chats[index].last = "🔒 Encrypted message";
-            }
-        });
+        if (pinA !== pinB) return pinB - pinA;
 
-        console.log("DASHBOARD DATA:", chats);
+        const timeA = getChatTimestamp(a.time);
+        const timeB = getChatTimestamp(b.time);
 
-        const chatList = document.querySelector(".chat-list");
-        if (!chatList) return;
+        if (timeA !== timeB) return timeB - timeA;
 
-        const pinned = getPinnedChats();
+        const unreadA = Number(a.unread) || 0;
+        const unreadB = Number(b.unread) || 0;
+        return unreadB - unreadA;
+    });
 
-        const orderedChats = [...chats].sort((a, b) => {
-            const pinA = pinned.includes(a.username) ? 1 : 0;
-            const pinB = pinned.includes(b.username) ? 1 : 0;
+    chatList.innerHTML = "";
 
-            if (pinA !== pinB) return pinB - pinA;
+    orderedChats.forEach(chat=>{
 
-            const timeA = getChatTimestamp(a.time);
-            const timeB = getChatTimestamp(b.time);
+        const senderName =
+          chat.sender === "{{ username }}"
+          ? "You"
+          : (chat.display_name || chat.username);
 
-            if (timeA !== timeB) return timeB - timeA;
+        const messageText = chat.last
+          ? chat.last.substring(0, 30)
+          : "";
 
-            const unreadA = Number(a.unread) || 0;
-            const unreadB = Number(b.unread) || 0;
-            return unreadB - unreadA;
-        });
+        const preview = chat.last
+          ? `${senderName}: ${messageText}${chat.last.length > 30 ? "..." : ""}`
+          : "No messages yet";
 
-        chatList.innerHTML = "";
+        const time = chat.time || "";
 
-        orderedChats.forEach(chat=>{
+        const unread = Number(chat.unread) || 0;
 
-            const senderName =
-              chat.sender === "{{ username }}"
-              ? "You"
-              : (chat.display_name || chat.username);
+        const badge =
+            unread > 0
+            ? `<span class="badge">${unread}</span>`
+            : "";
 
-            let messageText = chat.last || "";
-
-            if (!messageText && chat.media_type === "image") {
-                messageText = "📷 Photo";
-            } else if (!messageText && chat.media_type === "audio") {
-                messageText = "🎙️ Voice message";
-            }
-
-            const trimmedText = String(messageText).substring(0, 30);
-            const preview = messageText
-              ? `${escapeDashboardText(senderName)}: ${escapeDashboardText(trimmedText)}${String(messageText).length > 30 ? "..." : ""}`
-              : "No messages yet";
-
-            const unread = Number(chat.unread) || 0;
-            const badge =
-                unread > 0
-                ? `<span class="badge">${unread}</span>`
-                : "";
-
-            const safeUsername = String(chat.username).replace(/'/g, "\\'");
-
-            chatList.innerHTML += `
+    chatList.innerHTML += `
     <div class="chat-item ${unread > 0 ? "has-unread" : ""} ${isPinned(chat.username) ? "is-pinned" : ""}"
-         onclick="openChat('${safeUsername}')"
-         oncontextmenu="showChatMenu(event, '${safeUsername}')">
+         onclick="openChat('${chat.username}')"
+         oncontextmenu="showChatMenu(event, '${chat.username}')">
 
         <img
             class="avatar"
-            src="${chat.profile || "/static/profile/default.png"}"
-            alt="${escapeDashboardText(chat.username)}"
+            src="${chat.profile}"
+            alt="${chat.username}"
             onerror="this.src='/static/profile/default.png'">
 
         <div class="chat-info">
 
         <div class="chat-top">
-    <h4>${escapeDashboardText(chat.display_name || chat.username)}${isPinned(chat.username) ? ' <span class="chat-pin">📌</span>' : ''}</h4>
+    <h4>${chat.display_name || chat.username}${isPinned(chat.username) ? ' <span class="chat-pin">📌</span>' : ''}</h4>
 
     <div class="chat-right">
         ${chat.time
@@ -2132,7 +2031,7 @@ async function refreshDashboard(){
     ${preview}
 </small>
 
-<p class="status" id="status-${escapeDashboardText(chat.username)}">
+<p class="status" id="status-${chat.username}">
     ⚪ Offline
 </p>
 
@@ -2141,16 +2040,14 @@ async function refreshDashboard(){
     </div>
 `;
 
-        });
+    });
 
-        updateOnlineUsers();
-        searchChats();
+    updateOnlineUsers();
 
-    } catch (error) {
-        console.error("DASHBOARD REFRESH ERROR:", error);
-    }
+    // Preserve the current search/filter after a live dashboard refresh.
+    searchChats();
+
 }
-
 
 
 function animateTopChat() {
