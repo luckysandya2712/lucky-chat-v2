@@ -1846,7 +1846,7 @@ input.addEventListener("keypress",function(e){
 
 });
 
-window.LUCKY_CHAT_CORE_VERSION = "media-video-v1";
+window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress";
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
 function createOptimisticMessage(text, image, audio, video) {
@@ -2704,6 +2704,135 @@ function closeForwardModal(){
 }
 
 
+function ensureVideoUploadStatusUI() {
+    if (!videoPreview) return null;
+
+    let status = document.getElementById("videoUploadStatus");
+    if (status) return status;
+
+    status = document.createElement("div");
+    status.id = "videoUploadStatus";
+    status.style.display = "none";
+    status.style.marginTop = "7px";
+    status.style.padding = "7px 9px";
+    status.style.borderRadius = "10px";
+    status.style.background = "rgba(15,23,42,.72)";
+    status.style.border = "1px solid rgba(96,165,250,.20)";
+    status.style.color = "#cbd5e1";
+    status.style.fontSize = "12px";
+    status.style.lineHeight = "1.25";
+    status.style.boxSizing = "border-box";
+
+    const title = document.createElement("div");
+    title.id = "videoUploadStatusText";
+    title.textContent = "Preparing video…";
+
+    const track = document.createElement("div");
+    track.style.height = "5px";
+    track.style.marginTop = "6px";
+    track.style.borderRadius = "999px";
+    track.style.overflow = "hidden";
+    track.style.background = "rgba(148,163,184,.18)";
+
+    const bar = document.createElement("div");
+    bar.id = "videoUploadProgress";
+    bar.style.width = "0%";
+    bar.style.height = "100%";
+    bar.style.borderRadius = "999px";
+    bar.style.background = "linear-gradient(90deg,#60a5fa,#2563eb)";
+    bar.style.transition = "width .12s linear";
+
+    track.appendChild(bar);
+    status.appendChild(title);
+    status.appendChild(track);
+
+    videoPreview.appendChild(status);
+    return status;
+}
+
+function updateVideoUploadStatus(text, percent = null, visible = true) {
+    const status = ensureVideoUploadStatusUI();
+    if (!status) return;
+
+    status.style.display = visible ? "block" : "none";
+
+    const label = document.getElementById("videoUploadStatusText");
+    const bar = document.getElementById("videoUploadProgress");
+
+    if (label) label.textContent = text;
+
+    if (bar && percent != null && Number.isFinite(Number(percent))) {
+        const safe = Math.max(0, Math.min(100, Number(percent)));
+        bar.style.width = safe + "%";
+    }
+}
+
+function formatUploadSize(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024 * 1024) {
+        return `${Math.max(1, Math.round(value / 1024))} KB`;
+    }
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function uploadVideoWithProgress(file) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.open("POST", "/upload-chat-video", true);
+        xhr.withCredentials = true;
+
+        xhr.upload.addEventListener("progress", event => {
+            if (!event.lengthComputable) {
+                updateVideoUploadStatus("Uploading video…", null, true);
+                return;
+            }
+
+            const percent = (event.loaded / event.total) * 100;
+            updateVideoUploadStatus(
+                `Uploading ${Math.round(percent)}% • ${formatUploadSize(event.loaded)} / ${formatUploadSize(event.total)}`,
+                percent,
+                true
+            );
+        });
+
+        xhr.addEventListener("load", () => {
+            let result = null;
+
+            try {
+                result = JSON.parse(xhr.responseText || "{}");
+            } catch (_) {
+                reject(new Error("Invalid server response"));
+                return;
+            }
+
+            if (xhr.status < 200 || xhr.status >= 300 || !result.success) {
+                reject(new Error(result.error || `Video upload failed (HTTP ${xhr.status})`));
+                return;
+            }
+
+            resolve(result);
+        });
+
+        xhr.addEventListener("error", () => {
+            reject(new Error("Network error while uploading video"));
+        });
+
+        xhr.addEventListener("abort", () => {
+            reject(new Error("Video upload cancelled"));
+        });
+
+        xhr.addEventListener("timeout", () => {
+            reject(new Error("Video upload timed out"));
+        });
+
+        // No artificial timeout: large uploads depend on the connection speed.
+        const formData = new FormData();
+        formData.append("file", file);
+        xhr.send(formData);
+    });
+}
+
 async function uploadChatVideo() {
     const file = videoInput?.files?.[0];
     if (!file) return;
@@ -2726,28 +2855,40 @@ async function uploadChatVideo() {
     if (videoPreview) videoPreview.style.display = "flex";
     if (videoPreviewName) videoPreviewName.textContent = file.name || "Video";
 
+    // Clear an older uploaded video while the new one uploads.
+    window.selectedChatVideo = null;
+    updateVideoUploadStatus("Uploading video… 0%", 0, true);
+
     try {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const response = await fetch("/upload-chat-video", {
-            method: "POST",
-            credentials: "same-origin",
-            body: formData
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-            throw new Error(result.error || "Video upload failed");
-        }
+        const startedAt = performance.now();
+        const result = await uploadVideoWithProgress(file);
+        const elapsed = Math.max(0, (performance.now() - startedAt) / 1000);
 
         window.selectedChatVideo = result;
-        console.log("VIDEO UPLOADED:", result);
+
+        updateVideoUploadStatus(
+            `Ready to send • ${formatUploadSize(file.size)} • ${elapsed.toFixed(1)}s`,
+            100,
+            true
+        );
+
+        console.log(
+            "VIDEO UPLOADED:",
+            result,
+            "size:",
+            file.size,
+            "seconds:",
+            elapsed
+        );
     } catch (error) {
         console.error("VIDEO UPLOAD ERROR:", error);
+        window.selectedChatVideo = null;
+        updateVideoUploadStatus(
+            `Upload failed • ${error.message || "Unknown error"}`,
+            0,
+            true
+        );
         alert(error.message || "Could not upload video");
-        clearVideoPreview();
     } finally {
         if (videoInput) videoInput.value = "";
     }
@@ -2755,6 +2896,8 @@ async function uploadChatVideo() {
 
 function clearVideoPreview() {
     window.selectedChatVideo = null;
+    const uploadStatus = document.getElementById("videoUploadStatus");
+    if (uploadStatus) uploadStatus.remove();
     if (videoPreview) videoPreview.style.display = "none";
     if (videoPreviewName) videoPreviewName.textContent = "Video";
 }
