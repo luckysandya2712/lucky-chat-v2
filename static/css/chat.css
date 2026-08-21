@@ -2054,3 +2054,941 @@ body {
 }
 
 </style>
+
+/* =========================================================
+   FINAL REPLY CARD LAYOUT FIX
+   Uses the latest chat.css as the source and overrides only
+   the reply-card presentation. Reply/message logic unchanged.
+   ========================================================= */
+
+.reply-box.reply-box-text,
+.reply-box.reply-box-image,
+.reply-box.reply-box-audio,
+.reply-box.reply-box-deleted,
+.reply-box.reply-box-missing {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+}
+
+.reply-box .reply-accent {
+    display: block !important;
+    width: 3px !important;
+    min-width: 3px !important;
+    flex: 0 0 3px !important;
+    height: auto !important;
+    min-height: 100% !important;
+    border-radius: 0 !important;
+}
+
+.reply-box .reply-box-content {
+    display: block !important;
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 8px 10px !important;
+    box-sizing: border-box !important;
+}
+
+.reply-box .reply-sender {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 0 4px 0 !important;
+    padding: 0 !important;
+    color: #93c5fd !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.reply-box .reply-text {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 18px !important;
+    max-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    color: #f1f5f9 !important;
+    font-size: 14px !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: anywhere !important;
+}
+
+.reply-box .reply-media {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 9px !important;
+    overflow: hidden !important;
+}
+
+.reply-box .reply-media-thumb {
+    display: block !important;
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    max-width: 42px !important;
+    max-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    object-fit: cover !important;
+    border-radius: 8px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.reply-box .reply-media-icon {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    flex: 0 0 34px !important;
+    margin: 0 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.reply-box .reply-media-text {
+    display: block !important;
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #dbeafe !important;
+    font-size: 14px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.reply-box.reply-box-deleted .reply-media,
+.reply-box.reply-box-missing .reply-media {
+    height: auto !important;
+    min-height: 24px !important;
+}
+
+.reply-box.reply-box-deleted .reply-media-text {
+    color: #fecaca !important;
+}
+
+.reply-box.reply-box-missing .reply-media-text {
+    color: #fde68a !important;
+}
+
+/* Keep the composer preview compact and correctly stacked. */
+.reply-preview {
+    display: none;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    width: auto !important;
+    min-height: 62px !important;
+    height: auto !important;
+    max-height: 86px !important;
+    overflow: hidden !important;
+}
+
+.reply-preview.is-active {
+    display: flex !important;
+}
+
+.reply-preview .reply-preview-content {
+    display: block !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    padding: 9px 12px !important;
+}
+
+.reply-preview .reply-preview-sender,
+.reply-preview .reply-preview-text {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+.reply-preview .reply-preview-media {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 9px !important;
+}
+
+.reply-preview .reply-preview-thumb {
+    display: block !important;
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    object-fit: cover !important;
+    border-radius: 8px !important;
+}
+
+/* =========================================================
+   LUCKY CHAT — DEDICATED IN-BUBBLE REPLY QUOTE
+   Uses unique class names so legacy reply CSS cannot collapse
+   or hide the quoted content.
+   ========================================================= */
+
+.reply-quote{
+    display:flex;
+    align-items:stretch;
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    margin:0 0 8px 0;
+    padding:0;
+    border-radius:12px;
+    overflow:hidden;
+    background:rgba(15,23,42,.38);
+    border:1px solid rgba(148,163,184,.15);
+    cursor:pointer;
+    color:#e2e8f0;
+    transition:background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.reply-quote:hover,
+.reply-quote:active{
+    background:rgba(37,99,235,.18);
+    border-color:rgba(96,165,250,.36);
+    transform:translateY(-1px);
+}
+
+.reply-quote-accent{
+    width:3px;
+    min-width:3px;
+    flex:0 0 3px;
+    background:#60a5fa;
+}
+
+.reply-quote-image .reply-quote-accent{background:#a78bfa}
+.reply-quote-audio .reply-quote-accent{background:#4ade80}
+.reply-quote-deleted .reply-quote-accent{background:#f87171}
+.reply-quote-missing .reply-quote-accent{background:#fbbf24}
+
+.reply-quote-content{
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    min-width:0;
+    flex:1 1 auto;
+    padding:7px 9px;
+    box-sizing:border-box;
+}
+
+.reply-quote-sender{
+    display:block;
+    width:100%;
+    min-width:0;
+    margin:0 0 3px 0;
+    padding:0;
+    color:#93c5fd;
+    font-size:12px;
+    font-weight:800;
+    line-height:1.2;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.reply-quote-text{
+    display:block;
+    width:100%;
+    min-width:0;
+    min-height:17px;
+    margin:0;
+    padding:0;
+    color:#f8fafc;
+    font-size:13px;
+    line-height:1.3;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    overflow-wrap:anywhere;
+}
+
+.reply-quote-media{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    min-width:0;
+    min-height:34px;
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+.reply-quote-thumb{
+    display:block;
+    width:42px;
+    height:42px;
+    min-width:42px;
+    min-height:42px;
+    max-width:42px;
+    max-height:42px;
+    margin:0;
+    padding:0;
+    border-radius:8px;
+    object-fit:cover;
+    border:1px solid rgba(255,255,255,.10);
+    flex:0 0 42px;
+}
+
+.reply-quote-icon{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:34px;
+    height:34px;
+    min-width:34px;
+    border-radius:50%;
+    background:rgba(74,222,128,.14);
+    font-size:17px;
+    flex:0 0 34px;
+}
+
+.reply-quote-media-label{
+    display:block;
+    min-width:0;
+    flex:1 1 auto;
+    color:#dbeafe;
+    font-size:13px;
+    line-height:1.25;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.reply-quote-duration{
+    flex:0 0 auto;
+    color:#94a3b8;
+    font-size:11px;
+    margin-left:auto;
+}
+
+.reply-quote-deleted .reply-quote-media-label{
+    color:#fecaca;
+}
+
+.reply-quote-missing .reply-quote-media-label{
+    color:#fde68a;
+}
+
+.message-own .reply-quote{
+    background:rgba(15,23,42,.24);
+}
+
+.message-other .reply-quote{
+    background:rgba(15,23,42,.30);
+}
+
+@media (max-width:480px){
+    .reply-quote-content{
+        padding:7px 8px;
+    }
+
+    .reply-quote-sender{
+        font-size:12px;
+    }
+
+    .reply-quote-text,
+    .reply-quote-media-label{
+        font-size:12px;
+    }
+
+    .reply-quote-thumb{
+        width:40px;
+        height:40px;
+        min-width:40px;
+        min-height:40px;
+        max-width:40px;
+        max-height:40px;
+        flex-basis:40px;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — REPLY CARD POLISH
+   Visual-only refinement of the working in-bubble reply quote.
+   Message/reply logic is untouched.
+   ========================================================= */
+
+.reply-quote{
+    margin:0 0 9px 0;
+    border-radius:11px;
+    background:rgba(11,18,32,.26);
+    border:1px solid rgba(148,163,184,.12);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+    transition:background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.reply-quote:hover,
+.reply-quote:active{
+    background:rgba(15,23,42,.34);
+    border-color:rgba(148,163,184,.20);
+    transform:none;
+}
+
+.reply-quote-accent{
+    width:3px;
+    min-width:3px;
+    flex-basis:3px;
+}
+
+.reply-quote-content{
+    padding:6px 9px 7px;
+    gap:0;
+}
+
+.reply-quote-sender{
+    margin:0 0 2px;
+    color:#a7cbff;
+    font-size:12px;
+    font-weight:800;
+    line-height:1.15;
+    letter-spacing:.05px;
+}
+
+.reply-quote-text{
+    min-height:16px;
+    font-size:13px;
+    line-height:1.25;
+    color:rgba(248,250,252,.94);
+}
+
+.reply-quote-media{
+    min-height:34px;
+    gap:8px;
+}
+
+.reply-quote-thumb{
+    width:38px;
+    height:38px;
+    min-width:38px;
+    min-height:38px;
+    max-width:38px;
+    max-height:38px;
+    flex-basis:38px;
+    border-radius:7px;
+}
+
+.reply-quote-icon{
+    width:31px;
+    height:31px;
+    min-width:31px;
+    flex-basis:31px;
+    font-size:16px;
+}
+
+.reply-quote-media-label{
+    font-size:13px;
+    line-height:1.2;
+    color:rgba(219,234,254,.90);
+}
+
+.reply-quote-duration{
+    font-size:10px;
+    color:#b6c3d5;
+}
+
+@media (max-width:480px){
+    .reply-quote{
+        margin-bottom:8px;
+        border-radius:10px;
+    }
+
+    .reply-quote-content{
+        padding:6px 8px 7px;
+    }
+
+    .reply-quote-sender{
+        font-size:12px;
+        margin-bottom:2px;
+    }
+
+    .reply-quote-text,
+    .reply-quote-media-label{
+        font-size:12px;
+    }
+
+    .reply-quote-thumb{
+        width:36px;
+        height:36px;
+        min-width:36px;
+        min-height:36px;
+        max-width:36px;
+        max-height:36px;
+        flex-basis:36px;
+    }
+
+    .reply-quote-icon{
+        width:30px;
+        height:30px;
+        min-width:30px;
+        flex-basis:30px;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — REPLY CARD VISUAL V3
+   Stronger visual refinement for the already-working reply
+   cards. CSS-only; no message/reply behavior is changed.
+   ========================================================= */
+
+.reply-quote{
+    position:relative;
+    margin:0 0 10px !important;
+    border-radius:13px !important;
+    background:linear-gradient(
+        135deg,
+        rgba(30,64,175,.42),
+        rgba(15,23,42,.48)
+    ) !important;
+    border:1px solid rgba(148,163,184,.18) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.045),
+        0 3px 10px rgba(0,0,0,.10) !important;
+    overflow:hidden !important;
+}
+
+.reply-quote::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background:linear-gradient(
+        90deg,
+        rgba(255,255,255,.035),
+        transparent 32%
+    );
+}
+
+.reply-quote-accent{
+    position:relative;
+    width:4px !important;
+    min-width:4px !important;
+    flex:0 0 4px !important;
+    opacity:.95;
+}
+
+.reply-quote-content{
+    position:relative;
+    padding:8px 10px 9px !important;
+    gap:0 !important;
+}
+
+.reply-quote-sender{
+    margin:0 0 4px !important;
+    color:#dbeafe !important;
+    font-size:11px !important;
+    font-weight:800 !important;
+    line-height:1.1 !important;
+    letter-spacing:.15px !important;
+    text-transform:none !important;
+}
+
+.reply-quote-text{
+    min-height:17px !important;
+    color:#ffffff !important;
+    font-size:13px !important;
+    font-weight:500 !important;
+    line-height:1.28 !important;
+}
+
+.reply-quote-media{
+    min-height:36px !important;
+    gap:9px !important;
+}
+
+.reply-quote-thumb{
+    width:40px !important;
+    height:40px !important;
+    min-width:40px !important;
+    min-height:40px !important;
+    max-width:40px !important;
+    max-height:40px !important;
+    flex:0 0 40px !important;
+    border-radius:9px !important;
+    border:1px solid rgba(255,255,255,.14) !important;
+    box-shadow:0 2px 7px rgba(0,0,0,.20);
+}
+
+.reply-quote-icon{
+    width:33px !important;
+    height:33px !important;
+    min-width:33px !important;
+    flex:0 0 33px !important;
+    border-radius:50% !important;
+    background:rgba(74,222,128,.18) !important;
+    border:1px solid rgba(74,222,128,.12);
+    font-size:16px !important;
+}
+
+.reply-quote-media-label{
+    color:#e5eefc !important;
+    font-size:13px !important;
+    font-weight:600 !important;
+    line-height:1.2 !important;
+}
+
+.reply-quote-duration{
+    color:#cbd5e1 !important;
+    font-size:10px !important;
+    font-weight:600 !important;
+    padding-left:4px;
+}
+
+.reply-quote-image .reply-quote-accent{
+    background:linear-gradient(180deg,#c084fc,#8b5cf6) !important;
+}
+
+.reply-quote-audio .reply-quote-accent{
+    background:linear-gradient(180deg,#4ade80,#22c55e) !important;
+}
+
+.reply-quote-deleted .reply-quote-accent{
+    background:linear-gradient(180deg,#fb7185,#ef4444) !important;
+}
+
+.reply-quote-missing .reply-quote-accent{
+    background:linear-gradient(180deg,#fbbf24,#f59e0b) !important;
+}
+
+.message-own .reply-quote{
+    background:linear-gradient(
+        135deg,
+        rgba(30,64,175,.48),
+        rgba(15,23,42,.34)
+    ) !important;
+}
+
+.message-other .reply-quote{
+    background:linear-gradient(
+        135deg,
+        rgba(15,23,42,.48),
+        rgba(30,41,59,.38)
+    ) !important;
+}
+
+@media (max-width:480px){
+    .reply-quote{
+        margin-bottom:9px !important;
+        border-radius:12px !important;
+    }
+
+    .reply-quote-content{
+        padding:7px 9px 8px !important;
+    }
+
+    .reply-quote-sender{
+        font-size:11px !important;
+        margin-bottom:3px !important;
+    }
+
+    .reply-quote-text{
+        font-size:13px !important;
+    }
+
+    .reply-quote-thumb{
+        width:38px !important;
+        height:38px !important;
+        min-width:38px !important;
+        min-height:38px !important;
+        max-width:38px !important;
+        max-height:38px !important;
+        flex-basis:38px !important;
+    }
+
+    .reply-quote-icon{
+        width:32px !important;
+        height:32px !important;
+        min-width:32px !important;
+        flex-basis:32px !important;
+        font-size:15px !important;
+    }
+
+    .reply-quote-media-label{
+        font-size:12px !important;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — REPLY CARD REDESIGN V4
+   Clearly visible visual redesign of in-bubble reply cards.
+   CSS-only: reply/message behavior is untouched.
+   ========================================================= */
+
+.reply-quote{
+    display:flex !important;
+    align-items:stretch !important;
+    width:100% !important;
+    margin:-1px 0 10px !important;
+    padding:0 !important;
+    border-radius:15px !important;
+    overflow:hidden !important;
+    background:
+        linear-gradient(135deg, rgba(37,99,235,.18), rgba(15,23,42,.42)) !important;
+    border:1px solid rgba(148,163,184,.20) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.045),
+        0 5px 14px rgba(0,0,0,.12) !important;
+    transform:none !important;
+}
+
+.reply-quote::after{
+    display:none !important;
+}
+
+.reply-quote-accent{
+    width:5px !important;
+    min-width:5px !important;
+    flex:0 0 5px !important;
+    border-radius:0 !important;
+    opacity:1 !important;
+}
+
+.reply-quote-content{
+    display:flex !important;
+    flex-direction:column !important;
+    justify-content:center !important;
+    min-width:0 !important;
+    flex:1 1 auto !important;
+    gap:0 !important;
+    padding:8px 9px 9px !important;
+    background:rgba(2,8,23,.10) !important;
+}
+
+.reply-quote-sender{
+    display:flex !important;
+    align-items:center !important;
+    min-width:0 !important;
+    width:100% !important;
+    margin:0 0 5px !important;
+    padding:0 !important;
+    color:#eaf2ff !important;
+    font-size:12px !important;
+    font-weight:800 !important;
+    line-height:1.15 !important;
+    letter-spacing:.1px !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+.reply-quote-sender::before{
+    content:"" !important;
+    width:6px !important;
+    height:6px !important;
+    min-width:6px !important;
+    margin-right:6px !important;
+    border-radius:50% !important;
+    background:#60a5fa !important;
+    box-shadow:0 0 7px rgba(96,165,250,.45) !important;
+}
+
+.reply-quote-text{
+    display:block !important;
+    width:100% !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:6px 8px !important;
+    border-radius:9px !important;
+    background:rgba(255,255,255,.055) !important;
+    border:1px solid rgba(255,255,255,.07) !important;
+    color:#ffffff !important;
+    font-size:13px !important;
+    font-weight:500 !important;
+    line-height:1.28 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    box-sizing:border-box !important;
+}
+
+.reply-quote-media{
+    display:flex !important;
+    align-items:center !important;
+    width:100% !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:4px 5px !important;
+    gap:8px !important;
+    border-radius:9px !important;
+    background:rgba(255,255,255,.055) !important;
+    border:1px solid rgba(255,255,255,.07) !important;
+    box-sizing:border-box !important;
+}
+
+.reply-quote-thumb{
+    display:block !important;
+    width:40px !important;
+    height:40px !important;
+    min-width:40px !important;
+    min-height:40px !important;
+    max-width:40px !important;
+    max-height:40px !important;
+    flex:0 0 40px !important;
+    margin:0 !important;
+    padding:0 !important;
+    border-radius:8px !important;
+    border:1px solid rgba(255,255,255,.14) !important;
+    box-shadow:0 2px 8px rgba(0,0,0,.20) !important;
+    object-fit:cover !important;
+}
+
+.reply-quote-icon{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:32px !important;
+    height:32px !important;
+    min-width:32px !important;
+    flex:0 0 32px !important;
+    border-radius:50% !important;
+    background:rgba(74,222,128,.18) !important;
+    border:1px solid rgba(74,222,128,.16) !important;
+    font-size:15px !important;
+}
+
+.reply-quote-media-label{
+    display:block !important;
+    min-width:0 !important;
+    flex:1 1 auto !important;
+    color:#eaf2ff !important;
+    font-size:13px !important;
+    font-weight:600 !important;
+    line-height:1.2 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+.reply-quote-duration{
+    flex:0 0 auto !important;
+    margin-left:auto !important;
+    color:#cbd5e1 !important;
+    font-size:10px !important;
+    font-weight:700 !important;
+    padding-left:4px !important;
+}
+
+.reply-quote-image .reply-quote-accent{
+    background:linear-gradient(180deg,#c084fc,#8b5cf6) !important;
+}
+
+.reply-quote-audio .reply-quote-accent{
+    background:linear-gradient(180deg,#4ade80,#22c55e) !important;
+}
+
+.reply-quote-deleted .reply-quote-accent{
+    background:linear-gradient(180deg,#fb7185,#ef4444) !important;
+}
+
+.reply-quote-missing .reply-quote-accent{
+    background:linear-gradient(180deg,#fbbf24,#f59e0b) !important;
+}
+
+.reply-quote-deleted .reply-quote-media-label{
+    color:#fecaca !important;
+}
+
+.reply-quote-missing .reply-quote-media-label{
+    color:#fde68a !important;
+}
+
+@media (max-width:480px){
+    .reply-quote{
+        margin-bottom:9px !important;
+        border-radius:14px !important;
+    }
+
+    .reply-quote-content{
+        padding:7px 8px 8px !important;
+    }
+
+    .reply-quote-sender{
+        font-size:11px !important;
+        margin-bottom:4px !important;
+    }
+
+    .reply-quote-sender::before{
+        width:5px !important;
+        height:5px !important;
+        min-width:5px !important;
+        margin-right:5px !important;
+    }
+
+    .reply-quote-text{
+        padding:5px 7px !important;
+        font-size:12px !important;
+        border-radius:8px !important;
+    }
+
+    .reply-quote-media{
+        padding:4px !important;
+        gap:7px !important;
+        border-radius:8px !important;
+    }
+
+    .reply-quote-thumb{
+        width:38px !important;
+        height:38px !important;
+        min-width:38px !important;
+        min-height:38px !important;
+        max-width:38px !important;
+        max-height:38px !important;
+        flex-basis:38px !important;
+    }
+
+    .reply-quote-icon{
+        width:31px !important;
+        height:31px !important;
+        min-width:31px !important;
+        flex-basis:31px !important;
+        font-size:15px !important;
+    }
+
+    .reply-quote-media-label{
+        font-size:12px !important;
+    }
+
+    .reply-quote-duration{
+        font-size:10px !important;
+    }
+}
