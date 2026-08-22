@@ -2250,6 +2250,9 @@ function addMessage(msg){
                         playsinline
                         preload="metadata"
                         aria-label="Video message"
+                        data-video-url="${escapeHTML(msg.media_url)}"
+                        role="button"
+                        tabindex="0"
                     ></video>
                 </div>
             `;
@@ -3630,3 +3633,281 @@ document.addEventListener("keydown", event => {
         closePhotoViewer();
     }
 });
+
+/* =========================================================
+   LUCKY CHAT — FULL-SCREEN VIDEO VIEWER V2
+   ========================================================= */
+
+const videoViewer = document.getElementById("videoViewer");
+const videoViewerStage = document.getElementById("videoViewerStage");
+const videoViewerVideo = document.getElementById("videoViewerVideo");
+const videoViewerCloseButton = document.getElementById("videoViewerClose");
+const videoViewerSpinner = document.getElementById("videoViewerSpinner");
+const videoViewerControls = document.getElementById("videoViewerControls");
+const videoViewerPlay = document.getElementById("videoViewerPlay");
+const videoViewerSeek = document.getElementById("videoViewerSeek");
+const videoViewerCurrentTime = document.getElementById("videoViewerCurrentTime");
+const videoViewerDuration = document.getElementById("videoViewerDuration");
+const videoViewerMute = document.getElementById("videoViewerMute");
+const videoViewerFullscreen = document.getElementById("videoViewerFullscreen");
+
+const videoViewerState = {
+    open:false,
+    sourceElement:null,
+    pointers:new Map(),
+    startX:0,
+    startY:0,
+    swipeY:0,
+    lastTap:0,
+    controlsTimer:null
+};
+
+function videoViewerFormatTime(seconds){
+    const value=Math.max(0,Math.floor(Number(seconds)||0));
+    return `${Math.floor(value/60)}:${String(value%60).padStart(2,"0")}`;
+}
+
+function videoViewerSetLoading(show){
+    videoViewerSpinner?.classList.toggle("is-visible",!!show);
+    videoViewerVideo?.classList.toggle("is-loading",!!show);
+}
+
+function videoViewerUpdatePlayButton(){
+    if(!videoViewerPlay||!videoViewerVideo) return;
+    videoViewerPlay.textContent=videoViewerVideo.paused?"▶":"⏸";
+}
+
+function videoViewerUpdateTime(){
+    if(!videoViewerVideo) return;
+    const duration=Number(videoViewerVideo.duration);
+    const current=Number(videoViewerVideo.currentTime||0);
+    if(videoViewerCurrentTime) videoViewerCurrentTime.textContent=videoViewerFormatTime(current);
+    if(videoViewerDuration){
+        videoViewerDuration.textContent=
+            Number.isFinite(duration)&&duration>0?videoViewerFormatTime(duration):"0:00";
+    }
+    if(videoViewerSeek){
+        const ratio=Number.isFinite(duration)&&duration>0?Math.max(0,Math.min(1,current/duration)):0;
+        videoViewerSeek.value=String(Math.round(ratio*1000));
+    }
+}
+
+function videoViewerShowControls(){
+    if(!videoViewerControls) return;
+    videoViewerControls.classList.add("is-visible");
+    clearTimeout(videoViewerState.controlsTimer);
+    videoViewerState.controlsTimer=setTimeout(()=>{
+        if(videoViewerVideo&&!videoViewerVideo.paused) videoViewerControls.classList.remove("is-visible");
+    },2200);
+}
+
+function videoViewerTogglePlay(){
+    if(!videoViewerVideo) return;
+    if(videoViewerVideo.paused) videoViewerVideo.play().catch(()=>{});
+    else videoViewerVideo.pause();
+    videoViewerShowControls();
+}
+
+function videoViewerToggleMute(){
+    if(!videoViewerVideo) return;
+    videoViewerVideo.muted=!videoViewerVideo.muted;
+    if(videoViewerMute) videoViewerMute.textContent=videoViewerVideo.muted?"🔇":"🔊";
+    videoViewerShowControls();
+}
+
+function videoViewerSeekFromRange(){
+    if(!videoViewerVideo||!videoViewerSeek) return;
+    const duration=Number(videoViewerVideo.duration);
+    if(!Number.isFinite(duration)||duration<=0) return;
+    videoViewerVideo.currentTime=(Number(videoViewerSeek.value)/1000)*duration;
+    videoViewerShowControls();
+}
+
+async function videoViewerToggleFullscreen(){
+    try{
+        if(document.fullscreenElement) await document.exitFullscreen();
+        else if(videoViewerStage?.requestFullscreen) await videoViewerStage.requestFullscreen();
+        else if(videoViewerVideo?.webkitEnterFullscreen) videoViewerVideo.webkitEnterFullscreen();
+    }catch(_){}
+    videoViewerShowControls();
+}
+
+function videoViewerOpen(source){
+    if(!videoViewer||!videoViewerVideo||!source) return;
+    const url=source.dataset.videoUrl||source.currentSrc||source.getAttribute("src")||source.src;
+    if(!url) return;
+
+    videoViewerState.open=true;
+    videoViewerState.sourceElement=source;
+    videoViewerState.pointers.clear();
+    videoViewerState.swipeY=0;
+    videoViewerState.lastTap=0;
+
+    videoViewerStage.style.transform="translate3d(0,0,0) scale(1)";
+    videoViewer.classList.remove("is-closing","is-swipe-dismissing");
+    videoViewer.classList.add("is-open");
+    videoViewer.setAttribute("aria-hidden","false");
+    document.body.classList.add("video-viewer-open");
+
+    videoViewerSetLoading(true);
+    videoViewerVideo.pause();
+    videoViewerVideo.currentTime=0;
+    videoViewerVideo.src=url;
+    videoViewerVideo.load();
+    videoViewerUpdateTime();
+    videoViewerUpdatePlayButton();
+    videoViewerShowControls();
+
+    videoViewerVideo.onloadedmetadata=()=>{
+        videoViewerSetLoading(false);
+        videoViewerUpdateTime();
+    };
+    videoViewerVideo.oncanplay=()=>videoViewerSetLoading(false);
+    videoViewerVideo.onerror=()=>{
+        videoViewerSetLoading(false);
+        console.error("VIDEO VIEWER: video failed to load");
+    };
+    videoViewerVideo.play().catch(()=>videoViewerUpdatePlayButton());
+}
+
+function videoViewerClose(){
+    if(!videoViewer||!videoViewerState.open) return;
+    videoViewerState.open=false;
+    clearTimeout(videoViewerState.controlsTimer);
+    videoViewer.classList.remove("is-swipe-dismissing");
+    videoViewer.classList.add("is-closing");
+    videoViewer.setAttribute("aria-hidden","true");
+
+    if(document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+    if(videoViewerVideo) videoViewerVideo.pause();
+
+    setTimeout(()=>{
+        videoViewer.classList.remove("is-open","is-closing");
+        document.body.classList.remove("video-viewer-open");
+        if(videoViewerVideo){
+            videoViewerVideo.removeAttribute("src");
+            videoViewerVideo.load();
+        }
+        videoViewerState.sourceElement=null;
+        videoViewerSetLoading(false);
+        videoViewerUpdateTime();
+        videoViewerUpdatePlayButton();
+    },230);
+}
+
+function videoViewerDoubleTap(clientX){
+    if(!videoViewerVideo) return;
+    const direction=clientX<(window.innerWidth/2)?-1:1;
+    const duration=Number(videoViewerVideo.duration||0);
+    const next=videoViewerVideo.currentTime+direction*10;
+    videoViewerVideo.currentTime=Math.max(0,Math.min(duration>0?duration:next,next));
+    videoViewerShowControls();
+}
+
+function videoViewerPointerDown(event){
+    if(!videoViewerState.open) return;
+    videoViewerState.pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(videoViewerState.pointers.size===1){
+        const now=performance.now();
+        if(now-videoViewerState.lastTap<300){
+            videoViewerDoubleTap(event.clientX);
+            videoViewerState.lastTap=0;
+            event.preventDefault();
+            return;
+        }
+        videoViewerState.lastTap=now;
+        videoViewerState.startX=event.clientX;
+        videoViewerState.startY=event.clientY;
+        videoViewerState.swipeY=0;
+    }
+    videoViewerShowControls();
+}
+
+function videoViewerPointerMove(event){
+    if(!videoViewerState.open) return;
+    const pointer=videoViewerState.pointers.get(event.pointerId);
+    if(!pointer||videoViewerState.pointers.size!==1) return;
+    pointer.x=event.clientX; pointer.y=event.clientY;
+    const dx=event.clientX-videoViewerState.startX;
+    const dy=event.clientY-videoViewerState.startY;
+    if(Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>8){
+        videoViewerState.swipeY=dy;
+        videoViewerStage.style.transform=
+            `translate3d(0,${dy}px,0) scale(${Math.max(.84,1-Math.abs(dy)/1000)})`;
+        videoViewer.classList.add("is-swipe-dismissing");
+        event.preventDefault();
+    }
+}
+
+function videoViewerPointerEnd(event){
+    videoViewerState.pointers.delete(event.pointerId);
+    if(videoViewerState.pointers.size===0){
+        const swipe=videoViewerState.swipeY;
+        if(Math.abs(swipe)>120) videoViewerClose();
+        else{
+            videoViewer.classList.remove("is-swipe-dismissing");
+            videoViewerStage.classList.add("is-animating");
+            videoViewerStage.style.transform="translate3d(0,0,0) scale(1)";
+            setTimeout(()=>videoViewerStage.classList.remove("is-animating"),220);
+        }
+        videoViewerState.swipeY=0;
+    }
+    event.preventDefault();
+}
+
+function videoViewerPointerCancel(event){
+    videoViewerState.pointers.delete(event.pointerId);
+    videoViewerState.swipeY=0;
+    videoViewer.classList.remove("is-swipe-dismissing");
+    videoViewerStage.classList.add("is-animating");
+    videoViewerStage.style.transform="translate3d(0,0,0) scale(1)";
+    setTimeout(()=>videoViewerStage.classList.remove("is-animating"),220);
+}
+
+/* Capture-phase delegation coexists with message long-press/pointer logic. */
+document.addEventListener("pointerup",event=>{
+    const video=event.target?.closest?.(".chat-video");
+    if(!video||videoViewerState.open) return;
+
+    const rect=video.getBoundingClientRect();
+    const y=event.clientY-rect.top;
+
+    /* Keep taps on native control areas inside the embedded player. */
+    if(y>rect.height*.82||y<rect.height*.12) return;
+
+    videoViewerOpen(video);
+},true);
+
+document.addEventListener("click",event=>{
+    const video=event.target?.closest?.(".chat-video");
+    if(!video||videoViewerState.open||event.target!==video) return;
+    videoViewerOpen(video);
+},true);
+
+videoViewerStage?.addEventListener("pointerdown",videoViewerPointerDown,{passive:false});
+videoViewerStage?.addEventListener("pointermove",videoViewerPointerMove,{passive:false});
+videoViewerStage?.addEventListener("pointerup",videoViewerPointerEnd,{passive:false});
+videoViewerStage?.addEventListener("pointercancel",videoViewerPointerCancel,{passive:false});
+
+videoViewerPlay?.addEventListener("click",e=>{e.stopPropagation();videoViewerTogglePlay();});
+videoViewerMute?.addEventListener("click",e=>{e.stopPropagation();videoViewerToggleMute();});
+videoViewerFullscreen?.addEventListener("click",e=>{e.stopPropagation();void videoViewerToggleFullscreen();});
+videoViewerSeek?.addEventListener("input",e=>{e.stopPropagation();videoViewerSeekFromRange();});
+videoViewerCloseButton?.addEventListener("click",e=>{e.stopPropagation();videoViewerClose();});
+videoViewer?.querySelector("[data-video-viewer-close='1']")?.addEventListener("click",videoViewerClose);
+
+videoViewerVideo?.addEventListener("timeupdate",videoViewerUpdateTime);
+videoViewerVideo?.addEventListener("loadedmetadata",videoViewerUpdateTime);
+videoViewerVideo?.addEventListener("play",()=>{videoViewerUpdatePlayButton();videoViewerShowControls();});
+videoViewerVideo?.addEventListener("pause",()=>{videoViewerUpdatePlayButton();videoViewerShowControls();});
+videoViewerVideo?.addEventListener("ended",()=>{videoViewerUpdatePlayButton();videoViewerShowControls();});
+
+document.addEventListener("keydown",event=>{
+    if(!videoViewerState.open) return;
+    if(event.key==="Escape"){event.preventDefault();videoViewerClose();return;}
+    if(event.key===" "){event.preventDefault();videoViewerTogglePlay();return;}
+    if(event.key==="ArrowLeft"){event.preventDefault();if(videoViewerVideo)videoViewerVideo.currentTime=Math.max(0,videoViewerVideo.currentTime-5);return;}
+    if(event.key==="ArrowRight"){event.preventDefault();if(videoViewerVideo)videoViewerVideo.currentTime=Math.min(Number(videoViewerVideo.duration||0),videoViewerVideo.currentTime+5);}
+});
+
+

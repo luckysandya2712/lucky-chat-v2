@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lucky Chat</title>
 
-<link rel="stylesheet" href="/static/css/chat.css?v=20260822-media-video-v1">
+<link rel="stylesheet" href="/static/css/chat.css?v=20260822-media-video-viewer-v2">
 
 </head>
 
@@ -955,8 +955,29 @@ Welcome to Lucky Chat 🚀
 </div>
 
 
+<!-- Full-screen video viewer -->
+<div id="videoViewer" class="video-viewer" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="video-viewer-backdrop" data-video-viewer-close="1"></div>
+    <div class="video-viewer-toolbar">
+        <button id="videoViewerClose" class="video-viewer-close" type="button" aria-label="Close video viewer">✕</button>
+    </div>
+    <div id="videoViewerStage" class="video-viewer-stage">
+        <div id="videoViewerSpinner" class="video-viewer-spinner" aria-hidden="true"><span></span></div>
+        <video id="videoViewerVideo" class="video-viewer-video" playsinline preload="metadata" aria-label="Full-screen video"></video>
+        <div id="videoViewerControls" class="video-viewer-controls">
+            <button id="videoViewerPlay" class="video-viewer-control" type="button" aria-label="Play video">▶</button>
+            <span id="videoViewerCurrentTime" class="video-viewer-time">0:00</span>
+            <input id="videoViewerSeek" class="video-viewer-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek video">
+            <span id="videoViewerDuration" class="video-viewer-time">0:00</span>
+            <button id="videoViewerMute" class="video-viewer-control" type="button" aria-label="Mute video">🔊</button>
+            <button id="videoViewerFullscreen" class="video-viewer-control" type="button" aria-label="Enter fullscreen">⛶</button>
+        </div>
+    </div>
+</div>
+
+
 <script src="/static/js/crypto.core.js?v=20260820-fix7"></script>
-<script src="/static/js/chat.core.js?v=20260822-media-video-v1"></script>
+<script src="/static/js/chat.core.js?v=20260822-media-video-viewer-v2"></script>
 
 </body>
 </html>
