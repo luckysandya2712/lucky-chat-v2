@@ -3396,3 +3396,1021 @@ body.video-viewer-open{overflow:hidden !important;touch-action:none;}
 @media (prefers-reduced-motion:reduce){
     .video-viewer,.video-viewer-stage,.video-viewer-controls{transition:none !important;}
 }
+
+
+/* =========================================================
+   LUCKY CHAT — MEDIA GALLERY V1
+   ========================================================= */
+body.chat-media-gallery-open{overflow:hidden!important}
+.chat-media-gallery-btn{width:42px;min-width:42px;height:42px;padding:0!important;display:flex;align-items:center;justify-content:center;border-radius:14px!important;background:#1e293b!important;color:#f8fafc!important;border:1px solid rgba(148,163,184,.12)!important;box-shadow:0 6px 18px rgba(0,0,0,.16);cursor:pointer}
+.chat-media-gallery-btn:active{transform:scale(.93)}
+.chat-media-gallery{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;z-index:120000;background:rgba(0,0,0,.74);transition:opacity .22s ease,visibility 0s linear .22s}
+.chat-media-gallery.is-open,.chat-media-gallery.is-closing{visibility:visible}.chat-media-gallery.is-open{opacity:1;transition:opacity .22s ease}.chat-media-gallery.is-closing{opacity:0}
+.chat-media-gallery-backdrop{position:absolute;inset:0;background:radial-gradient(circle at top,rgba(37,99,235,.10),rgba(2,6,23,.80));backdrop-filter:blur(5px)}
+.chat-media-gallery-panel{position:relative;z-index:2;width:min(760px,96vw);height:min(84vh,780px);display:flex;flex-direction:column;overflow:hidden;background:rgba(11,20,36,.98);border:1px solid rgba(96,165,250,.20);border-radius:24px;box-shadow:0 24px 80px rgba(0,0,0,.55);transform:translateY(12px) scale(.98);transition:transform .22s ease}
+.chat-media-gallery.is-open .chat-media-gallery-panel{transform:none}
+.chat-media-gallery-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid rgba(255,255,255,.06)}
+.chat-media-gallery-title{color:#f8fafc;font-size:21px;font-weight:750}.chat-media-gallery-count{margin-top:4px;color:#94a3b8;font-size:12px}
+.chat-media-gallery-close{width:40px;height:40px;min-width:40px;padding:0!important;border-radius:50%!important;background:rgba(255,255,255,.06)!important;color:#f8fafc!important;font-size:21px}
+.chat-media-gallery-tabs{display:flex;gap:7px;padding:10px 12px;overflow-x:auto;scrollbar-width:none}.chat-media-gallery-tabs::-webkit-scrollbar{display:none}
+.chat-media-gallery-tab{border:0!important;padding:8px 12px!important;border-radius:999px!important;background:rgba(255,255,255,.06)!important;color:#cbd5e1!important;font-size:12px!important;font-weight:650;white-space:nowrap}
+.chat-media-gallery-tab.is-active{background:#2563eb!important;color:#fff!important;box-shadow:0 6px 16px rgba(37,99,235,.22)}
+.chat-media-gallery-grid{flex:1;min-height:0;overflow-y:auto;padding:4px 12px 16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:145px;gap:7px;align-content:start}
+.chat-media-gallery-item{position:relative;width:100%;height:100%;min-width:0;min-height:0;padding:0!important;border:0!important;border-radius:13px!important;overflow:hidden;background:#172033!important;color:#f8fafc;box-shadow:0 5px 18px rgba(0,0,0,.18)}
+.chat-media-gallery-item img,.chat-media-gallery-item video{display:block;width:100%;height:100%;object-fit:cover;background:#0b1220}.chat-media-gallery-item{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.chat-media-gallery-overlay{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:flex-end;justify-content:space-between;gap:6px;padding:22px 8px 7px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;pointer-events:none}.chat-media-gallery-overlay b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.chat-media-gallery-overlay small{color:rgba(255,255,255,.74);font-size:9px;flex:0 0 auto}
+.chat-media-gallery-play{position:absolute;top:50%;left:50%;width:42px;height:42px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border-radius:50%;background:rgba(255,255,255,.88);color:#0f172a;font-size:16px;box-shadow:0 8px 24px rgba(0,0,0,.28);pointer-events:none}
+.chat-media-gallery-audio{grid-column:span 3;height:auto;min-height:108px;display:flex;align-items:flex-start;padding:12px!important;text-align:left;cursor:default}.chat-media-gallery-audio-icon{width:42px;height:42px;min-width:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(74,222,128,.14);font-size:20px}.chat-media-gallery-audio-main{min-width:0;flex:1;margin-left:10px}.chat-media-gallery-audio-top{display:flex;justify-content:space-between;gap:8px}.chat-media-gallery-audio-top b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#dbeafe;font-size:13px}.chat-media-gallery-audio-top small{color:#94a3b8;font-size:10px;flex:0 0 auto}.chat-media-gallery-audio-caption{margin-top:4px;color:#cbd5e1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chat-media-gallery-audio-player{display:block;width:100%;height:34px;margin-top:8px}
+.chat-media-gallery-empty{flex:1;align-items:center;justify-content:center;flex-direction:column;gap:7px;padding:35px 25px;text-align:center;color:#94a3b8}.chat-media-gallery-empty strong{color:#e2e8f0;font-size:16px}.chat-media-gallery-empty span{max-width:300px;font-size:12px;line-height:1.45}.chat-media-gallery-empty-icon{font-size:34px;opacity:.8}
+@media (max-width:560px){.chat-media-gallery-panel{width:100vw;height:100vh;border-radius:0;border-left:0;border-right:0}.chat-media-gallery-grid{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:31vw;gap:5px;padding:4px 8px 12px}.chat-media-gallery-audio{grid-column:span 3;min-height:103px}.chat-media-gallery-header{padding-top:max(14px,env(safe-area-inset-top))}}
+
+
+/* =========================================================
+   LUCKY CHAT — HEADER MEDIA GALLERY VISIBILITY FIX
+   Keeps search + media gallery buttons visible on mobile.
+   ========================================================= */
+
+.header{
+    min-width:0;
+}
+
+.header > div{
+    min-width:0;
+}
+
+.header-name{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.chat-header-actions{
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex:0 0 auto;
+    min-width:max-content;
+}
+
+.chat-search-btn,
+.chat-media-gallery-btn{
+    width:42px !important;
+    height:42px !important;
+    min-width:42px !important;
+    flex:0 0 42px !important;
+    margin-left:0 !important;
+    padding:0 !important;
+    display:flex !important;
+    align-items:center;
+    justify-content:center;
+    box-sizing:border-box;
+}
+
+.chat-search-btn{
+    border-radius:14px !important;
+}
+
+.chat-media-gallery-btn{
+    border-radius:14px !important;
+    font-size:20px !important;
+}
+
+@media (max-width:430px){
+    .header{
+        gap:9px !important;
+        padding:10px !important;
+    }
+
+    .header-avatar{
+        width:48px !important;
+        height:48px !important;
+        flex:0 0 48px !important;
+    }
+
+    .chat-header-actions{
+        gap:6px;
+    }
+
+    .chat-search-btn,
+    .chat-media-gallery-btn{
+        width:40px !important;
+        height:40px !important;
+        min-width:40px !important;
+        flex-basis:40px !important;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — MEDIA GALLERY V2 UI
+   Polished mobile-first gallery interface.
+   ========================================================= */
+
+.chat-media-gallery{
+    padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+    box-sizing:border-box;
+}
+
+.chat-media-gallery-panel{
+    width:min(780px, 100%);
+    height:min(88dvh, 860px);
+    background:
+        linear-gradient(180deg, rgba(13,22,39,.99), rgba(8,15,28,.99));
+    border:1px solid rgba(148,163,184,.12);
+    border-radius:26px;
+    box-shadow:
+        0 30px 100px rgba(0,0,0,.62),
+        inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.chat-media-gallery-header{
+    padding:14px 14px 12px;
+    background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,0));
+    border-bottom:1px solid rgba(148,163,184,.08);
+}
+
+.chat-media-gallery-heading{
+    min-width:0;
+}
+
+.chat-media-gallery-title-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+
+.chat-media-gallery-title-icon{
+    width:34px;
+    height:34px;
+    border-radius:11px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(145deg, rgba(59,130,246,.22), rgba(96,165,250,.08));
+    border:1px solid rgba(96,165,250,.16);
+    font-size:16px;
+    flex-shrink:0;
+}
+
+.chat-media-gallery-title{
+    font-size:20px;
+    font-weight:800;
+    letter-spacing:-.2px;
+}
+
+.chat-media-gallery-count{
+    margin-top:3px;
+    padding-left:42px;
+    color:#7f8ea3;
+    font-size:11px;
+}
+
+.chat-media-gallery-close{
+    width:42px;
+    height:42px;
+    min-width:42px;
+    background:rgba(255,255,255,.05)!important;
+    border:1px solid rgba(255,255,255,.07)!important;
+    box-shadow:0 8px 20px rgba(0,0,0,.18);
+}
+
+.chat-media-gallery-tabs{
+    position:sticky;
+    top:0;
+    z-index:4;
+    gap:7px;
+    padding:10px 10px 11px;
+    background:rgba(9,17,31,.94);
+    border-bottom:1px solid rgba(148,163,184,.06);
+    backdrop-filter:blur(14px);
+}
+
+.chat-media-gallery-tab{
+    display:inline-flex!important;
+    align-items:center;
+    gap:6px;
+    padding:8px 10px!important;
+    border:1px solid rgba(148,163,184,.09)!important;
+    box-shadow:none;
+    transition:
+        background .18s ease,
+        border-color .18s ease,
+        transform .15s ease;
+}
+
+.chat-media-gallery-tab:active{
+    transform:scale(.96);
+}
+
+.chat-media-gallery-tab-icon{
+    font-size:12px;
+    line-height:1;
+}
+
+.chat-media-gallery-tab-label{
+    line-height:1;
+}
+
+.chat-media-gallery-tab-count{
+    min-width:18px;
+    height:18px;
+    padding:0 5px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    background:rgba(148,163,184,.12);
+    color:#cbd5e1;
+    font-size:9px;
+    font-weight:800;
+}
+
+.chat-media-gallery-tab.is-active{
+    border-color:rgba(96,165,250,.26)!important;
+    background:linear-gradient(135deg,#2563eb,#3b82f6)!important;
+    box-shadow:0 8px 18px rgba(37,99,235,.20);
+}
+
+.chat-media-gallery-tab.is-active .chat-media-gallery-tab-count{
+    background:rgba(255,255,255,.18);
+    color:#fff;
+}
+
+.chat-media-gallery-grid{
+    padding:10px 10px 18px;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    grid-auto-rows:clamp(112px, 23vw, 170px);
+    gap:7px;
+}
+
+.chat-media-gallery-item{
+    border-radius:16px!important;
+    background:linear-gradient(145deg,#182338,#101827)!important;
+    border:1px solid rgba(255,255,255,.04)!important;
+    box-shadow:
+        0 7px 18px rgba(0,0,0,.22),
+        inset 0 1px 0 rgba(255,255,255,.025);
+    transition:transform .18s ease, box-shadow .18s ease;
+}
+
+.chat-media-gallery-item:active{
+    transform:scale(.985);
+}
+
+.chat-media-gallery-item img,
+.chat-media-gallery-item video{
+    transform:scale(1.002);
+}
+
+.chat-media-gallery-overlay{
+    padding:28px 9px 8px;
+    background:linear-gradient(transparent, rgba(0,0,0,.78));
+}
+
+.chat-media-gallery-overlay b{
+    font-size:10px;
+    font-weight:750;
+}
+
+.chat-media-gallery-overlay small{
+    font-size:9px;
+}
+
+.chat-media-gallery-play{
+    width:40px;
+    height:40px;
+    background:rgba(255,255,255,.90);
+    box-shadow:
+        0 8px 24px rgba(0,0,0,.32),
+        0 0 0 7px rgba(255,255,255,.06);
+    transition:transform .16s ease;
+}
+
+.chat-media-gallery-item:active .chat-media-gallery-play{
+    transform:translate(-50%,-50%) scale(.94);
+}
+
+.chat-media-gallery-audio{
+    min-height:112px;
+    padding:13px!important;
+    border-radius:17px!important;
+    background:
+        linear-gradient(145deg, rgba(30,41,59,.96), rgba(15,23,42,.98))!important;
+}
+
+.chat-media-gallery-audio-icon{
+    width:44px;
+    height:44px;
+    min-width:44px;
+    border-radius:13px;
+    background:linear-gradient(145deg, rgba(74,222,128,.18), rgba(34,197,94,.07));
+    border:1px solid rgba(74,222,128,.12);
+}
+
+.chat-media-gallery-audio-top b{
+    color:#e2e8f0;
+    font-size:13px;
+}
+
+.chat-media-gallery-audio-top small{
+    font-size:10px;
+}
+
+.chat-media-gallery-audio-caption{
+    color:#94a3b8;
+    font-size:11px;
+}
+
+.chat-media-gallery-audio-player{
+    margin-top:9px;
+    height:34px;
+    border-radius:12px;
+}
+
+.chat-media-gallery-empty{
+    min-height:240px;
+}
+
+@media (max-width:560px){
+    .chat-media-gallery{
+        padding:0;
+    }
+
+    .chat-media-gallery-panel{
+        width:100%;
+        height:100dvh;
+        max-height:none;
+        border-radius:0;
+        border-left:0;
+        border-right:0;
+        border-top:0;
+    }
+
+    .chat-media-gallery-header{
+        padding:
+            max(12px, env(safe-area-inset-top))
+            12px
+            11px;
+    }
+
+    .chat-media-gallery-grid{
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        grid-auto-rows:31vw;
+        gap:5px;
+        padding:8px 8px 14px;
+    }
+
+    .chat-media-gallery-item{
+        border-radius:13px!important;
+    }
+
+    .chat-media-gallery-tabs{
+        padding:9px 8px 10px;
+    }
+
+    .chat-media-gallery-tab{
+        padding:8px 9px!important;
+        gap:5px;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — MEDIA GALLERY V3 UI
+   Album-style organization + compact voice list.
+   ========================================================= */
+
+.chat-media-gallery-grid{
+    display:block!important;
+    overflow-y:auto;
+    padding:10px 10px 20px!important;
+}
+
+.chat-media-gallery-media-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:7px;
+}
+
+.chat-media-gallery-section-label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:5px 2px 9px;
+    color:#e2e8f0;
+    font-size:12px;
+    font-weight:800;
+    letter-spacing:.2px;
+}
+
+.chat-media-gallery-section-label span{
+    flex:0 0 auto;
+}
+
+.chat-media-gallery-section-label::after{
+    content:"";
+    height:1px;
+    flex:1;
+    background:linear-gradient(90deg,rgba(148,163,184,.18),transparent);
+}
+
+.chat-media-gallery-section-label em{
+    flex:0 0 auto;
+    font-size:9px;
+    font-style:normal;
+    color:#94a3b8;
+    padding:3px 7px;
+    border-radius:999px;
+    background:rgba(148,163,184,.08);
+}
+
+.chat-media-gallery-section-label-voice{
+    margin-top:14px;
+}
+
+.chat-media-gallery-item{
+    position:relative;
+}
+
+.chat-media-gallery-photo,
+.chat-media-gallery-video{
+    height:clamp(116px,30vw,180px)!important;
+}
+
+.chat-media-gallery-overlay{
+    padding:30px 9px 8px;
+}
+
+.chat-media-gallery-overlay b{
+    font-size:10px;
+}
+
+.chat-media-gallery-overlay small{
+    font-size:9px;
+}
+
+.chat-media-gallery-audio{
+    width:100%;
+    min-height:76px!important;
+    height:auto!important;
+    display:flex;
+    align-items:center;
+    margin-bottom:7px;
+    padding:10px 11px!important;
+    border-radius:16px!important;
+    background:
+        linear-gradient(135deg,rgba(30,41,59,.98),rgba(18,28,46,.98))!important;
+    border:1px solid rgba(148,163,184,.10)!important;
+}
+
+.chat-media-gallery-audio-icon{
+    width:40px;
+    height:40px;
+    min-width:40px;
+    border-radius:12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:18px;
+    background:rgba(74,222,128,.11);
+    border:1px solid rgba(74,222,128,.10);
+}
+
+.chat-media-gallery-audio-main{
+    flex:1;
+    min-width:0;
+    margin-left:9px;
+}
+
+.chat-media-gallery-audio-row{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    min-width:0;
+}
+
+.chat-media-gallery-audio-body{
+    flex:1;
+    min-width:0;
+}
+
+.chat-media-gallery-audio-play{
+    width:36px!important;
+    height:36px!important;
+    min-width:36px!important;
+    padding:0!important;
+    border-radius:50%!important;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(255,255,255,.10)!important;
+    border:1px solid rgba(255,255,255,.08)!important;
+    color:#fff!important;
+    font-size:14px!important;
+    box-shadow:0 6px 18px rgba(0,0,0,.18);
+}
+
+.chat-media-gallery-audio-play:active{
+    transform:scale(.92);
+}
+
+.chat-media-gallery-audio-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+}
+
+.chat-media-gallery-audio-top b{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#e2e8f0;
+    font-size:12px;
+}
+
+.chat-media-gallery-audio-top small{
+    flex:0 0 auto;
+    color:#94a3b8;
+    font-size:10px;
+}
+
+.chat-media-gallery-wave{
+    height:26px;
+    display:flex;
+    align-items:center;
+    gap:2px;
+    overflow:hidden;
+    margin-top:4px;
+}
+
+.chat-media-gallery-wave span{
+    width:3px;
+    min-width:3px;
+    border-radius:4px;
+    background:rgba(148,163,184,.34);
+}
+
+.chat-media-gallery-audio-caption{
+    margin-top:3px;
+    color:#7f8ea3;
+    font-size:10px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.chat-media-gallery-audio-player{
+    display:none!important;
+}
+
+@media (max-width:560px){
+    .chat-media-gallery-panel{
+        border-radius:0;
+    }
+
+    .chat-media-gallery-grid{
+        padding:9px 8px 18px!important;
+    }
+
+    .chat-media-gallery-media-grid{
+        gap:5px;
+    }
+
+    .chat-media-gallery-photo,
+    .chat-media-gallery-video{
+        height:31vw!important;
+        border-radius:13px!important;
+    }
+
+    .chat-media-gallery-section-label{
+        padding-top:3px;
+    }
+
+    .chat-media-gallery-section-label-voice{
+        margin-top:13px;
+    }
+
+    .chat-media-gallery-audio{
+        min-height:72px!important;
+        margin-bottom:6px;
+        border-radius:15px!important;
+    }
+
+    .chat-media-gallery-audio-icon{
+        width:38px;
+        height:38px;
+        min-width:38px;
+    }
+
+    .chat-media-gallery-audio-play{
+        width:34px!important;
+        height:34px!important;
+        min-width:34px!important;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — MEDIA GALLERY V4 UI
+   Premium album layout with featured latest media.
+   ========================================================= */
+
+.chat-media-gallery-panel{
+    background:
+        radial-gradient(circle at 18% 0%, rgba(59,130,246,.10), transparent 30%),
+        linear-gradient(180deg,rgba(10,18,33,.995),rgba(6,12,24,.995));
+    border-color:rgba(96,165,250,.15);
+}
+
+.chat-media-gallery-header{
+    position:relative;
+    padding-top:16px;
+}
+
+.chat-media-gallery-header::after{
+    content:"";
+    position:absolute;
+    left:14px;
+    right:14px;
+    bottom:0;
+    height:1px;
+    background:linear-gradient(90deg,transparent,rgba(96,165,250,.18),transparent);
+}
+
+.chat-media-gallery-section-label{
+    text-transform:none;
+}
+
+.chat-media-gallery-section-label-featured{
+    padding-top:6px;
+}
+
+.chat-media-gallery-featured{
+    position:relative;
+    width:100%;
+    height:min(52vw,270px);
+    margin:0 0 10px;
+    border-radius:18px;
+    overflow:hidden;
+    background:#101827;
+    border:1px solid rgba(255,255,255,.05);
+    box-shadow:0 14px 34px rgba(0,0,0,.28);
+}
+
+.chat-media-gallery-featured > .chat-media-gallery-item{
+    width:100%!important;
+    height:100%!important;
+    border-radius:0!important;
+    box-shadow:none!important;
+}
+
+.chat-media-gallery-featured .chat-media-gallery-overlay{
+    padding:44px 12px 11px;
+    background:linear-gradient(transparent,rgba(0,0,0,.78));
+}
+
+.chat-media-gallery-featured .chat-media-gallery-play{
+    width:54px;
+    height:54px;
+    font-size:20px;
+    box-shadow:
+        0 12px 30px rgba(0,0,0,.30),
+        0 0 0 10px rgba(255,255,255,.06);
+}
+
+.chat-media-gallery-featured-badge{
+    position:absolute;
+    top:11px;
+    left:11px;
+    z-index:5;
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:6px 9px;
+    border-radius:999px;
+    background:rgba(15,23,42,.66);
+    color:#fff;
+    border:1px solid rgba(255,255,255,.12);
+    box-shadow:0 6px 18px rgba(0,0,0,.18);
+    backdrop-filter:blur(8px);
+    font-size:9px;
+    font-weight:800;
+    letter-spacing:.25px;
+}
+
+.chat-media-gallery-featured-badge::before{
+    content:"";
+    width:5px;
+    height:5px;
+    border-radius:50%;
+    background:#60a5fa;
+    box-shadow:0 0 0 4px rgba(96,165,250,.12);
+}
+
+.chat-media-gallery-media-grid{
+    padding-bottom:2px;
+}
+
+.chat-media-gallery-media-grid .chat-media-gallery-item{
+    box-shadow:0 9px 22px rgba(0,0,0,.22);
+}
+
+.chat-media-gallery-section-label-voice{
+    margin-top:16px;
+}
+
+.chat-media-gallery-voice-list{
+    padding-bottom:8px;
+}
+
+.chat-media-gallery-audio{
+    position:relative;
+    overflow:hidden;
+}
+
+.chat-media-gallery-audio::before{
+    content:"";
+    position:absolute;
+    left:0;
+    top:0;
+    bottom:0;
+    width:3px;
+    background:linear-gradient(180deg,#4ade80,#22c55e);
+    opacity:.75;
+}
+
+@media (max-width:560px){
+    .chat-media-gallery-featured{
+        height:54vw;
+        min-height:178px;
+        max-height:250px;
+        margin-bottom:8px;
+        border-radius:16px;
+    }
+
+    .chat-media-gallery-featured .chat-media-gallery-play{
+        width:50px;
+        height:50px;
+    }
+
+    .chat-media-gallery-section-label-featured{
+        padding-top:2px;
+    }
+}
+
+@media (min-width:700px){
+    .chat-media-gallery-featured{
+        height:280px;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — MEDIA GALLERY FINAL TOUCH
+   Final mobile album polish + correct filtered layouts.
+   ========================================================= */
+
+/* Full-screen mobile gallery should feel like a dedicated media surface. */
+.chat-media-gallery{
+    background:
+        radial-gradient(circle at 50% -10%, rgba(59,130,246,.11), transparent 34%),
+        rgba(2,6,23,.88);
+}
+
+.chat-media-gallery-panel{
+    width:min(820px,100%);
+    height:min(92dvh,900px);
+    border-radius:28px;
+    overflow:hidden;
+    background:
+        linear-gradient(180deg,rgba(11,20,36,.995),rgba(5,11,22,.995));
+    box-shadow:
+        0 32px 100px rgba(0,0,0,.64),
+        inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+/* Tiny mobile grab handle makes the overlay feel native without changing
+   existing close behavior. */
+.chat-media-gallery-panel::before{
+    content:"";
+    position:absolute;
+    z-index:20;
+    top:6px;
+    left:50%;
+    width:38px;
+    height:4px;
+    transform:translateX(-50%);
+    border-radius:999px;
+    background:rgba(255,255,255,.18);
+    pointer-events:none;
+}
+
+.chat-media-gallery-header{
+    flex:0 0 auto;
+    padding-top:20px;
+}
+
+.chat-media-gallery-tabs{
+    flex:0 0 auto;
+    box-shadow:0 8px 24px rgba(0,0,0,.16);
+}
+
+.chat-media-gallery-grid{
+    scroll-behavior:smooth;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+}
+
+/* Filtered categories always use the album grid. */
+.chat-media-gallery-grid > .chat-media-gallery-media-grid{
+    width:100%;
+}
+
+.chat-media-gallery-media-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:8px;
+}
+
+.chat-media-gallery-media-grid .chat-media-gallery-item{
+    aspect-ratio:1 / 1.12;
+    height:auto!important;
+}
+
+/* More refined card treatment. */
+.chat-media-gallery-item{
+    border:1px solid rgba(255,255,255,.055)!important;
+    box-shadow:
+        0 9px 24px rgba(0,0,0,.22),
+        inset 0 1px 0 rgba(255,255,255,.03);
+    transition:transform .16s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.chat-media-gallery-item:active{
+    transform:scale(.975);
+    border-color:rgba(96,165,250,.25)!important;
+    box-shadow:0 5px 16px rgba(0,0,0,.28);
+}
+
+.chat-media-gallery-overlay{
+    padding:34px 9px 8px;
+}
+
+.chat-media-gallery-play{
+    width:42px;
+    height:42px;
+    background:rgba(255,255,255,.92);
+    box-shadow:
+        0 10px 24px rgba(0,0,0,.28),
+        0 0 0 8px rgba(255,255,255,.055);
+}
+
+.chat-media-gallery-featured{
+    height:min(58vw,300px);
+    min-height:188px;
+    border-radius:20px;
+    border-color:rgba(96,165,250,.13);
+    box-shadow:
+        0 18px 38px rgba(0,0,0,.30),
+        0 0 0 1px rgba(255,255,255,.02);
+}
+
+.chat-media-gallery-featured .chat-media-gallery-play{
+    width:58px;
+    height:58px;
+    box-shadow:
+        0 14px 34px rgba(0,0,0,.32),
+        0 0 0 10px rgba(255,255,255,.055);
+}
+
+.chat-media-gallery-featured-badge{
+    padding:6px 10px;
+    background:rgba(7,13,25,.62);
+}
+
+.chat-media-gallery-section-label{
+    padding-left:3px;
+    padding-right:3px;
+}
+
+.chat-media-gallery-section-label em{
+    min-width:22px;
+    text-align:center;
+}
+
+.chat-media-gallery-section-label-featured{
+    margin-bottom:2px;
+}
+
+.chat-media-gallery-section-label-voice{
+    margin-top:18px;
+}
+
+.chat-media-gallery-voice-list{
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+}
+
+/* Voice cards feel like a compact playlist. */
+.chat-media-gallery-audio{
+    min-height:76px!important;
+    margin:0!important;
+    border-radius:17px!important;
+    background:
+        linear-gradient(135deg,rgba(22,34,54,.98),rgba(12,22,38,.99))!important;
+    border:1px solid rgba(96,165,250,.08)!important;
+    box-shadow:0 8px 20px rgba(0,0,0,.18);
+}
+
+.chat-media-gallery-audio-play{
+    background:rgba(96,165,250,.12)!important;
+    border-color:rgba(96,165,250,.15)!important;
+    transition:transform .15s ease,background .18s ease,box-shadow .18s ease;
+}
+
+.chat-media-gallery-audio-play:active{
+    transform:scale(.92);
+}
+
+.chat-media-gallery-audio-play.is-playing{
+    background:rgba(96,165,250,.25)!important;
+    box-shadow:0 0 0 4px rgba(96,165,250,.08);
+}
+
+.chat-media-gallery-audio .chat-media-gallery-wave span{
+    transition:background .10s ease,transform .10s ease;
+}
+
+@media (max-width:560px){
+    .chat-media-gallery{
+        padding:0;
+    }
+
+    .chat-media-gallery-panel{
+        width:100%;
+        height:100dvh;
+        max-height:none;
+        border-radius:0;
+        border-left:0;
+        border-right:0;
+        border-bottom:0;
+    }
+
+    .chat-media-gallery-panel::before{
+        top:5px;
+    }
+
+    .chat-media-gallery-header{
+        padding-top:max(18px,env(safe-area-inset-top));
+    }
+
+    .chat-media-gallery-grid{
+        padding:10px 8px calc(18px + env(safe-area-inset-bottom))!important;
+    }
+
+    .chat-media-gallery-media-grid{
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        gap:5px;
+    }
+
+    .chat-media-gallery-media-grid .chat-media-gallery-item{
+        aspect-ratio:1 / 1.10;
+        border-radius:13px!important;
+    }
+
+    .chat-media-gallery-featured{
+        height:56vw;
+        min-height:185px;
+        max-height:270px;
+        border-radius:17px;
+    }
+
+    .chat-media-gallery-featured .chat-media-gallery-play{
+        width:52px;
+        height:52px;
+    }
+
+    .chat-media-gallery-section-label{
+        font-size:12px;
+    }
+
+    .chat-media-gallery-tabs{
+        box-shadow:0 8px 22px rgba(0,0,0,.14);
+    }
+}
+
+/* Respect reduced-motion users. */
+@media (prefers-reduced-motion:reduce){
+    .chat-media-gallery-grid{
+        scroll-behavior:auto;
+    }
+
+    .chat-media-gallery-item,
+    .chat-media-gallery-audio-play{
+        transition:none!important;
+    }
+}

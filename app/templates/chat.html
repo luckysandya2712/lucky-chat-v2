@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lucky Chat</title>
 
-<link rel="stylesheet" href="/static/css/chat.css?v=20260822-media-video-viewer-v2">
+<link rel="stylesheet" href="/static/css/chat.css?v=20260822-media-gallery-final">
 
 </head>
 
@@ -41,6 +41,8 @@
             type="button"
             aria-label="Search messages"
             title="Search messages">🔍</button>
+
+    <button id="chatMediaGalleryBtn" class="chat-media-gallery-btn" type="button" aria-label="Open media gallery" title="Media gallery">🗂️</button>
 
 </div>
 
@@ -928,6 +930,50 @@ Welcome to Lucky Chat 🚀
 <!-- Push notifications moved to /static/js/chat.core.js -->
 
 
+<!-- Chat media gallery -->
+<div id="chatMediaGallery" class="chat-media-gallery" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="chat-media-gallery-backdrop" data-media-gallery-close="1"></div>
+  <div class="chat-media-gallery-panel">
+    <div class="chat-media-gallery-header">
+      <div class="chat-media-gallery-heading">
+        <div class="chat-media-gallery-title-row">
+          <span class="chat-media-gallery-title-icon" aria-hidden="true">🗂️</span>
+          <div class="chat-media-gallery-title">Media</div>
+        </div>
+        <div id="chatMediaGalleryCount" class="chat-media-gallery-count">0 items shared</div>
+      </div>
+      <button id="chatMediaGalleryClose" class="chat-media-gallery-close" type="button" aria-label="Close media gallery">✕</button>
+    </div>
+    <div class="chat-media-gallery-tabs" role="tablist" aria-label="Media types">
+      <button class="chat-media-gallery-tab is-active" type="button" data-media-gallery-tab="all" role="tab" aria-selected="true">
+        <span class="chat-media-gallery-tab-icon" aria-hidden="true">✦</span>
+        <span class="chat-media-gallery-tab-label">All</span>
+        <span class="chat-media-gallery-tab-count" data-gallery-tab-count="all">0</span>
+      </button>
+      <button class="chat-media-gallery-tab" type="button" data-media-gallery-tab="image" role="tab" aria-selected="false">
+        <span class="chat-media-gallery-tab-icon" aria-hidden="true">🖼️</span>
+        <span class="chat-media-gallery-tab-label">Photos</span>
+        <span class="chat-media-gallery-tab-count" data-gallery-tab-count="image">0</span>
+      </button>
+      <button class="chat-media-gallery-tab" type="button" data-media-gallery-tab="video" role="tab" aria-selected="false">
+        <span class="chat-media-gallery-tab-icon" aria-hidden="true">🎬</span>
+        <span class="chat-media-gallery-tab-label">Videos</span>
+        <span class="chat-media-gallery-tab-count" data-gallery-tab-count="video">0</span>
+      </button>
+      <button class="chat-media-gallery-tab" type="button" data-media-gallery-tab="audio" role="tab" aria-selected="false">
+        <span class="chat-media-gallery-tab-icon" aria-hidden="true">🎙️</span>
+        <span class="chat-media-gallery-tab-label">Voice</span>
+        <span class="chat-media-gallery-tab-count" data-gallery-tab-count="audio">0</span>
+      </button>
+    </div>
+    <div id="chatMediaGalleryGrid" class="chat-media-gallery-grid" role="tabpanel" aria-live="polite"></div>
+    <div id="chatMediaGalleryEmpty" class="chat-media-gallery-empty" style="display:none;">
+      <div class="chat-media-gallery-empty-icon">🗂️</div><strong>No media yet</strong>
+      <span>Photos, videos, and voice messages from this chat will appear here.</span>
+    </div>
+  </div>
+</div>
+
 <!-- Full-screen photo viewer -->
 <div id="photoViewer"
      class="photo-viewer"
@@ -977,7 +1023,7 @@ Welcome to Lucky Chat 🚀
 
 
 <script src="/static/js/crypto.core.js?v=20260820-fix7"></script>
-<script src="/static/js/chat.core.js?v=20260822-media-video-viewer-v2"></script>
+<script src="/static/js/chat.core.js?v=20260822-media-gallery-final"></script>
 
 </body>
 </html>
