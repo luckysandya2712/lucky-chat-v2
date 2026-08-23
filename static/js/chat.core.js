@@ -3187,6 +3187,7 @@ function chooseReaction(emoji) {
     const closeBtn = document.getElementById("chatSearchClose");
     const inputEl = document.getElementById("chatSearchInput");
     const countEl = document.getElementById("chatSearchCount");
+    const clearBtn = document.getElementById("chatSearchClear");
     const resultsEl = document.getElementById("chatSearchResults");
     const prevBtn = document.getElementById("chatSearchPrev");
     const nextBtn = document.getElementById("chatSearchNext");
@@ -3230,6 +3231,60 @@ function chooseReaction(emoji) {
             .replace(/'/g, "&#039;");
     }
 
+    function formatSearchTimestamp(value) {
+        if (!value) return "";
+        const date = new Date(value);
+
+        if (!Number.isNaN(date.getTime())) {
+            return date.toLocaleString([], {
+                hour: "numeric",
+                minute: "2-digit"
+            });
+        }
+
+        return String(value);
+    }
+
+    function getSearchMediaMeta(msg) {
+        if (msg.media_type === "image" && msg.media_url) {
+            return { icon: "🖼️", label: "Photo", className: "photo" };
+        }
+        if (msg.media_type === "video" && msg.media_url) {
+            return { icon: "🎬", label: "Video", className: "video" };
+        }
+        if (msg.media_type === "audio" && msg.media_url) {
+            return { icon: "🎙️", label: "Voice", className: "audio" };
+        }
+        return { icon: "💬", label: "Message", className: "text" };
+    }
+
+    function highlightSearchText(text, query) {
+        const source = String(text ?? "");
+        const needle = String(query ?? "").trim();
+
+        if (!needle) return escapeSearchHtml(source);
+
+        const pattern = new RegExp(
+            needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            "ig"
+        );
+
+        let output = "";
+        let lastIndex = 0;
+        let match;
+
+        while ((match = pattern.exec(source)) !== null) {
+            output += escapeSearchHtml(source.slice(lastIndex, match.index));
+            output += `<mark class="chat-search-highlight">${escapeSearchHtml(match[0])}</mark>`;
+            lastIndex = match.index + match[0].length;
+
+            if (!pattern.global) break;
+        }
+
+        output += escapeSearchHtml(source.slice(lastIndex));
+        return output;
+    }
+
     function renderResults(query) {
         const q = query.trim().toLowerCase();
         const all = getMessageList();
@@ -3237,9 +3292,14 @@ function chooseReaction(emoji) {
         if (!q) {
             matches = [];
             activeIndex = -1;
-            countEl.textContent = "0";
+            countEl.textContent = "0 / 0";
+            if (clearBtn) clearBtn.hidden = true;
             resultsEl.innerHTML =
-                '<div class="chat-search-empty">Search this conversation</div>';
+                '<div class="chat-search-empty">' +
+                    '<div class="chat-search-empty-icon" aria-hidden="true">🔍</div>' +
+                    '<strong>Search this conversation</strong>' +
+                    '<span>Messages, photos, videos and voice messages will appear here.</span>' +
+                '</div>';
             return;
         }
 
@@ -3247,25 +3307,50 @@ function chooseReaction(emoji) {
             messagePreview(msg).toLowerCase().includes(q)
         );
 
-        activeIndex = matches.length ? matches.length - 1 : -1;
-        countEl.textContent = matches.length ? `${matches.length} found` : "0";
+        activeIndex = matches.length ? 0 : -1;
+        countEl.textContent = matches.length ? `1 / ${matches.length}` : "0 / 0";
+        if (clearBtn) clearBtn.hidden = !q;
 
         if (!matches.length) {
             resultsEl.innerHTML =
-                '<div class="chat-search-empty">No messages found</div>';
+                '<div class="chat-search-empty">' +
+                    '<div class="chat-search-empty-icon is-empty" aria-hidden="true">⌕</div>' +
+                    '<strong>No messages found</strong>' +
+                    '<span>Try another word, phrase, or media name.</span>' +
+                '</div>';
             return;
         }
 
         resultsEl.innerHTML = matches.map((msg, index) => {
-            const name = msg.sender === username ? "You" : msg.sender;
+            const name = msg.sender === username ? "You" : (msg.sender || "Lucky Chat");
+            const preview = messagePreview(msg);
+            const media = getSearchMediaMeta(msg);
+            const timestamp = formatSearchTimestamp(msg.timestamp);
+            const isActive = index === activeIndex;
+
             return `
-                <button class="chat-search-result"
+                <button class="chat-search-result${isActive ? " is-current" : ""}"
                         type="button"
                         data-search-id="${Number(msg.id)}"
-                        data-search-index="${index}">
-                    <div class="chat-search-result-name">${escapeSearchHtml(name)}</div>
-                    <div class="chat-search-result-text">${escapeSearchHtml(messagePreview(msg))}</div>
-                    <div class="chat-search-result-time">${escapeSearchHtml(msg.timestamp || "")}</div>
+                        data-search-index="${index}"
+                        aria-label="Open matching message">
+                    <span class="chat-search-result-icon ${media.className}" aria-hidden="true">${media.icon}</span>
+
+                    <span class="chat-search-result-main">
+                        <span class="chat-search-result-top">
+                            <span class="chat-search-result-name">${escapeSearchHtml(name)}</span>
+                            <span class="chat-search-result-type">${escapeSearchHtml(media.label)}</span>
+                        </span>
+
+                        <span class="chat-search-result-text">${highlightSearchText(preview, q)}</span>
+
+                        <span class="chat-search-result-bottom">
+                            <span class="chat-search-result-time">${escapeSearchHtml(timestamp)}</span>
+                            ${isActive ? '<span class="chat-search-current">Current match</span>' : ""}
+                        </span>
+                    </span>
+
+                    <span class="chat-search-result-chevron" aria-hidden="true">›</span>
                 </button>
             `;
         }).join("");
@@ -3306,6 +3391,30 @@ function chooseReaction(emoji) {
         if (activeIndex >= matches.length) activeIndex = 0;
 
         const target = matches[activeIndex];
+
+        if (countEl) {
+            countEl.textContent = `${activeIndex + 1} / ${matches.length}`;
+        }
+
+        resultsEl.querySelectorAll(".chat-search-result").forEach((item, index) => {
+            const active = index === activeIndex;
+            item.classList.toggle("is-current", active);
+
+            const badge = item.querySelector(".chat-search-current");
+
+            if (active && !badge) {
+                const bottom = item.querySelector(".chat-search-result-bottom");
+                if (bottom) {
+                    bottom.insertAdjacentHTML(
+                        "beforeend",
+                        '<span class="chat-search-current">Current match</span>'
+                    );
+                }
+            } else if (!active && badge) {
+                badge.remove();
+            }
+        });
+
         const result = resultsEl.querySelector(
             `[data-search-id="${target.id}"]`
         );
@@ -3313,34 +3422,79 @@ function chooseReaction(emoji) {
         if (result) {
             result.scrollIntoView({
                 behavior: "smooth",
-                block: "nearest"
+                block: "center"
             });
-        }
 
-        jumpToSearchMessage(target.id);
+            result.animate(
+                [
+                    { transform: "scale(1)" },
+                    { transform: "scale(1.015)" },
+                    { transform: "scale(1)" }
+                ],
+                {
+                    duration: 220,
+                    easing: "ease-out"
+                }
+            );
+        }
     }
 
     function openSearch() {
         overlay.style.display = "flex";
+        overlay.classList.remove("is-closing");
+        requestAnimationFrame(() => overlay.classList.add("is-open"));
         overlay.setAttribute("aria-hidden", "false");
         inputEl.value = "";
         renderResults("");
-        setTimeout(() => inputEl.focus(), 60);
+        setTimeout(() => inputEl.focus(), 90);
     }
 
     function closeSearch() {
-        overlay.style.display = "none";
+        overlay.classList.remove("is-open");
+        overlay.classList.add("is-closing");
         overlay.setAttribute("aria-hidden", "true");
+
+        setTimeout(() => {
+            overlay.style.display = "none";
+            overlay.classList.remove("is-closing");
+        }, 220);
+
         inputEl.value = "";
         matches = [];
         activeIndex = -1;
+        if (countEl) countEl.textContent = "0 / 0";
+        if (clearBtn) clearBtn.hidden = true;
     }
 
     openBtn.addEventListener("click", openSearch);
     closeBtn.addEventListener("click", closeSearch);
     inputEl.addEventListener("input", () => renderResults(inputEl.value));
+
+    clearBtn?.addEventListener("click", () => {
+        inputEl.value = "";
+        renderResults("");
+        inputEl.focus();
+    });
+
     prevBtn.addEventListener("click", () => moveMatch(-1));
     nextBtn.addEventListener("click", () => moveMatch(1));
+
+    document.addEventListener("keydown", event => {
+        if (!overlay.classList.contains("is-open")) return;
+
+        if (event.key === "Escape") {
+            closeSearch();
+            return;
+        }
+
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveMatch(-1);
+        } else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveMatch(1);
+        }
+    });
 
     inputEl.addEventListener("keydown", event => {
         if (event.key === "Escape") {

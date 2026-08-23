@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lucky Chat</title>
 
-<link rel="stylesheet" href="/static/css/chat.css?v=20260822-media-gallery-final">
+<link rel="stylesheet" href="/static/css/chat.css?v=20260823-search-ui-v4">
 
 </head>
 
@@ -49,26 +49,53 @@
 
 <div id="chatSearchOverlay" class="chat-search-overlay" aria-hidden="true">
     <div class="chat-search-top">
-        <button id="chatSearchClose" class="chat-search-close" type="button" aria-label="Close search">←</button>
+        <div class="chat-search-topline">
+            <button id="chatSearchClose" class="chat-search-close" type="button" aria-label="Close search">←</button>
 
-        <input
-            id="chatSearchInput"
-            type="search"
-            placeholder="Search messages..."
-            autocomplete="off"
-            enterkeyhint="search"
-        >
+            <div class="chat-search-heading">
+                <div class="chat-search-heading-icon" aria-hidden="true">⌕</div>
+                <div class="chat-search-heading-copy">
+                    <strong>Search messages</strong>
+                    <span>Find anything in this conversation</span>
+                </div>
+            </div>
+        </div>
 
-        <span id="chatSearchCount" class="chat-search-count">0</span>
+        <div class="chat-search-controls">
+            <div class="chat-search-field">
+                <span class="chat-search-field-icon" aria-hidden="true">🔍</span>
+                <input
+                    id="chatSearchInput"
+                    type="search"
+                    placeholder="Search messages..."
+                    autocomplete="off"
+                    enterkeyhint="search"
+                    aria-label="Search messages"
+                >
+                <button
+                    id="chatSearchClear"
+                    class="chat-search-clear"
+                    type="button"
+                    aria-label="Clear search"
+                    title="Clear search"
+                    hidden>✕</button>
+            </div>
 
-        <div class="chat-search-nav">
-            <button id="chatSearchPrev" type="button" aria-label="Previous match">↑</button>
-            <button id="chatSearchNext" type="button" aria-label="Next match">↓</button>
+            <span id="chatSearchCount" class="chat-search-count" aria-live="polite">0 / 0</span>
+
+            <div class="chat-search-nav">
+                <button id="chatSearchPrev" type="button" aria-label="Previous match" title="Previous match">↑</button>
+                <button id="chatSearchNext" type="button" aria-label="Next match" title="Next match">↓</button>
+            </div>
         </div>
     </div>
 
     <div id="chatSearchResults" class="chat-search-results">
-        <div class="chat-search-empty">Search this conversation</div>
+        <div class="chat-search-empty">
+            <div class="chat-search-empty-icon" aria-hidden="true">🔍</div>
+            <strong>Search this conversation</strong>
+            <span>Messages, photos, videos and voice messages will appear here.</span>
+        </div>
     </div>
 </div>
 
@@ -1023,7 +1050,7 @@ Welcome to Lucky Chat 🚀
 
 
 <script src="/static/js/crypto.core.js?v=20260820-fix7"></script>
-<script src="/static/js/chat.core.js?v=20260822-media-gallery-final"></script>
+<script src="/static/js/chat.core.js?v=20260823-search-ui-v4"></script>
 
 </body>
 </html>
