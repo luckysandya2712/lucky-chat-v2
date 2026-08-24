@@ -4108,12 +4108,89 @@ const voiceCallTimer=document.getElementById("voiceCallTimer");
 const voiceCallRemoteAudio=document.getElementById("voiceCallRemoteAudio");
 const VOICE_CALL_ICE_SERVERS=[{urls:"stun:stun.l.google.com:19302"}];
 let voiceCallPeer=null,voiceCallLocalStream=null,voiceCallRemoteStream=null,voiceCallId=null,voiceCallState="idle",voiceCallPendingOffer=null,voiceCallPendingCandidates=[],voiceCallTimerId=null,voiceCallStartedAt=0,voiceCallMuted=false,voiceCallStarting=false,voiceCallSpeakerLow=false;
+let voiceCallToneContext=null;
+let voiceCallToneTimer=null;
+let voiceCallToneKind="";
+
+function voiceCallStopTone(){
+    clearInterval(voiceCallToneTimer);
+    voiceCallToneTimer=null;
+    voiceCallToneKind="";
+    try{voiceCallToneContext?.close()}catch(_){}
+    voiceCallToneContext=null;
+}
+
+function voiceCallEnsureToneContext(){
+    if(voiceCallToneContext) return voiceCallToneContext;
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass) return null;
+
+    try{
+        voiceCallToneContext=new AudioContextClass();
+        if(voiceCallToneContext.state==="suspended"){
+            void voiceCallToneContext.resume().catch(()=>{});
+        }
+        return voiceCallToneContext;
+    }catch(_){
+        return null;
+    }
+}
+
+function voiceCallToneBurst(f1,f2,durationMs){
+    const ctx=voiceCallEnsureToneContext();
+    if(!ctx) return;
+
+    const now=ctx.currentTime;
+    const gain=ctx.createGain();
+    const osc1=ctx.createOscillator();
+    const osc2=ctx.createOscillator();
+
+    osc1.type="sine";
+    osc2.type="sine";
+    osc1.frequency.value=f1;
+    osc2.frequency.value=f2;
+
+    gain.gain.setValueAtTime(0.0001,now);
+    gain.gain.exponentialRampToValueAtTime(0.045,now+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001,now+durationMs/1000);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now+durationMs/1000+0.03);
+    osc2.stop(now+durationMs/1000+0.03);
+}
+
+function voiceCallStartTone(kind){
+    if(voiceCallToneKind===kind) return;
+
+    voiceCallStopTone();
+    voiceCallToneKind=kind;
+
+    // Incoming: short repeating double-ring.
+    // Outgoing: softer, slower ringback so it doesn't sound like an incoming call.
+    const pattern=kind==="incoming"
+        ? {on:520,off:700,f1:660,f2:880}
+        : {on:720,off:1250,f1:440,f2:660};
+
+    const play=()=>{
+        if(voiceCallToneKind!==kind) return;
+        voiceCallToneBurst(pattern.f1,pattern.f2,pattern.on);
+    };
+
+    play();
+    voiceCallToneTimer=setInterval(play,pattern.on+pattern.off);
+}
+
 function voiceCallSetStatus(s,p){if(voiceCallStatus)voiceCallStatus.textContent=s;if(voiceCallStatePill)voiceCallStatePill.textContent=p||"Voice call"}
 function voiceCallFormatTimer(v){const t=Math.max(0,Math.floor(Number(v)||0)),m=Math.floor(t/60),s=String(t%60).padStart(2,"0");return `${String(m).padStart(2,"0")}:${s}`}
 function voiceCallStartTimer(){voiceCallStopTimer();voiceCallStartedAt=Date.now();if(voiceCallTimer)voiceCallTimer.textContent="00:00";voiceCallTimerId=setInterval(()=>{if(voiceCallTimer&&voiceCallStartedAt)voiceCallTimer.textContent=voiceCallFormatTimer((Date.now()-voiceCallStartedAt)/1000)},500)}
 function voiceCallStopTimer(){clearInterval(voiceCallTimerId);voiceCallTimerId=null;voiceCallStartedAt=0;if(voiceCallTimer)voiceCallTimer.textContent="00:00"}
 function voiceCallOpen(mode){if(!voiceCallOverlay)return;voiceCallOverlay.classList.remove("is-closing","is-ringing");voiceCallOverlay.classList.add("is-open");if(mode==="incoming")voiceCallOverlay.classList.add("is-ringing");voiceCallOverlay.setAttribute("aria-hidden","false")}
-function voiceCallCloseVisual(){if(!voiceCallOverlay)return;voiceCallOverlay.classList.remove("is-open","is-ringing");voiceCallOverlay.classList.add("is-closing");voiceCallOverlay.setAttribute("aria-hidden","true");setTimeout(()=>voiceCallOverlay?.classList.remove("is-closing"),220)}
+function voiceCallCloseVisual(){voiceCallStopTone();if(!voiceCallOverlay)return;voiceCallOverlay.classList.remove("is-open","is-ringing");voiceCallOverlay.classList.add("is-closing");voiceCallOverlay.setAttribute("aria-hidden","true");setTimeout(()=>voiceCallOverlay?.classList.remove("is-closing"),220)}
 function voiceCallResetControls(){
     voiceCallMuteBtn?.setAttribute("disabled","disabled");
     voiceCallSpeakerBtn?.setAttribute("disabled","disabled");
@@ -4133,9 +4210,9 @@ function voiceCallResetControls(){
         voiceCallMainBtn.disabled=false;
     }
 }
-function voiceCallConfigureOutgoing(){voiceCallState="outgoing";voiceCallOpen("outgoing");voiceCallSetStatus("Calling…","Calling");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}}
-function voiceCallConfigureIncoming(){voiceCallState="incoming";voiceCallOpen("incoming");voiceCallSetStatus("Incoming voice call","Incoming call");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-accept","is-incoming");voiceCallMainBtn.textContent="📞"}}
-function voiceCallConfigureActive(){voiceCallState="active";voiceCallOpen("active");voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer()}
+function voiceCallConfigureOutgoing(){voiceCallState="outgoing";voiceCallOpen("outgoing");voiceCallSetStatus("Calling…","Calling");voiceCallResetControls();voiceCallStartTone("outgoing");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}}
+function voiceCallConfigureIncoming(){voiceCallState="incoming";voiceCallOpen("incoming");voiceCallSetStatus("Incoming voice call","Incoming call");voiceCallResetControls();voiceCallStartTone("incoming");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-accept","is-incoming");voiceCallMainBtn.textContent="📞"}}
+function voiceCallConfigureActive(){voiceCallStopTone();voiceCallState="active";voiceCallOpen("active");voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer()}
 function voiceCallNewId(){return window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`}
 async function voiceCallAttachLocalTracks(){
     if(!voiceCallPeer || !voiceCallLocalStream) return;
@@ -4339,7 +4416,7 @@ function voiceCallToggleSpeaker(){
     );
 }
 
-function voiceCallEnd(sendSignal=true){const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){
+function voiceCallEnd(sendSignal=true){voiceCallStopTone();const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){
     try{voiceCallRemoteAudio.pause()}catch(_){}
     voiceCallRemoteAudio.srcObject=null;
     voiceCallRemoteAudio.volume=1;
@@ -4347,9 +4424,9 @@ voiceCallSpeakerLow=false;
 }voiceCallCloseVisual()}
 function voiceCallReject(){if(voiceCallId)sendSocket({type:"call_reject",call_id:voiceCallId,target:friend});voiceCallEnd(false)}
 function voiceCallRemoteEnd(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("Call ended","Ended");setTimeout(()=>voiceCallEnd(false),300)}
-function voiceCallRemoteReject(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("Call declined","Declined");setTimeout(()=>voiceCallEnd(false),500)}
-function voiceCallRemoteBusy(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("User is busy","Busy");setTimeout(()=>voiceCallEnd(false),500)}
-function voiceCallRemoteUnavailable(data){if(data.call_id&&data.call_id!==voiceCallId)return;console.warn("VOICE CALL TARGET UNAVAILABLE:",data);voiceCallSetStatus("User is not connected to chat","Unavailable");setTimeout(()=>voiceCallEnd(false),800)}
+function voiceCallRemoteReject(data){if(data.call_id!==voiceCallId)return;voiceCallStopTone();voiceCallSetStatus("Call declined","Declined");setTimeout(()=>voiceCallEnd(false),500)}
+function voiceCallRemoteBusy(data){if(data.call_id!==voiceCallId)return;voiceCallStopTone();voiceCallSetStatus("User is busy","Busy");setTimeout(()=>voiceCallEnd(false),500)}
+function voiceCallRemoteUnavailable(data){if(data.call_id&&data.call_id!==voiceCallId)return;voiceCallStopTone();console.warn("VOICE CALL TARGET UNAVAILABLE:",data);voiceCallSetStatus("User is not connected to chat","Unavailable");setTimeout(()=>voiceCallEnd(false),800)}
 voiceCallBtn?.addEventListener("click",()=>voiceCallState==="idle"?void voiceCallStart():voiceCallEnd(true));voiceCallMainBtn?.addEventListener("click",()=>{if(voiceCallState==="incoming")void voiceCallAccept();else if(voiceCallState==="outgoing"||voiceCallState==="active")voiceCallEnd(true);else void voiceCallStart()});voiceCallMuteBtn?.addEventListener("click",voiceCallToggleMute);voiceCallSpeakerBtn?.addEventListener("click",voiceCallToggleSpeaker);voiceCallCloseBtn?.addEventListener("click",()=>voiceCallState==="incoming"?voiceCallReject():voiceCallState!=="idle"?voiceCallEnd(true):voiceCallCloseVisual());window.LuckyVoiceCall={handleOffer:voiceCallHandleOffer,handleAnswer:voiceCallHandleAnswer,handleIce:voiceCallHandleIce,handleReject:voiceCallRemoteReject,handleBusy:voiceCallRemoteBusy,handleEnd:voiceCallRemoteEnd,handleUnavailable:voiceCallRemoteUnavailable};
 
 /* =========================================================
