@@ -1072,6 +1072,264 @@ Welcome to Lucky Chat 🚀
 </div>
 
 
+
+<style id="lucky-voice-call-ui-v2">
+/* Lucky Chat — Voice Call UI v2
+   Visual-only enhancement. Existing markup, IDs, signaling, and WebRTC logic remain unchanged. */
+
+.voice-call-overlay{
+    background:
+        radial-gradient(circle at 50% 16%, rgba(59,130,246,.24), transparent 34%),
+        radial-gradient(circle at 20% 80%, rgba(14,165,233,.10), transparent 28%),
+        rgba(2,6,23,.88);
+    backdrop-filter:blur(22px) saturate(1.18);
+    -webkit-backdrop-filter:blur(22px) saturate(1.18);
+}
+
+.voice-call-card{
+    position:relative;
+    overflow:hidden;
+    width:min(430px,100%);
+    padding:22px 20px 24px;
+    border:1px solid rgba(148,163,184,.18);
+    border-radius:32px;
+    background:
+        radial-gradient(circle at 50% -10%, rgba(96,165,250,.13), transparent 42%),
+        linear-gradient(155deg,rgba(18,30,52,.985),rgba(7,14,27,.995));
+    box-shadow:
+        0 30px 90px rgba(0,0,0,.52),
+        0 0 0 1px rgba(255,255,255,.02) inset,
+        0 1px 0 rgba(255,255,255,.045) inset;
+}
+
+.voice-call-card::before{
+    content:"";
+    position:absolute;
+    left:16%;
+    right:16%;
+    top:0;
+    height:1px;
+    background:linear-gradient(90deg,transparent,rgba(147,197,253,.36),transparent);
+}
+
+.voice-call-card::after{
+    content:"";
+    position:absolute;
+    width:180px;
+    height:180px;
+    left:50%;
+    top:42px;
+    transform:translateX(-50%);
+    border-radius:50%;
+    background:rgba(59,130,246,.07);
+    filter:blur(30px);
+    pointer-events:none;
+}
+
+.voice-call-top,
+.voice-call-avatar-wrap,
+.voice-call-name,
+.voice-call-status,
+.voice-call-timer,
+.voice-call-actions{
+    position:relative;
+    z-index:3;
+}
+
+.voice-call-state-pill{
+    min-width:84px;
+    text-align:center;
+    padding:7px 11px;
+    border-radius:999px;
+    background:rgba(96,165,250,.10);
+    border:1px solid rgba(147,197,253,.18);
+    color:#bfdbfe;
+    font-size:10px;
+    font-weight:850;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    box-shadow:0 5px 18px rgba(37,99,235,.10);
+}
+
+.voice-call-close{
+    width:38px;
+    height:38px;
+    border-radius:13px;
+    border:1px solid rgba(148,163,184,.14);
+    background:rgba(148,163,184,.07);
+    color:#dbeafe;
+    font-size:17px;
+    transition:transform .15s ease,background .18s ease,border-color .18s ease;
+}
+
+.voice-call-close:active{
+    transform:scale(.92);
+    background:rgba(248,113,113,.12);
+    border-color:rgba(248,113,113,.20);
+}
+
+.voice-call-avatar-wrap{
+    width:134px;
+    height:134px;
+    margin:30px auto 18px;
+}
+
+.voice-call-avatar{
+    width:100%;
+    height:100%;
+    border-radius:50%;
+    object-fit:cover;
+    border:4px solid rgba(59,130,246,.95);
+    box-shadow:
+        0 0 0 7px rgba(59,130,246,.10),
+        0 0 0 16px rgba(59,130,246,.035),
+        0 18px 38px rgba(0,0,0,.34);
+}
+
+.voice-call-overlay.is-ringing .voice-call-avatar{
+    animation:voiceCallAvatarPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes voiceCallAvatarPulse{
+    0%,100%{transform:scale(1)}
+    50%{transform:scale(1.025)}
+}
+
+.voice-call-ring{
+    inset:-14px;
+    border-width:1px;
+    border-color:rgba(147,197,253,.26);
+}
+
+.voice-call-name{
+    color:#f8fafc;
+    font-size:24px;
+    font-weight:850;
+    letter-spacing:-.02em;
+    text-shadow:0 4px 18px rgba(0,0,0,.24);
+}
+
+.voice-call-status{
+    min-height:22px;
+    margin-top:7px;
+    color:#9fb0c8;
+    font-size:13px;
+    font-weight:560;
+}
+
+.voice-call-timer{
+    margin-top:6px;
+    min-height:20px;
+    color:#dbeafe;
+    font-size:14px;
+    font-weight:700;
+    letter-spacing:.08em;
+}
+
+.voice-call-actions{
+    margin-top:30px;
+    gap:24px;
+}
+
+.voice-call-action{
+    width:52px;
+    height:52px;
+    background:rgba(148,163,184,.09);
+    border:1px solid rgba(148,163,184,.14);
+    box-shadow:0 8px 20px rgba(0,0,0,.16);
+}
+
+.voice-call-main{
+    width:74px;
+    height:74px;
+    font-size:28px;
+    box-shadow:
+        0 14px 34px rgba(37,99,235,.28),
+        0 0 0 1px rgba(147,197,253,.13) inset;
+}
+
+.voice-call-action:not(:disabled):active,
+.voice-call-main:active{
+    transform:scale(.93);
+}
+
+.voice-call-action:not(:disabled):hover,
+.voice-call-main:hover{
+    filter:brightness(1.04);
+}
+
+.voice-call-action:disabled{
+    opacity:.32;
+    filter:saturate(.65);
+}
+
+.voice-call-action.is-muted{
+    background:rgba(239,68,68,.18);
+    border-color:rgba(248,113,113,.24);
+}
+
+.voice-call-main.is-end{
+    background:linear-gradient(145deg,#f43f5e,#dc2626);
+    box-shadow:
+        0 14px 34px rgba(220,38,38,.26),
+        0 0 0 1px rgba(254,202,202,.10) inset;
+}
+
+.voice-call-main.is-accept{
+    background:linear-gradient(145deg,#34d399,#16a34a);
+    box-shadow:
+        0 14px 34px rgba(22,163,74,.26),
+        0 0 0 1px rgba(187,247,208,.10) inset;
+}
+
+.voice-call-main.is-incoming{
+    animation:voiceCallIncomingPulse 1.35s ease-in-out infinite;
+}
+
+@keyframes voiceCallIncomingPulse{
+    0%,100%{
+        transform:scale(1);
+        box-shadow:0 14px 34px rgba(37,99,235,.28);
+    }
+    50%{
+        transform:scale(1.035);
+        box-shadow:
+            0 0 0 11px rgba(59,130,246,.08),
+            0 17px 38px rgba(37,99,235,.34);
+    }
+}
+
+@media(max-width:480px){
+    .voice-call-overlay{padding:10px}
+
+    .voice-call-card{
+        width:100%;
+        padding:18px 14px 20px;
+        border-radius:28px;
+    }
+
+    .voice-call-avatar-wrap{
+        width:118px;
+        height:118px;
+        margin-top:26px;
+    }
+
+    .voice-call-name{font-size:22px}
+
+    .voice-call-actions{
+        margin-top:26px;
+        gap:20px;
+    }
+}
+
+@media(prefers-reduced-motion:reduce){
+    .voice-call-overlay.is-ringing .voice-call-avatar,
+    .voice-call-main.is-incoming{
+        animation:none;
+    }
+}
+</style>
+
 <script src="/static/js/crypto.core.js?v=20260824-fix8"></script>
 <script src="/static/js/chat.core.js?v=20260824-voice-call-v3"></script>
 
