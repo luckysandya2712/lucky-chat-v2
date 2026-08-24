@@ -74,13 +74,23 @@ class ConnectionManager:
 
         ws = self.connections.get(username)
 
-        if ws:
-            try:
-                await ws.send_json(payload)
-            except Exception as e:
-                print(f"SEND ERROR ({username}):", e)
-                import traceback
-                traceback.print_exc()
+        if not ws:
+            print(
+                f"SEND SKIPPED - NO ACTIVE CHAT SOCKET ({username}):",
+                payload.get("type")
+            )
+            return False
+
+        try:
+            await ws.send_json(payload)
+            return True
+        except Exception as e:
+            print(f"SEND ERROR ({username}):", e)
+            import traceback
+            traceback.print_exc()
+            if self.connections.get(username) is ws:
+                self.connections.pop(username, None)
+            return False
 
     async def send_personal(self, payload: dict, username: str):
         await self.send(username, payload)

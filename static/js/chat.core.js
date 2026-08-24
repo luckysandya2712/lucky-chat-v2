@@ -1466,6 +1466,7 @@ async function handleSocketMessage(event) {
     if (data.type === "call_reject" && window.LuckyVoiceCall?.handleReject) { window.LuckyVoiceCall.handleReject(data); return; }
     if (data.type === "call_busy" && window.LuckyVoiceCall?.handleBusy) { window.LuckyVoiceCall.handleBusy(data); return; }
     if (data.type === "call_end" && window.LuckyVoiceCall?.handleEnd) { window.LuckyVoiceCall.handleEnd(data); return; }
+    if (data.type === "call_unavailable" && window.LuckyVoiceCall?.handleUnavailable) { window.LuckyVoiceCall.handleUnavailable(data); return; }
 
     if (data.type === "message") {
         // Outgoing messages are already rendered locally. Never make the
@@ -4298,7 +4299,8 @@ function voiceCallReject(){if(voiceCallId)sendSocket({type:"call_reject",call_id
 function voiceCallRemoteEnd(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("Call ended","Ended");setTimeout(()=>voiceCallEnd(false),300)}
 function voiceCallRemoteReject(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("Call declined","Declined");setTimeout(()=>voiceCallEnd(false),500)}
 function voiceCallRemoteBusy(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("User is busy","Busy");setTimeout(()=>voiceCallEnd(false),500)}
-voiceCallBtn?.addEventListener("click",()=>voiceCallState==="idle"?void voiceCallStart():voiceCallEnd(true));voiceCallMainBtn?.addEventListener("click",()=>{if(voiceCallState==="incoming")void voiceCallAccept();else if(voiceCallState==="outgoing"||voiceCallState==="active")voiceCallEnd(true);else void voiceCallStart()});voiceCallMuteBtn?.addEventListener("click",voiceCallToggleMute);voiceCallCloseBtn?.addEventListener("click",()=>voiceCallState==="incoming"?voiceCallReject():voiceCallState!=="idle"?voiceCallEnd(true):voiceCallCloseVisual());window.LuckyVoiceCall={handleOffer:voiceCallHandleOffer,handleAnswer:voiceCallHandleAnswer,handleIce:voiceCallHandleIce,handleReject:voiceCallRemoteReject,handleBusy:voiceCallRemoteBusy,handleEnd:voiceCallRemoteEnd};
+function voiceCallRemoteUnavailable(data){if(data.call_id&&data.call_id!==voiceCallId)return;console.warn("VOICE CALL TARGET UNAVAILABLE:",data);voiceCallSetStatus("User is not connected to chat","Unavailable");setTimeout(()=>voiceCallEnd(false),800)}
+voiceCallBtn?.addEventListener("click",()=>voiceCallState==="idle"?void voiceCallStart():voiceCallEnd(true));voiceCallMainBtn?.addEventListener("click",()=>{if(voiceCallState==="incoming")void voiceCallAccept();else if(voiceCallState==="outgoing"||voiceCallState==="active")voiceCallEnd(true);else void voiceCallStart()});voiceCallMuteBtn?.addEventListener("click",voiceCallToggleMute);voiceCallCloseBtn?.addEventListener("click",()=>voiceCallState==="incoming"?voiceCallReject():voiceCallState!=="idle"?voiceCallEnd(true):voiceCallCloseVisual());window.LuckyVoiceCall={handleOffer:voiceCallHandleOffer,handleAnswer:voiceCallHandleAnswer,handleIce:voiceCallHandleIce,handleReject:voiceCallRemoteReject,handleBusy:voiceCallRemoteBusy,handleEnd:voiceCallRemoteEnd,handleUnavailable:voiceCallRemoteUnavailable};
 
 /* =========================================================
    LUCKY CHAT — MEDIA GALLERY V1

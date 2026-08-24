@@ -421,6 +421,26 @@ async def websocket_endpoint(websocket: WebSocket):
 
             print("Received:", data)
 
+            VOICE_CALL_SIGNAL_TYPES = {"call_offer","call_answer","call_ice","call_reject","call_busy","call_end","call_ping"}
+            if data.get("type") in VOICE_CALL_SIGNAL_TYPES:
+                signal_type=data.get("type")
+                target=(data.get("target") or friend or "").strip()
+                if not target or target==username:
+                    continue
+                payload={"type":signal_type,"call_id":data.get("call_id"),"sender":username}
+                if signal_type in {"call_offer","call_answer"}: payload["sdp"]=data.get("sdp")
+                elif signal_type=="call_ice": payload["candidate"]=data.get("candidate")
+                delivered = await manager.send(target, payload)
+                if not delivered and signal_type in {"call_ping", "call_offer"}:
+                    print(f"VOICE CALL TARGET NOT CONNECTED: {target} ({signal_type})")
+                    await manager.send(username, {
+                        "type": "call_unavailable",
+                        "call_id": data.get("call_id"),
+                        "target": target,
+                        "reason": "target_not_connected"
+                    })
+                continue
+
             if data["type"] == "typing":
                 payload = {
                     "type": "typing",
@@ -983,7 +1003,7 @@ async def upload_chat_video(
     request: Request,
     file: UploadFile = File(...)
 ):
-    """Receive and validate a chat video upload."""
+    """Stream a chat video to disk with bounded memory usage."""
     username = request.session.get("username")
 
     if not username:
@@ -1004,45 +1024,78 @@ async def upload_chat_video(
         }
 
     max_size = 30 * 1024 * 1024
-    data = await file.read(max_size + 1)
-
-    if len(data) > max_size:
-        return {
-            "success": False,
-            "error": "Video is too large. Maximum size is 30 MB"
-        }
-
-    if not data:
-        return {"success": False, "error": "Empty video file"}
-
-    valid = False
-
-    if content_type == "video/mp4":
-        valid = len(data) >= 12 and data[4:8] == b"ftyp"
-    elif content_type == "video/webm":
-        valid = data.startswith(b"\x1a\x45\xdf\xa3")
-    elif content_type == "video/ogg":
-        valid = data.startswith(b"OggS")
-
-    if not valid:
-        return {"success": False, "error": "Invalid video file"}
-
-    extension = allowed_types[content_type]
+    chunk_size = 1024 * 1024  # 1 MiB
     filename = (
         f"{username}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-        f"{extension}"
+        f"{allowed_types[content_type]}"
     )
-
     filepath = UPLOAD_DIR / filename
 
-    with open(filepath, "wb") as buffer:
-        buffer.write(data)
+    total = 0
+    signature = bytearray()
 
-    return {
-        "success": True,
-        "url": "/static/uploads/chat/" + filename,
-        "media_type": "video"
-    }
+    try:
+        with open(filepath, "wb") as buffer:
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+
+                total += len(chunk)
+
+                if total > max_size:
+                    raise ValueError("Video is too large. Maximum size is 30 MB")
+
+                # Keep only enough bytes to validate the container signature.
+                if len(signature) < 16:
+                    signature.extend(chunk[:16 - len(signature)])
+
+                buffer.write(chunk)
+
+        if total == 0:
+            raise ValueError("Empty video file")
+
+        header = bytes(signature)
+        valid = False
+
+        if content_type == "video/mp4":
+            # MP4 uses an ftyp box near the beginning of the file.
+            valid = len(header) >= 12 and header[4:8] == b"ftyp"
+        elif content_type == "video/webm":
+            valid = header.startswith(b"\x1a\x45\xdf\xa3")
+        elif content_type == "video/ogg":
+            valid = header.startswith(b"OggS")
+
+        if not valid:
+            raise ValueError("Invalid video file")
+
+        return {
+            "success": True,
+            "url": "/static/uploads/chat/" + filename,
+            "media_type": "video"
+        }
+
+    except ValueError as exc:
+        try:
+            filepath.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return {"success": False, "error": str(exc)}
+
+    except Exception as exc:
+        try:
+            filepath.unlink(missing_ok=True)
+        except Exception:
+            pass
+        print("VIDEO UPLOAD ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save video"}
+
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            pass
 
 
 @app.post("/upload-chat-audio")
