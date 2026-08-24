@@ -412,22 +412,17 @@ async def websocket_endpoint(websocket: WebSocket):
     friend = websocket.query_params.get("friend", "")
     page = websocket.query_params.get("page", "chat")
 
-    # The signed session is the source of truth for the sender identity.
-    # Resolve both participants to their exact stored usernames before any
-    # message/voice operation so the WebSocket and HTTP history endpoints use
-    # the same canonical database keys.
-    db = SessionLocal()
-    try:
-        current_user = resolve_user_by_username(db, username)
-        if current_user:
-            username = current_user.username
-
-        if page != "dashboard" and friend:
+    # Normalize the chat partner to the canonical username stored in the DB.
+    # This prevents display-name/casing differences from breaking messaging
+    # and voice-call routing.
+    if page != "dashboard" and friend:
+        db = SessionLocal()
+        try:
             friend_user = resolve_user_by_username(db, friend)
             if friend_user:
                 friend = friend_user.username
-    finally:
-        db.close()
+        finally:
+            db.close()
 
     if page == "dashboard":
         await websocket.accept()
@@ -881,7 +876,7 @@ async def dashboard_ws(websocket: WebSocket):
 @app.get("/messages/{friend}")
 async def get_messages(friend: str, request: Request):
 
-    username = request.session.get("username") or request.cookies.get("username")
+    username = request.cookies.get("username")
 
     db = SessionLocal()
 
@@ -900,23 +895,45 @@ async def get_messages(friend: str, request: Request):
 
     # Also normalize the stored Message values so legacy messages saved with
     # different username casing/whitespace remain visible to both participants.
-    normalized_sender = func.lower(func.trim(Message.sender))
-    normalized_receiver = func.lower(func.trim(Message.receiver))
-    normalized_username = canonical_username.lower()
-    normalized_friend = canonical_friend.lower()
+    normalized_username = canonical_username.strip().casefold()
+    normalized_friend = canonical_friend.strip().casefold()
 
+    # First try a normal SQL lookup using the canonical names.
     msgs = db.query(Message).filter(
         or_(
             and_(
-                normalized_sender == normalized_username,
-                normalized_receiver == normalized_friend
+                Message.sender == canonical_username,
+                Message.receiver == canonical_friend
             ),
             and_(
-                normalized_sender == normalized_friend,
-                normalized_receiver == normalized_username
+                Message.sender == canonical_friend,
+                Message.receiver == canonical_username
             )
         )
     ).order_by(Message.id.asc()).all()
+
+    # Legacy-safe fallback: some older rows may contain different casing or
+    # surrounding whitespace. Read only the conversation's candidate rows and
+    # normalize them in Python, avoiding SQL-dialect-specific string functions.
+    if not msgs:
+        candidate_rows = db.query(Message).filter(
+            or_(
+                Message.sender.in_([canonical_username, canonical_friend]),
+                Message.receiver.in_([canonical_username, canonical_friend])
+            )
+        ).order_by(Message.id.asc()).all()
+
+        msgs = [
+            m for m in candidate_rows
+            if (
+                str(m.sender or "").strip().casefold() == normalized_username
+                and str(m.receiver or "").strip().casefold() == normalized_friend
+            )
+            or (
+                str(m.sender or "").strip().casefold() == normalized_friend
+                and str(m.receiver or "").strip().casefold() == normalized_username
+            )
+        ]
 
     print("USERNAME:", canonical_username)
     print("FRIEND:", canonical_friend)
@@ -943,14 +960,24 @@ async def get_messages(friend: str, request: Request):
             "reaction": getattr(m, "reaction", ""),
         })
 
-    db.query(Message).filter(
-    func.lower(func.trim(Message.sender)) == normalized_friend,
-    func.lower(func.trim(Message.receiver)) == normalized_username,
-    Message.unread == 1
-    ).update({
-        "unread": 0,
-        "seen_in_chat": 1
-    })
+    unread_candidates = db.query(Message).filter(
+        Message.unread == 1,
+        or_(
+            Message.sender.in_([canonical_friend, canonical_username]),
+            Message.receiver.in_([canonical_friend, canonical_username])
+        )
+    ).all()
+
+    for unread_message in unread_candidates:
+        sender_norm = str(unread_message.sender or "").strip().casefold()
+        receiver_norm = str(unread_message.receiver or "").strip().casefold()
+
+        if (
+            sender_norm == normalized_friend
+            and receiver_norm == normalized_username
+        ):
+            unread_message.unread = 0
+            unread_message.seen_in_chat = 1
 
     db.commit()
     db.close()
