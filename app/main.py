@@ -12,7 +12,7 @@ from app.models import User, Status
 from app.auth import hash_password
 from app.database import Base, engine
 from starlette.middleware.sessions import SessionMiddleware
-from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text
+from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func
 from fastapi.staticfiles import StaticFiles
 from fastapi import UploadFile, File
 from datetime import datetime, timedelta, timezone
@@ -81,6 +81,22 @@ def _ensure_message_media_columns():
 
 
 _ensure_message_media_columns()
+
+
+def resolve_user_by_username(db, username):
+    """Resolve a user by exact username first, then case-insensitively.
+    Returns the User object or None. The canonical stored username is always
+    used by callers after resolution.
+    """
+    value = str(username or "").strip()
+    if not value:
+        return None
+
+    user = db.query(User).filter(User.username == value).first()
+    if user:
+        return user
+
+    return db.query(User).filter(func.lower(User.username) == value.lower()).first()
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -227,9 +243,7 @@ async def get_public_key(username: str):
     db = SessionLocal()
 
     try:
-        user = db.query(User).filter(
-            User.username == username
-        ).first()
+        user = resolve_user_by_username(db, username)
 
         if not user:
             return {
@@ -239,7 +253,7 @@ async def get_public_key(username: str):
 
         return {
             "success": True,
-            "username": username,
+            "username": user.username,
             "public_key": user.public_key
         }
 
@@ -321,9 +335,8 @@ async def chat(friend: str, request: Request):
 
     db = SessionLocal()
 
-    user = db.query(User).filter(
-        User.username == friend
-    ).first()
+    user = resolve_user_by_username(db, friend)
+    canonical_friend = user.username if user else friend
 
     db.close()
 
@@ -332,7 +345,7 @@ async def chat(friend: str, request: Request):
         name="chat.html",
         context={
             "request": request,
-            "friend": friend,
+            "friend": canonical_friend,
             "friend_user": user
         }
     )
@@ -393,6 +406,18 @@ async def websocket_endpoint(websocket: WebSocket):
     friend = websocket.query_params.get("friend", "")
     page = websocket.query_params.get("page", "chat")
 
+    # Normalize the chat partner to the canonical username stored in the DB.
+    # This prevents display-name/casing differences from breaking messaging
+    # and voice-call routing.
+    if page != "dashboard" and friend:
+        db = SessionLocal()
+        try:
+            friend_user = resolve_user_by_username(db, friend)
+            if friend_user:
+                friend = friend_user.username
+        finally:
+            db.close()
+
     if page == "dashboard":
         await websocket.accept()
 
@@ -424,9 +449,31 @@ async def websocket_endpoint(websocket: WebSocket):
             VOICE_CALL_SIGNAL_TYPES = {"call_offer","call_answer","call_ice","call_reject","call_busy","call_end","call_ping"}
             if data.get("type") in VOICE_CALL_SIGNAL_TYPES:
                 signal_type=data.get("type")
-                target=(data.get("target") or friend or "").strip()
-                if not target or target==username:
+                requested_target=(data.get("target") or friend or "").strip()
+                if not requested_target:
                     continue
+
+                db = SessionLocal()
+                try:
+                    target_user = resolve_user_by_username(db, requested_target)
+                finally:
+                    db.close()
+
+                if not target_user:
+                    print(f"VOICE CALL TARGET USER NOT FOUND: {requested_target} ({signal_type})")
+                    if signal_type in {"call_ping", "call_offer"}:
+                        await manager.send(username, {
+                            "type": "call_unavailable",
+                            "call_id": data.get("call_id"),
+                            "target": requested_target,
+                            "reason": "user_not_found"
+                        })
+                    continue
+
+                target = target_user.username
+                if target == username:
+                    continue
+
                 payload={"type":signal_type,"call_id":data.get("call_id"),"sender":username}
                 if signal_type in {"call_offer","call_answer"}: payload["sdp"]=data.get("sdp")
                 elif signal_type=="call_ice": payload["candidate"]=data.get("candidate")
@@ -1259,9 +1306,7 @@ async def online_users():
 async def user_status(friend: str):
     db = SessionLocal()
 
-    user = db.query(User).filter(
-        User.username == friend
-    ).first()
+    user = resolve_user_by_username(db, friend)
 
     if not user:
         db.close()
@@ -1270,7 +1315,8 @@ async def user_status(friend: str):
             "last_seen": None
         }
 
-    is_online = friend in manager.connections
+    canonical_friend = user.username
+    is_online = canonical_friend in manager.connections
 
     last_seen = None
 
