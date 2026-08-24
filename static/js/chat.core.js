@@ -4193,20 +4193,37 @@ function voiceCallStartTone(kind){
 
 
 function voiceCallEnsureQualityLabel(){
-    if(voiceCallQualityLabel && document.body.contains(voiceCallQualityLabel)) return voiceCallQualityLabel;
-    if(!voiceCallStatus?.parentElement) return null;
+    if(voiceCallQualityLabel && document.body.contains(voiceCallQualityLabel)){
+        voiceCallQualityLabel.style.display="block";
+        return voiceCallQualityLabel;
+    }
+
+    const anchor = voiceCallTimer || voiceCallStatus;
+    if(!anchor || !anchor.parentElement) return null;
 
     voiceCallQualityLabel=document.createElement("div");
     voiceCallQualityLabel.className="voice-call-quality";
     voiceCallQualityLabel.textContent="● Checking";
     voiceCallQualityLabel.setAttribute("aria-live","polite");
-    voiceCallQualityLabel.style.marginTop="6px";
+
+    // Explicit inline layout prevents an existing stylesheet rule from
+    // accidentally hiding the dynamically-created quality indicator.
+    voiceCallQualityLabel.style.display="block";
+    voiceCallQualityLabel.style.width="100%";
+    voiceCallQualityLabel.style.marginTop="7px";
+    voiceCallQualityLabel.style.minHeight="17px";
+    voiceCallQualityLabel.style.textAlign="center";
     voiceCallQualityLabel.style.fontSize="11px";
-    voiceCallQualityLabel.style.fontWeight="700";
-    voiceCallQualityLabel.style.letterSpacing=".03em";
-    voiceCallQualityLabel.style.opacity=".95";
+    voiceCallQualityLabel.style.fontWeight="800";
+    voiceCallQualityLabel.style.letterSpacing=".04em";
+    voiceCallQualityLabel.style.lineHeight="17px";
+    voiceCallQualityLabel.style.opacity="0.98";
     voiceCallQualityLabel.style.color="#93c5fd";
-    voiceCallStatus.insertAdjacentElement("afterend",voiceCallQualityLabel);
+    voiceCallQualityLabel.style.pointerEvents="none";
+    voiceCallQualityLabel.style.position="relative";
+    voiceCallQualityLabel.style.zIndex="5";
+
+    anchor.insertAdjacentElement("afterend",voiceCallQualityLabel);
     return voiceCallQualityLabel;
 }
 
@@ -4380,7 +4397,7 @@ function voiceCallResetControls(){
 }
 function voiceCallConfigureOutgoing(){voiceCallState="outgoing";voiceCallOpen("outgoing");voiceCallSetStatus("Calling…","Calling");voiceCallResetControls();voiceCallStartTone("outgoing");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}}
 function voiceCallConfigureIncoming(){voiceCallState="incoming";voiceCallOpen("incoming");voiceCallSetStatus("Incoming voice call","Incoming call");voiceCallResetControls();voiceCallStartTone("incoming");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-accept","is-incoming");voiceCallMainBtn.textContent="📞"}}
-function voiceCallConfigureActive(){voiceCallStopTone();voiceCallStopReconnect();voiceCallState="active";voiceCallOpen("active");voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer();voiceCallStartQualityMonitor()}
+function voiceCallConfigureActive(){voiceCallStopTone();voiceCallStopReconnect();voiceCallState="active";voiceCallOpen("active");voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer();voiceCallStartQualityMonitor();voiceCallSetQuality("unknown")}
 function voiceCallNewId(){return window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`}
 async function voiceCallAttachLocalTracks(){
     if(!voiceCallPeer || !voiceCallLocalStream) return;
