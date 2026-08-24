@@ -206,9 +206,7 @@ async def upload_public_key(
     db = SessionLocal()
 
     try:
-        user = db.query(User).filter(
-            User.username == username
-        ).first()
+        user = resolve_user_by_username(db, username)
 
         if not user:
             return {
