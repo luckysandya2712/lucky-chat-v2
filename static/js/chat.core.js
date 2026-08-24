@@ -4194,6 +4194,10 @@ function voiceCallEnsurePeer(){
 
         if(voiceCallRemoteAudio && voiceCallRemoteStream){
             voiceCallRemoteAudio.srcObject = voiceCallRemoteStream;
+
+            // Keep a little headroom for mobile speaker/microphone AEC.
+            voiceCallRemoteAudio.volume = 0.88;
+
             void voiceCallRemoteAudio.play().catch(() => {});
         }
 
@@ -4225,9 +4229,11 @@ async function voiceCallGetLocalStream(){
     if(!voiceCallLocalStream){
         voiceCallLocalStream = await navigator.mediaDevices.getUserMedia({
             audio:{
-                echoCancellation:true,
-                noiseSuppression:true,
-                autoGainControl:true
+                echoCancellation:{ideal:true},
+                noiseSuppression:{ideal:true},
+                autoGainControl:{ideal:true},
+                channelCount:{ideal:1},
+                latency:{ideal:0.01}
             },
             video:false
         });
@@ -4294,7 +4300,11 @@ function voiceCallHandleOffer(data){if(!data.call_id||!data.sdp||data.sender===u
 async function voiceCallHandleAnswer(data){if(voiceCallState!=="outgoing"||!voiceCallPeer||data.call_id!==voiceCallId||!data.sdp)return;try{await voiceCallPeer.setRemoteDescription(new RTCSessionDescription(data.sdp));for(const c of voiceCallPendingCandidates.splice(0)){try{await voiceCallPeer.addIceCandidate(c)}catch(_){}}voiceCallSetStatus("Connecting…","Connecting")}catch(e){console.error("VOICE ANSWER ERROR:",e);voiceCallEnd(true)}}
 async function voiceCallHandleIce(data){if(!data.candidate||data.call_id!==voiceCallId)return;if(!voiceCallPeer||!voiceCallPeer.remoteDescription){voiceCallPendingCandidates.push(data.candidate);return}try{await voiceCallPeer.addIceCandidate(data.candidate)}catch(_){}}
 function voiceCallToggleMute(){if(!voiceCallLocalStream)return;voiceCallMuted=!voiceCallMuted;voiceCallLocalStream.getAudioTracks().forEach(t=>t.enabled=!voiceCallMuted);if(voiceCallMuteBtn){voiceCallMuteBtn.classList.toggle("is-muted",voiceCallMuted);voiceCallMuteBtn.textContent=voiceCallMuted?"🔇":"🎙️"}voiceCallSetStatus(voiceCallMuted?"Microphone muted":"Voice call connected",voiceCallMuted?"Muted":"Connected")}
-function voiceCallEnd(sendSignal=true){const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){try{voiceCallRemoteAudio.pause()}catch(_){}voiceCallRemoteAudio.srcObject=null}voiceCallCloseVisual()}
+function voiceCallEnd(sendSignal=true){const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){
+    try{voiceCallRemoteAudio.pause()}catch(_){}
+    voiceCallRemoteAudio.srcObject=null;
+    voiceCallRemoteAudio.volume=1;
+}voiceCallCloseVisual()}
 function voiceCallReject(){if(voiceCallId)sendSocket({type:"call_reject",call_id:voiceCallId,target:friend});voiceCallEnd(false)}
 function voiceCallRemoteEnd(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("Call ended","Ended");setTimeout(()=>voiceCallEnd(false),300)}
 function voiceCallRemoteReject(data){if(data.call_id!==voiceCallId)return;voiceCallSetStatus("Call declined","Declined");setTimeout(()=>voiceCallEnd(false),500)}
