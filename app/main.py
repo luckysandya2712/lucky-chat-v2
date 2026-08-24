@@ -412,17 +412,22 @@ async def websocket_endpoint(websocket: WebSocket):
     friend = websocket.query_params.get("friend", "")
     page = websocket.query_params.get("page", "chat")
 
-    # Normalize the chat partner to the canonical username stored in the DB.
-    # This prevents display-name/casing differences from breaking messaging
-    # and voice-call routing.
-    if page != "dashboard" and friend:
-        db = SessionLocal()
-        try:
+    # The signed session is the source of truth for the sender identity.
+    # Resolve both participants to their exact stored usernames before any
+    # message/voice operation so the WebSocket and HTTP history endpoints use
+    # the same canonical database keys.
+    db = SessionLocal()
+    try:
+        current_user = resolve_user_by_username(db, username)
+        if current_user:
+            username = current_user.username
+
+        if page != "dashboard" and friend:
             friend_user = resolve_user_by_username(db, friend)
             if friend_user:
                 friend = friend_user.username
-        finally:
-            db.close()
+    finally:
+        db.close()
 
     if page == "dashboard":
         await websocket.accept()
@@ -876,7 +881,7 @@ async def dashboard_ws(websocket: WebSocket):
 @app.get("/messages/{friend}")
 async def get_messages(friend: str, request: Request):
 
-    username = request.cookies.get("username")
+    username = request.session.get("username") or request.cookies.get("username")
 
     db = SessionLocal()
 
