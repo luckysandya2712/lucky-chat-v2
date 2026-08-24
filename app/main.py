@@ -84,19 +84,27 @@ _ensure_message_media_columns()
 
 
 def resolve_user_by_username(db, username):
-    """Resolve a user by exact username first, then case-insensitively.
-    Returns the User object or None. The canonical stored username is always
-    used by callers after resolution.
+    """Resolve a user by exact username, then normalized username.
+
+    Normalization trims surrounding whitespace and compares usernames
+    case-insensitively. This also handles legacy records that accidentally
+    contain leading/trailing spaces in the stored username.
     """
     value = str(username or "").strip()
     if not value:
         return None
 
+    # Fast path for correctly stored usernames.
     user = db.query(User).filter(User.username == value).first()
     if user:
         return user
 
-    return db.query(User).filter(func.lower(User.username) == value.lower()).first()
+    # Legacy-safe path: ignore surrounding whitespace and case on both sides.
+    return (
+        db.query(User)
+        .filter(func.lower(func.trim(User.username)) == value.lower())
+        .first()
+    )
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -208,13 +216,6 @@ async def upload_public_key(
     try:
         user = resolve_user_by_username(db, username)
 
-        print(
-            "PUBLIC KEY UPLOAD:",
-            "requested_username=", repr(username),
-            "matched_username=", repr(user.username) if user else None,
-            "has_public_key=", bool(getattr(user, "public_key", None)) if user else False,
-        )
-
         if not user:
             return {
                 "success": False,
@@ -249,13 +250,6 @@ async def get_public_key(username: str):
 
     try:
         user = resolve_user_by_username(db, username)
-
-        print(
-            "PUBLIC KEY FETCH:",
-            "requested_username=", repr(username),
-            "matched_username=", repr(user.username) if user else None,
-            "has_public_key=", bool(getattr(user, "public_key", None)) if user else False,
-        )
 
         if not user:
             return {
