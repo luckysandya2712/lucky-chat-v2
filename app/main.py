@@ -876,32 +876,45 @@ async def dashboard_ws(websocket: WebSocket):
 @app.get("/messages/{friend}")
 async def get_messages(friend: str, request: Request):
 
-    username=request.cookies.get("username")
+    username = request.cookies.get("username")
+
+    db = SessionLocal()
+
+    # Resolve both participants to their canonical database usernames first.
+    # This prevents case/whitespace differences from making an existing
+    # conversation appear empty on only one account.
+    current_user = resolve_user_by_username(db, username)
+    friend_user = resolve_user_by_username(db, friend)
+
+    canonical_username = current_user.username if current_user else str(username or "").strip()
+    canonical_friend = friend_user.username if friend_user else str(friend or "").strip()
 
     print("COOKIE USERNAME =", username, "FRIEND =", friend)
+    print("CANONICAL USERNAME =", canonical_username)
+    print("CANONICAL FRIEND =", canonical_friend)
 
-    db=SessionLocal()
+    # Also normalize the stored Message values so legacy messages saved with
+    # different username casing/whitespace remain visible to both participants.
+    normalized_sender = func.lower(func.trim(Message.sender))
+    normalized_receiver = func.lower(func.trim(Message.receiver))
+    normalized_username = canonical_username.lower()
+    normalized_friend = canonical_friend.lower()
 
-    msgs=db.query(Message).filter(
-
+    msgs = db.query(Message).filter(
         or_(
-
             and_(
-                Message.sender==username,
-                Message.receiver==friend
+                normalized_sender == normalized_username,
+                normalized_receiver == normalized_friend
             ),
-
             and_(
-                Message.sender==friend,
-                Message.receiver==username
+                normalized_sender == normalized_friend,
+                normalized_receiver == normalized_username
             )
-
         )
-
     ).order_by(Message.id.asc()).all()
 
-    print("USERNAME:", username)
-    print("FRIEND:", friend)
+    print("USERNAME:", canonical_username)
+    print("FRIEND:", canonical_friend)
     print("FOUND MESSAGES:", len(msgs))
 
     result=[]
@@ -926,8 +939,8 @@ async def get_messages(friend: str, request: Request):
         })
 
     db.query(Message).filter(
-    Message.sender == friend,
-    Message.receiver == username,
+    func.lower(func.trim(Message.sender)) == normalized_friend,
+    func.lower(func.trim(Message.receiver)) == normalized_username,
     Message.unread == 1
     ).update({
         "unread": 0,
