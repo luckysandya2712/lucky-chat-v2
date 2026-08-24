@@ -4108,6 +4108,12 @@ const voiceCallTimer=document.getElementById("voiceCallTimer");
 const voiceCallRemoteAudio=document.getElementById("voiceCallRemoteAudio");
 const VOICE_CALL_ICE_SERVERS=[{urls:"stun:stun.l.google.com:19302"}];
 let voiceCallPeer=null,voiceCallLocalStream=null,voiceCallRemoteStream=null,voiceCallId=null,voiceCallState="idle",voiceCallPendingOffer=null,voiceCallPendingCandidates=[],voiceCallTimerId=null,voiceCallStartedAt=0,voiceCallMuted=false,voiceCallStarting=false,voiceCallSpeakerLow=false;
+let voiceCallQualityTimerId=null;
+let voiceCallQualityLabel=null;
+let voiceCallReconnectTimerId=null;
+let voiceCallReconnectAttempts=0;
+let voiceCallReconnectInProgress=false;
+
 let voiceCallToneContext=null;
 let voiceCallToneTimer=null;
 let voiceCallToneKind="";
@@ -4185,6 +4191,147 @@ function voiceCallStartTone(kind){
     voiceCallToneTimer=setInterval(play,pattern.on+pattern.off);
 }
 
+
+function voiceCallEnsureQualityLabel(){
+    if(voiceCallQualityLabel && document.body.contains(voiceCallQualityLabel)) return voiceCallQualityLabel;
+    if(!voiceCallStatePill?.parentElement) return null;
+
+    voiceCallQualityLabel=document.createElement("span");
+    voiceCallQualityLabel.className="voice-call-quality";
+    voiceCallQualityLabel.textContent="● Good";
+    voiceCallQualityLabel.setAttribute("aria-live","polite");
+    voiceCallStatePill.parentElement.appendChild(voiceCallQualityLabel);
+    return voiceCallQualityLabel;
+}
+
+function voiceCallSetQuality(level){
+    const label=voiceCallEnsureQualityLabel();
+    if(!label) return;
+
+    const names={
+        excellent:"● Excellent",
+        good:"● Good",
+        poor:"● Poor",
+        reconnecting:"↻ Reconnecting",
+        unknown:"● Checking"
+    };
+    label.textContent=names[level]||names.unknown;
+    label.dataset.quality=level;
+}
+
+function voiceCallStopQualityMonitor(){
+    clearInterval(voiceCallQualityTimerId);
+    voiceCallQualityTimerId=null;
+    voiceCallQualityLabel?.remove();
+    voiceCallQualityLabel=null;
+}
+
+function voiceCallStartQualityMonitor(){
+    voiceCallStopQualityMonitor();
+    voiceCallSetQuality("unknown");
+
+    voiceCallQualityTimerId=setInterval(async()=>{
+        const peer=voiceCallPeer;
+        if(!peer || voiceCallState!=="active") return;
+
+        try{
+            const stats=await peer.getStats();
+            let inbound=null;
+            let candidatePair=null;
+
+            stats.forEach(report=>{
+                if(report.type==="inbound-rtp" && report.kind==="audio"){
+                    inbound=report;
+                }
+                if(report.type==="candidate-pair" &&
+                   (report.state==="succeeded" || report.nominated)){
+                    candidatePair=report;
+                }
+            });
+
+            let score=0;
+            const jitter=Number(inbound?.jitter||0);
+            const packetsLost=Number(inbound?.packetsLost||0);
+            const packetsReceived=Number(inbound?.packetsReceived||0);
+            const rtt=Number(
+                candidatePair?.currentRoundTripTime ??
+                candidatePair?.roundTripTime ??
+                0
+            )*1000;
+
+            if(jitter>0.035 || rtt>220 || (packetsReceived>80 && packetsLost/(packetsReceived+packetsLost)>0.06)){
+                score=2;
+            }else if(jitter>0.018 || rtt>120 || (packetsReceived>40 && packetsLost/(packetsReceived+packetsLost)>0.025)){
+                score=1;
+            }
+
+            voiceCallSetQuality(score===0?"excellent":score===1?"good":"poor");
+        }catch(error){
+            console.debug("VOICE QUALITY CHECK ERROR:",error);
+        }
+    },2500);
+}
+
+function voiceCallStopReconnect(){
+    clearTimeout(voiceCallReconnectTimerId);
+    voiceCallReconnectTimerId=null;
+    voiceCallReconnectAttempts=0;
+    voiceCallReconnectInProgress=false;
+}
+
+async function voiceCallRestartIce(){
+    if(!voiceCallPeer || !voiceCallId || !voiceCallLocalStream || voiceCallState==="idle") return false;
+    if(voiceCallReconnectInProgress) return false;
+    if(voiceCallReconnectAttempts>=3) return false;
+
+    voiceCallReconnectInProgress=true;
+    voiceCallReconnectAttempts+=1;
+    voiceCallSetQuality("reconnecting");
+    voiceCallSetStatus("Reconnecting…","Reconnecting");
+
+    try{
+        const offer=await voiceCallPeer.createOffer({iceRestart:true});
+        await voiceCallPeer.setLocalDescription(offer);
+
+        if(!sendSocket({
+            type:"call_offer",
+            call_id:voiceCallId,
+            target:friend,
+            sdp:voiceCallPeer.localDescription,
+            ice_restart:true
+        })){
+            throw new Error("Call signaling connection unavailable");
+        }
+
+        return true;
+    }catch(error){
+        console.warn("VOICE ICE RESTART FAILED:",error);
+        return false;
+    }finally{
+        voiceCallReconnectInProgress=false;
+    }
+}
+
+function voiceCallScheduleReconnect(){
+    if(voiceCallState==="idle" || !voiceCallPeer) return;
+    clearTimeout(voiceCallReconnectTimerId);
+
+    voiceCallReconnectTimerId=setTimeout(async()=>{
+        voiceCallReconnectTimerId=null;
+        const ok=await voiceCallRestartIce();
+        if(!ok && voiceCallReconnectAttempts>=3){
+            voiceCallSetStatus("Connection lost","Ended");
+            setTimeout(()=>voiceCallEnd(false),700);
+        }else if(ok){
+            voiceCallReconnectTimerId=setTimeout(()=>{
+                if(voiceCallState==="active"){
+                    voiceCallSetQuality("unknown");
+                }
+            },3500);
+        }
+    },1200);
+}
+
 function voiceCallSetStatus(s,p){if(voiceCallStatus)voiceCallStatus.textContent=s;if(voiceCallStatePill)voiceCallStatePill.textContent=p||"Voice call"}
 function voiceCallFormatTimer(v){const t=Math.max(0,Math.floor(Number(v)||0)),m=Math.floor(t/60),s=String(t%60).padStart(2,"0");return `${String(m).padStart(2,"0")}:${s}`}
 function voiceCallStartTimer(){voiceCallStopTimer();voiceCallStartedAt=Date.now();if(voiceCallTimer)voiceCallTimer.textContent="00:00";voiceCallTimerId=setInterval(()=>{if(voiceCallTimer&&voiceCallStartedAt)voiceCallTimer.textContent=voiceCallFormatTimer((Date.now()-voiceCallStartedAt)/1000)},500)}
@@ -4212,7 +4359,7 @@ function voiceCallResetControls(){
 }
 function voiceCallConfigureOutgoing(){voiceCallState="outgoing";voiceCallOpen("outgoing");voiceCallSetStatus("Calling…","Calling");voiceCallResetControls();voiceCallStartTone("outgoing");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}}
 function voiceCallConfigureIncoming(){voiceCallState="incoming";voiceCallOpen("incoming");voiceCallSetStatus("Incoming voice call","Incoming call");voiceCallResetControls();voiceCallStartTone("incoming");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-accept","is-incoming");voiceCallMainBtn.textContent="📞"}}
-function voiceCallConfigureActive(){voiceCallStopTone();voiceCallState="active";voiceCallOpen("active");voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer()}
+function voiceCallConfigureActive(){voiceCallStopTone();voiceCallStopReconnect();voiceCallState="active";voiceCallOpen("active");voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer();voiceCallStartQualityMonitor()}
 function voiceCallNewId(){return window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`}
 async function voiceCallAttachLocalTracks(){
     if(!voiceCallPeer || !voiceCallLocalStream) return;
@@ -4306,7 +4453,24 @@ function voiceCallEnsurePeer(){
 
         if(state === "connected"){
             voiceCallConfigureActive();
-        }else if(state === "failed" || state === "closed"){
+            return;
+        }
+
+        if(state === "disconnected"){
+            if(voiceCallState !== "idle"){
+                voiceCallScheduleReconnect();
+            }
+            return;
+        }
+
+        if(state === "failed"){
+            if(voiceCallState !== "idle"){
+                voiceCallScheduleReconnect();
+            }
+            return;
+        }
+
+        if(state === "closed"){
             if(voiceCallState !== "idle"){
                 voiceCallSetStatus("Call ended","Ended");
                 setTimeout(() => voiceCallEnd(false), 350);
@@ -4391,8 +4555,49 @@ async function voiceCallAccept(){
         voiceCallStarting=false;
     }
 }
-function voiceCallHandleOffer(data){if(!data.call_id||!data.sdp||data.sender===username)return;if(voiceCallState!=="idle"){sendSocket({type:"call_busy",call_id:data.call_id,target:data.sender});return}voiceCallId=data.call_id;voiceCallPendingOffer=data.sdp;voiceCallPendingCandidates=[];voiceCallConfigureIncoming()}
-async function voiceCallHandleAnswer(data){if(voiceCallState!=="outgoing"||!voiceCallPeer||data.call_id!==voiceCallId||!data.sdp)return;try{await voiceCallPeer.setRemoteDescription(new RTCSessionDescription(data.sdp));for(const c of voiceCallPendingCandidates.splice(0)){try{await voiceCallPeer.addIceCandidate(c)}catch(_){}}voiceCallSetStatus("Connecting…","Connecting")}catch(e){console.error("VOICE ANSWER ERROR:",e);voiceCallEnd(true)}}
+async function voiceCallHandleOffer(data){
+    if(!data.call_id||!data.sdp||data.sender===username)return;
+
+    // A matching call_offer during an active call is an ICE-restart
+    // renegotiation, not a second incoming call.
+    if(data.call_id===voiceCallId && voiceCallPeer && voiceCallState!=="idle"){
+        try{
+            await voiceCallPeer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            for(const c of voiceCallPendingCandidates.splice(0)){
+                try{await voiceCallPeer.addIceCandidate(c)}catch(_){}
+            }
+
+            const answer=await voiceCallPeer.createAnswer();
+            await voiceCallPeer.setLocalDescription(answer);
+
+            sendSocket({
+                type:"call_answer",
+                call_id:voiceCallId,
+                target:data.sender,
+                sdp:voiceCallPeer.localDescription,
+                ice_restart:true
+            });
+
+            voiceCallSetStatus("Voice call connected","Connected");
+            voiceCallReconnectAttempts=0;
+            voiceCallSetQuality("unknown");
+        }catch(error){
+            console.warn("VOICE ICE RESTART ANSWER ERROR:",error);
+        }
+        return;
+    }
+
+    if(voiceCallState!=="idle"){
+        sendSocket({type:"call_busy",call_id:data.call_id,target:data.sender});
+        return;
+    }
+
+    voiceCallId=data.call_id;
+    voiceCallPendingOffer=data.sdp;
+    voiceCallPendingCandidates=[];
+    voiceCallConfigureIncoming();
+}
+async function voiceCallHandleAnswer(data){if(data.call_id!==voiceCallId||!voiceCallPeer||!data.sdp)return;try{await voiceCallPeer.setRemoteDescription(new RTCSessionDescription(data.sdp));for(const c of voiceCallPendingCandidates.splice(0)){try{await voiceCallPeer.addIceCandidate(c)}catch(_){} }voiceCallReconnectAttempts=0;if(voiceCallState==="outgoing")voiceCallSetStatus("Connecting…","Connecting");else if(voiceCallState==="active")voiceCallSetStatus("Voice call connected","Connected");}catch(e){console.error("VOICE ANSWER ERROR:",e);if(voiceCallState!=="idle")voiceCallScheduleReconnect()}}
 async function voiceCallHandleIce(data){if(!data.candidate||data.call_id!==voiceCallId)return;if(!voiceCallPeer||!voiceCallPeer.remoteDescription){voiceCallPendingCandidates.push(data.candidate);return}try{await voiceCallPeer.addIceCandidate(data.candidate)}catch(_){}}
 function voiceCallToggleMute(){if(!voiceCallLocalStream)return;voiceCallMuted=!voiceCallMuted;voiceCallLocalStream.getAudioTracks().forEach(t=>t.enabled=!voiceCallMuted);if(voiceCallMuteBtn){voiceCallMuteBtn.classList.toggle("is-muted",voiceCallMuted);voiceCallMuteBtn.textContent=voiceCallMuted?"🔇":"🎙️"}voiceCallSetStatus(voiceCallMuted?"Microphone muted":"Voice call connected",voiceCallMuted?"Muted":"Connected")}
 function voiceCallToggleSpeaker(){
@@ -4416,7 +4621,7 @@ function voiceCallToggleSpeaker(){
     );
 }
 
-function voiceCallEnd(sendSignal=true){voiceCallStopTone();const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){
+function voiceCallEnd(sendSignal=true){voiceCallStopTone();voiceCallStopReconnect();voiceCallStopQualityMonitor();const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){
     try{voiceCallRemoteAudio.pause()}catch(_){}
     voiceCallRemoteAudio.srcObject=null;
     voiceCallRemoteAudio.volume=1;
