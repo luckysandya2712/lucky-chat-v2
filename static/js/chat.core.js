@@ -4194,13 +4194,19 @@ function voiceCallStartTone(kind){
 
 function voiceCallEnsureQualityLabel(){
     if(voiceCallQualityLabel && document.body.contains(voiceCallQualityLabel)) return voiceCallQualityLabel;
-    if(!voiceCallStatePill?.parentElement) return null;
+    if(!voiceCallStatus?.parentElement) return null;
 
-    voiceCallQualityLabel=document.createElement("span");
+    voiceCallQualityLabel=document.createElement("div");
     voiceCallQualityLabel.className="voice-call-quality";
-    voiceCallQualityLabel.textContent="● Good";
+    voiceCallQualityLabel.textContent="● Checking";
     voiceCallQualityLabel.setAttribute("aria-live","polite");
-    voiceCallStatePill.parentElement.appendChild(voiceCallQualityLabel);
+    voiceCallQualityLabel.style.marginTop="6px";
+    voiceCallQualityLabel.style.fontSize="11px";
+    voiceCallQualityLabel.style.fontWeight="700";
+    voiceCallQualityLabel.style.letterSpacing=".03em";
+    voiceCallQualityLabel.style.opacity=".95";
+    voiceCallQualityLabel.style.color="#93c5fd";
+    voiceCallStatus.insertAdjacentElement("afterend",voiceCallQualityLabel);
     return voiceCallQualityLabel;
 }
 
@@ -4217,6 +4223,15 @@ function voiceCallSetQuality(level){
     };
     label.textContent=names[level]||names.unknown;
     label.dataset.quality=level;
+
+    const colors={
+        excellent:"#86efac",
+        good:"#93c5fd",
+        poor:"#fca5a5",
+        reconnecting:"#fde68a",
+        unknown:"#cbd5e1"
+    };
+    label.style.color=colors[level]||colors.unknown;
 }
 
 function voiceCallStopQualityMonitor(){
@@ -4332,7 +4347,13 @@ function voiceCallScheduleReconnect(){
     },1200);
 }
 
-function voiceCallSetStatus(s,p){if(voiceCallStatus)voiceCallStatus.textContent=s;if(voiceCallStatePill)voiceCallStatePill.textContent=p||"Voice call"}
+function voiceCallSetStatus(s,p){
+    if(voiceCallStatus) voiceCallStatus.textContent=s;
+    if(voiceCallStatePill) voiceCallStatePill.textContent=p||"Voice call";
+}
+function voiceCallSetDetail(s){
+    if(voiceCallStatus) voiceCallStatus.textContent=s;
+}
 function voiceCallFormatTimer(v){const t=Math.max(0,Math.floor(Number(v)||0)),m=Math.floor(t/60),s=String(t%60).padStart(2,"0");return `${String(m).padStart(2,"0")}:${s}`}
 function voiceCallStartTimer(){voiceCallStopTimer();voiceCallStartedAt=Date.now();if(voiceCallTimer)voiceCallTimer.textContent="00:00";voiceCallTimerId=setInterval(()=>{if(voiceCallTimer&&voiceCallStartedAt)voiceCallTimer.textContent=voiceCallFormatTimer((Date.now()-voiceCallStartedAt)/1000)},500)}
 function voiceCallStopTimer(){clearInterval(voiceCallTimerId);voiceCallTimerId=null;voiceCallStartedAt=0;if(voiceCallTimer)voiceCallTimer.textContent="00:00"}
@@ -4599,7 +4620,7 @@ async function voiceCallHandleOffer(data){
 }
 async function voiceCallHandleAnswer(data){if(data.call_id!==voiceCallId||!voiceCallPeer||!data.sdp)return;try{await voiceCallPeer.setRemoteDescription(new RTCSessionDescription(data.sdp));for(const c of voiceCallPendingCandidates.splice(0)){try{await voiceCallPeer.addIceCandidate(c)}catch(_){} }voiceCallReconnectAttempts=0;if(voiceCallState==="outgoing")voiceCallSetStatus("Connecting…","Connecting");else if(voiceCallState==="active")voiceCallSetStatus("Voice call connected","Connected");}catch(e){console.error("VOICE ANSWER ERROR:",e);if(voiceCallState!=="idle")voiceCallScheduleReconnect()}}
 async function voiceCallHandleIce(data){if(!data.candidate||data.call_id!==voiceCallId)return;if(!voiceCallPeer||!voiceCallPeer.remoteDescription){voiceCallPendingCandidates.push(data.candidate);return}try{await voiceCallPeer.addIceCandidate(data.candidate)}catch(_){}}
-function voiceCallToggleMute(){if(!voiceCallLocalStream)return;voiceCallMuted=!voiceCallMuted;voiceCallLocalStream.getAudioTracks().forEach(t=>t.enabled=!voiceCallMuted);if(voiceCallMuteBtn){voiceCallMuteBtn.classList.toggle("is-muted",voiceCallMuted);voiceCallMuteBtn.textContent=voiceCallMuted?"🔇":"🎙️"}voiceCallSetStatus(voiceCallMuted?"Microphone muted":"Voice call connected",voiceCallMuted?"Muted":"Connected")}
+function voiceCallToggleMute(){if(!voiceCallLocalStream)return;voiceCallMuted=!voiceCallMuted;voiceCallLocalStream.getAudioTracks().forEach(t=>t.enabled=!voiceCallMuted);if(voiceCallMuteBtn){voiceCallMuteBtn.classList.toggle("is-muted",voiceCallMuted);voiceCallMuteBtn.textContent=voiceCallMuted?"🔇":"🎙️"}voiceCallSetDetail(voiceCallMuted?"Microphone muted":"Voice call connected")}
 function voiceCallToggleSpeaker(){
     if(!voiceCallRemoteAudio) return;
 
@@ -4615,9 +4636,8 @@ function voiceCallToggleSpeaker(){
         );
     }
 
-    voiceCallSetStatus(
-        voiceCallSpeakerLow ? "Lower speaker volume" : "Voice call connected",
-        voiceCallSpeakerLow ? "Lower volume" : "Connected"
+    voiceCallSetDetail(
+        voiceCallSpeakerLow ? "Lower speaker volume" : "Voice call connected"
     );
 }
 
