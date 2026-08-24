@@ -208,6 +208,13 @@ async def upload_public_key(
     try:
         user = resolve_user_by_username(db, username)
 
+        print(
+            "PUBLIC KEY UPLOAD:",
+            "requested_username=", repr(username),
+            "matched_username=", repr(user.username) if user else None,
+            "has_public_key=", bool(getattr(user, "public_key", None)) if user else False,
+        )
+
         if not user:
             return {
                 "success": False,
@@ -242,6 +249,13 @@ async def get_public_key(username: str):
 
     try:
         user = resolve_user_by_username(db, username)
+
+        print(
+            "PUBLIC KEY FETCH:",
+            "requested_username=", repr(username),
+            "matched_username=", repr(user.username) if user else None,
+            "has_public_key=", bool(getattr(user, "public_key", None)) if user else False,
+        )
 
         if not user:
             return {
