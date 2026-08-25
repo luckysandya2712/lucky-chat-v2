@@ -1960,7 +1960,9 @@ async def upload_profile(
 
     if user:
 
-        user.profile_picture = "/static/profile/" + filename
+        # Cache-bust profile picture URLs so browsers do not keep showing the old image
+        # after the same username-based filename is replaced on the server.
+        user.profile_picture = "/static/profile/" + filename + "?v=" + str(int(time.time() * 1000))
 
         db.commit()
 
