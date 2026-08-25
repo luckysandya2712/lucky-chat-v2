@@ -1932,7 +1932,7 @@ input.addEventListener("keypress",function(e){
 
 });
 
-window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v3";
+window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v4-echo";
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
 function createOptimisticMessage(text, image, audio, video) {
@@ -4591,7 +4591,7 @@ function voiceCallResetControls(){
         voiceCallSpeakerBtn.setAttribute("aria-label","Reduce speaker volume");
     }
     if(voiceCallRemoteAudio){
-        voiceCallRemoteAudio.volume=0.72;
+        voiceCallRemoteAudio.volume=0.58;
         voiceCallRemoteAudio.muted=false;
     }
     if(voiceCallMainBtn){
@@ -4615,6 +4615,10 @@ function voiceCallConfigureActive(){
             noiseSuppression:true,
             autoGainControl:true,
             channelCount:1
+        }).catch(()=>{});
+
+        void activeMicTrack.applyConstraints({
+            echoCancellationType:"system"
         }).catch(()=>{});
     }
 voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer();voiceCallStartQualityMonitor();voiceCallSetQuality("unknown")}
@@ -4729,7 +4733,7 @@ function voiceCallEnsurePeer(){
         }
 
         if(voiceCallRemoteAudio){
-            const currentVolume = voiceCallSpeakerLow ? 0.45 : 0.72;
+            const currentVolume = voiceCallSpeakerLow ? 0.35 : 0.58;
 
             voiceCallRemoteAudio.volume = currentVolume;
             voiceCallRemoteAudio.muted = false;
@@ -4834,6 +4838,13 @@ async function voiceCallGetLocalStream(){
             }catch(error){
                 console.debug("VOICE MIC CONSTRAINT FALLBACK:",error);
             }
+
+            // Prefer the system acoustic echo canceller on devices that support it.
+            try{
+                await micTrack.applyConstraints({
+                    echoCancellationType:"system"
+                });
+            }catch(_){}
         }
     }
 
@@ -4962,7 +4973,7 @@ function voiceCallToggleSpeaker(){
     if(!voiceCallRemoteAudio) return;
 
     voiceCallSpeakerLow=!voiceCallSpeakerLow;
-    voiceCallRemoteAudio.volume=voiceCallSpeakerLow ? 0.45 : 0.72;
+    voiceCallRemoteAudio.volume=voiceCallSpeakerLow ? 0.35 : 0.58;
 
     if(voiceCallSpeakerBtn){
         voiceCallSpeakerBtn.classList.toggle("is-low",voiceCallSpeakerLow);
