@@ -1915,7 +1915,13 @@ async def upload_profile(
 
     # Read at most 5 MB + 1 byte
     max_size = 5 * 1024 * 1024
-    data = await file.read(max_size + 1)
+    try:
+        data = await file.read(max_size + 1)
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            pass
 
     if len(data) > max_size:
         return RedirectResponse(
@@ -1992,10 +1998,10 @@ async def upload_profile(
 
     asyncio.create_task(broadcast_profile_picture_update())
 
-    return RedirectResponse(
-        "/profile",
-        status_code=303
-    )
+    return {
+        "success": True,
+        "profile_picture": profile_picture_url
+    }
 
 @app.post("/update-profile")
 async def update_profile(

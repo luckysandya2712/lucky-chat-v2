@@ -580,7 +580,7 @@ button:active{
             <p>Choose a new image for your profile</p>
         </div>
 
-        <form action="/upload-profile" method="post" enctype="multipart/form-data">
+        <form id="profilePictureForm" action="/upload-profile" method="post" enctype="multipart/form-data">
 
         <div class="upload-box">
     <label for="profile_image" class="custom-file-btn">
@@ -617,6 +617,88 @@ function updateFileName(input) {
         fileName.textContent = "No image selected";
     }
 }
+
+(() => {
+    const form = document.getElementById("profilePictureForm");
+    const fileInput = document.getElementById("profile_image");
+    const submitButton = form?.querySelector('button[type="submit"]');
+
+    if (!form || !fileInput || !submitButton) return;
+
+    let status = document.getElementById("profileUploadStatus");
+    if (!status) {
+        status = document.createElement("div");
+        status.id = "profileUploadStatus";
+        status.style.cssText =
+            "margin-top:10px;text-align:center;font-size:13px;color:#94a3b8;min-height:18px;";
+        form.appendChild(status);
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const file = fileInput.files?.[0];
+        if (!file) {
+            status.textContent = "Please choose a profile picture first.";
+            status.style.color = "#fca5a5";
+            return;
+        }
+
+        submitButton.disabled = true;
+        submitButton.style.opacity = "0.7";
+        submitButton.textContent = "Uploading…";
+        status.textContent = "Uploading profile picture…";
+        status.style.color = "#94a3b8";
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        try {
+            const response = await fetch(form.action, {
+                method: "POST",
+                body: new FormData(form),
+                credentials: "same-origin",
+                redirect: "follow",
+                signal: controller.signal
+            });
+
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (_) {}
+
+            if (!response.ok || !data?.success) {
+                throw new Error(
+                    data?.error ||
+                    "Profile picture upload failed (HTTP " + response.status + ")."
+                );
+            }
+
+            const preview = document.getElementById("preview");
+            if (preview && data.profile_picture) {
+                preview.src = data.profile_picture;
+            }
+
+            status.textContent = "Profile picture updated successfully.";
+            status.style.color = "#86efac";
+
+            setTimeout(() => {
+                window.location.href = "/profile";
+            }, 500);
+        } catch (error) {
+            status.textContent =
+                error?.name === "AbortError"
+                    ? "Upload timed out. Please try again."
+                    : (error?.message || "Could not update profile picture.");
+            status.style.color = "#fca5a5";
+        } finally {
+            clearTimeout(timeoutId);
+            submitButton.disabled = false;
+            submitButton.style.opacity = "";
+            submitButton.textContent = "Update Profile Picture";
+        }
+    });
+})();
 </script>
 
 </body>
