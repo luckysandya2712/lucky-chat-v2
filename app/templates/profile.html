@@ -621,6 +621,7 @@ function updateFileName(input) {
 (() => {
     const form = document.getElementById("profilePictureForm");
     const fileInput = document.getElementById("profile_image");
+    const preview = document.getElementById("preview");
     const submitButton = form?.querySelector('button[type="submit"]');
 
     if (!form || !fileInput || !submitButton) return;
@@ -630,7 +631,7 @@ function updateFileName(input) {
         status = document.createElement("div");
         status.id = "profileUploadStatus";
         status.style.cssText =
-            "margin-top:10px;text-align:center;font-size:13px;color:#94a3b8;min-height:18px;";
+            "margin-top:10px;text-align:center;font-size:13px;line-height:1.4;min-height:18px;color:#94a3b8;";
         form.appendChild(status);
     }
 
@@ -644,37 +645,49 @@ function updateFileName(input) {
             return;
         }
 
+        if (file.size > 5 * 1024 * 1024) {
+            status.textContent = "Image is too large. Maximum size is 5 MB.";
+            status.style.color = "#fca5a5";
+            return;
+        }
+
         submitButton.disabled = true;
-        submitButton.style.opacity = "0.7";
         submitButton.textContent = "Uploading…";
+        submitButton.style.opacity = "0.7";
         status.textContent = "Uploading profile picture…";
         status.style.color = "#94a3b8";
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
 
         try {
             const response = await fetch(form.action, {
                 method: "POST",
                 body: new FormData(form),
                 credentials: "same-origin",
+                cache: "no-store",
                 redirect: "follow",
                 signal: controller.signal
             });
 
-            let data = null;
-            try {
-                data = await response.json();
-            } catch (_) {}
+            const contentType = response.headers.get("content-type") || "";
+            if (!contentType.includes("application/json")) {
+                throw new Error(
+                    "Server returned an unexpected response (HTTP " +
+                    response.status + ")."
+                );
+            }
+
+            const data = await response.json();
 
             if (!response.ok || !data?.success) {
                 throw new Error(
                     data?.error ||
-                    "Profile picture upload failed (HTTP " + response.status + ")."
+                    "Profile picture upload failed (HTTP " +
+                    response.status + ")."
                 );
             }
 
-            const preview = document.getElementById("preview");
             if (preview && data.profile_picture) {
                 preview.src = data.profile_picture;
             }
@@ -684,7 +697,8 @@ function updateFileName(input) {
 
             setTimeout(() => {
                 window.location.href = "/profile";
-            }, 500);
+            }, 700);
+
         } catch (error) {
             status.textContent =
                 error?.name === "AbortError"
@@ -694,8 +708,8 @@ function updateFileName(input) {
         } finally {
             clearTimeout(timeoutId);
             submitButton.disabled = false;
-            submitButton.style.opacity = "";
             submitButton.textContent = "Update Profile Picture";
+            submitButton.style.opacity = "";
         }
     });
 })();

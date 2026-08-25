@@ -1907,7 +1907,9 @@ async def upload_profile(
         "image/webp": ".webp"
     }
 
-    if file.content_type not in allowed_types:
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+
+    if content_type not in allowed_types:
         return RedirectResponse(
             "/profile?error=invalid_image",
             status_code=303
@@ -1940,13 +1942,13 @@ async def upload_profile(
         )
     }
 
-    if not valid_signatures[file.content_type]:
+    if not valid_signatures[content_type]:
         return RedirectResponse(
             "/profile?error=invalid_image",
             status_code=303
         )
 
-    extension = allowed_types[file.content_type]
+    extension = allowed_types[content_type]
     filename = f"{username}{extension}"
 
     filepath = os.path.join(
@@ -1960,30 +1962,36 @@ async def upload_profile(
 
     db = SessionLocal()
 
-    user = db.query(User).filter(
-        User.username == username
-    ).first()
+    try:
+        user = db.query(User).filter(
+            User.username == username
+        ).first()
 
-    if not user:
-        db.close()
-        return RedirectResponse(
-            "/profile?error=user_not_found",
-            status_code=303
+        if not user:
+            return {
+                "success": False,
+                "error": "User not found"
+            }
+
+        cache_version = int(time.time() * 1000)
+        profile_picture_url = (
+            "/static/profile/" + filename + "?v=" + str(cache_version)
         )
 
-    # Store a cache-busted URL so browsers fetch the newly uploaded image even
-    # though the username-based filename remains the same.
-    cache_version = int(time.time() * 1000)
-    profile_picture_url = (
-        "/static/profile/" + filename + "?v=" + str(cache_version)
-    )
+        user.profile_picture = profile_picture_url
+        db.commit()
 
-    user.profile_picture = profile_picture_url
-    db.commit()
-    db.close()
+    except Exception as exc:
+        db.rollback()
+        print("PROFILE PICTURE DB ERROR:", exc)
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": "Could not save profile picture"
+        }
+    finally:
+        db.close()
 
-    # The HTTP upload must never wait for a possibly stale/disconnected
-    # WebSocket. Broadcast the change in the background.
     async def broadcast_profile_picture_update():
         try:
             await asyncio.wait_for(
