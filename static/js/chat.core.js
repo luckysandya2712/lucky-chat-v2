@@ -1932,7 +1932,7 @@ input.addEventListener("keypress",function(e){
 
 });
 
-window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v4-echo";
+window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v5-mic";
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
 function createOptimisticMessage(text, image, audio, video) {
@@ -4611,11 +4611,19 @@ function voiceCallConfigureActive(){
     const activeMicTrack=voiceCallLocalStream?.getAudioTracks?.()[0];
     if(activeMicTrack?.applyConstraints){
         void activeMicTrack.applyConstraints({
-            echoCancellation:true,
+            echoCancellation:"remote-only",
             noiseSuppression:true,
-            autoGainControl:true,
+            autoGainControl:false,
             channelCount:1
-        }).catch(()=>{});
+        }).catch(()=>{
+            // Older browsers may only accept a boolean AEC value.
+            return activeMicTrack.applyConstraints({
+                echoCancellation:true,
+                noiseSuppression:true,
+                autoGainControl:false,
+                channelCount:1
+            }).catch(()=>{});
+        });
 
         void activeMicTrack.applyConstraints({
             echoCancellationType:"system"
@@ -4809,15 +4817,35 @@ function voiceCallEnsurePeer(){
     return voiceCallPeer;
 }
 
+async function voiceCallLogAudioSettings(track){
+    try{
+        if(!track?.getSettings) return;
+        const settings=track.getSettings();
+        console.log("VOICE MIC SETTINGS:", {
+            echoCancellation:settings.echoCancellation,
+            noiseSuppression:settings.noiseSuppression,
+            autoGainControl:settings.autoGainControl,
+            channelCount:settings.channelCount,
+            sampleRate:settings.sampleRate,
+            latency:settings.latency
+        });
+    }catch(error){
+        console.debug("VOICE MIC SETTINGS ERROR:",error);
+    }
+}
+
 async function voiceCallGetLocalStream(){
     if(!voiceCallLocalStream){
         voiceCallLocalStream = await navigator.mediaDevices.getUserMedia({
             audio:{
-                // Prefer the browser's hardware/OS acoustic echo canceller.
-                // These are explicit requirements rather than "ideal" hints.
-                echoCancellation:true,
+                // Voice-call profile:
+                // - remote-only AEC targets audio coming from the other peer.
+                // - noise suppression removes steady phone/environment noise.
+                // - AGC is disabled so noisy devices do not keep boosting
+                //   the microphone and making the returned echo louder.
+                echoCancellation:"remote-only",
                 noiseSuppression:true,
-                autoGainControl:true,
+                autoGainControl:false,
                 channelCount:1
             },
             video:false
@@ -4829,12 +4857,23 @@ async function voiceCallGetLocalStream(){
         const micTrack=voiceCallLocalStream.getAudioTracks()[0];
         if(micTrack?.applyConstraints){
             try{
-                await micTrack.applyConstraints({
-                    echoCancellation:true,
+                const supported =
+                    navigator.mediaDevices?.getSupportedConstraints?.() || {};
+
+                const callAudioConstraints = {
                     noiseSuppression:true,
-                    autoGainControl:true,
+                    autoGainControl:false,
                     channelCount:1
-                });
+                };
+
+                // Use the remote-only AEC mode when the browser advertises
+                // echo cancellation support; otherwise fall back to true.
+                // The standard permits both boolean and string values for
+                // echoCancellation on browsers that support specific modes.
+                callAudioConstraints.echoCancellation =
+                    supported.echoCancellation ? "remote-only" : true;
+
+                await micTrack.applyConstraints(callAudioConstraints);
             }catch(error){
                 console.debug("VOICE MIC CONSTRAINT FALLBACK:",error);
             }
@@ -4846,6 +4885,11 @@ async function voiceCallGetLocalStream(){
                 });
             }catch(_){}
         }
+    }
+
+    const diagnosticTrack=voiceCallLocalStream.getAudioTracks?.()[0];
+    if(diagnosticTrack){
+        void voiceCallLogAudioSettings(diagnosticTrack);
     }
 
     voiceCallEnsurePeer();
