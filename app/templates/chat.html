@@ -1328,10 +1328,32 @@ Welcome to Lucky Chat 🚀
         animation:none;
     }
 }
+
+.voice-call-quality{
+    display:block !important;
+    width:100%;
+    min-height:17px;
+    margin-top:7px;
+    text-align:center;
+    color:#cbd5e1;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:.04em;
+    line-height:17px;
+    opacity:1 !important;
+    visibility:visible !important;
+    position:relative;
+    z-index:10;
+    pointer-events:none;
+}
+.voice-call-card > .voice-call-quality{
+    flex:0 0 auto;
+}
+
 </style>
 
 <script src="/static/js/crypto.core.js?v=20260824-fix8"></script>
-<script src="/static/js/chat.core.js?v=20260825-call-ringtones-v1"></script>
+<script src="/static/js/chat.core.js?v=20260825-quality-indicator-v1"></script>
 
 </body>
 </html>
