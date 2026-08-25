@@ -4609,42 +4609,78 @@ function voiceCallEnsurePeer(){
             return;
         }
 
-        // Chrome/Android can surface the same remote track more than once during
-        // renegotiation/ICE restart. Rebinding the same track to the audio
-        // element can make previously buffered speech sound like it repeats.
-        if(voiceCallRemoteTrackId === event.track.id &&
-           voiceCallRemoteAudio?.srcObject){
+        const incomingTrackId = event.track.id;
+
+        // The browser can deliver ontrack again during ICE restart /
+        // renegotiation. Never start a second playback pipeline for the same
+        // track, and do not restart the audio element when the track changes.
+        if(voiceCallRemoteTrackId === incomingTrackId){
             if(voiceCallState !== "active"){
                 voiceCallConfigureActive();
             }
             return;
         }
 
-        voiceCallRemoteTrackId = event.track.id;
+        const hadRemoteTrack = Boolean(voiceCallRemoteTrackId);
+        const previousStream = voiceCallRemoteStream;
+
+        voiceCallRemoteTrackId = incomingTrackId;
+
+        if(!voiceCallRemoteStream){
+            voiceCallRemoteStream = new MediaStream();
+        }
 
         // Keep exactly one remote audio track in the playback stream.
-        // Do not reuse an event.streams[] object that may contain multiple
-        // audio tracks after renegotiation.
-        voiceCallRemoteStream = new MediaStream([event.track]);
+        // Replace the old track in the existing MediaStream instead of
+        // replacing audio.srcObject. Reassigning srcObject + calling play()
+        // during renegotiation can replay a small buffered portion of speech
+        // on some mobile Chromium/WebRTC combinations.
+        for(const track of voiceCallRemoteStream.getAudioTracks()){
+            if(track.id !== incomingTrackId){
+                try{voiceCallRemoteStream.removeTrack(track)}catch(_){}
+                try{track.stop()}catch(_){}
+            }
+        }
+
+        if(!voiceCallRemoteStream.getAudioTracks().some(track => track.id === incomingTrackId)){
+            voiceCallRemoteStream.addTrack(event.track);
+        }
 
         if(voiceCallRemoteAudio){
             const currentVolume = voiceCallSpeakerLow ? 0.58 : 0.88;
 
-            voiceCallRemoteAudio.pause();
-            voiceCallRemoteAudio.srcObject = null;
-            voiceCallRemoteAudio.srcObject = voiceCallRemoteStream;
             voiceCallRemoteAudio.volume = currentVolume;
             voiceCallRemoteAudio.muted = false;
 
-            // Start playback only once for this newly received track.
-            void voiceCallRemoteAudio.play().catch(() => {});
+            if(voiceCallRemoteAudio.srcObject !== voiceCallRemoteStream){
+                voiceCallRemoteAudio.srcObject = voiceCallRemoteStream;
+            }
+
+            // Only start playback for the first remote track. For an
+            // ICE-restart/replacement track, keep the existing playback
+            // pipeline running so buffered audio is not replayed.
+            if(!hadRemoteTrack || voiceCallRemoteAudio.paused){
+                void voiceCallRemoteAudio.play().catch(() => {});
+            }
         }
 
         event.track.onended = () => {
-            if(voiceCallRemoteTrackId === event.track.id){
-                voiceCallRemoteTrackId = null;
+            if(voiceCallRemoteTrackId !== incomingTrackId){
+                return;
             }
+
+            // During a call, keep the playback object alive so a subsequent
+            // renegotiation can replace the track without recreating audio.
+            if(voiceCallState === "active"){
+                return;
+            }
+
+            voiceCallRemoteTrackId = null;
         };
+
+        if(previousStream && previousStream !== voiceCallRemoteStream){
+            try{previousStream.getAudioTracks().forEach(track => track.stop())}catch(_){}
+        }
 
         if(voiceCallState !== "active"){
             voiceCallConfigureActive();
