@@ -121,6 +121,94 @@
 <style>
 .voice-call-btn{width:44px;height:44px;min-width:44px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:14px;border:1px solid rgba(96,165,250,.16);background:rgba(30,41,59,.84);color:#f8fafc;font-size:18px;box-shadow:0 7px 18px rgba(0,0,0,.14);transition:transform .15s ease,background .18s ease,border-color .18s ease}.voice-call-btn:active{transform:scale(.92)}
 .voice-call-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at 50% 20%,rgba(59,130,246,.16),transparent 35%),rgba(4,10,19,.82);backdrop-filter:blur(18px);z-index:10010;opacity:0;visibility:hidden;transition:opacity .22s ease,visibility .22s ease}.voice-call-overlay.is-open{display:flex;opacity:1;visibility:visible}.voice-call-overlay.is-closing{display:flex;opacity:0;visibility:visible}.voice-call-card{width:min(420px,100%);padding:18px 18px 20px;border:1px solid rgba(148,163,184,.13);border-radius:28px;background:linear-gradient(160deg,rgba(20,31,50,.98),rgba(9,18,32,.99));box-shadow:0 24px 70px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.035);text-align:center}.voice-call-top{display:flex;align-items:center;justify-content:space-between}.voice-call-state-pill{padding:6px 10px;border-radius:999px;background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.12);color:#93c5fd;font-size:10px;font-weight:800}.voice-call-close{width:36px;height:36px;border-radius:12px;border:1px solid rgba(148,163,184,.10);background:rgba(148,163,184,.07);color:#cbd5e1;font-size:16px}.voice-call-avatar-wrap{position:relative;width:122px;height:122px;margin:28px auto 16px}.voice-call-avatar{position:relative;z-index:2;width:100%;height:100%;object-fit:cover;border-radius:50%;border:4px solid #2563eb;box-shadow:0 0 0 5px rgba(37,99,235,.10),0 14px 30px rgba(0,0,0,.30)}.voice-call-ring{position:absolute;inset:-8px;border-radius:50%;border:1px solid rgba(96,165,250,.22);opacity:0}.voice-call-overlay.is-ringing .voice-call-ring{opacity:1;animation:voiceCallRing 1.6s ease-out infinite}@keyframes voiceCallRing{0%{transform:scale(.82);opacity:.65}100%{transform:scale(1.18);opacity:0}}.voice-call-name{color:#f8fafc;font-size:22px;font-weight:800}.voice-call-status{min-height:20px;margin-top:5px;color:#8ea0b6;font-size:12px}.voice-call-timer{margin-top:4px;color:#dbeafe;font-size:13px;font-variant-numeric:tabular-nums;min-height:18px}.voice-call-actions{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:26px}.voice-call-action,.voice-call-main{border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;color:#fff;transition:transform .15s ease,background .18s ease,box-shadow .18s ease,opacity .18s ease}.voice-call-action{width:48px;height:48px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.10);font-size:19px}.voice-call-main{width:66px;height:66px;background:linear-gradient(145deg,#3b82f6,#2563eb);border:1px solid rgba(147,197,253,.24);box-shadow:0 12px 28px rgba(37,99,235,.28);font-size:25px}.voice-call-action:active,.voice-call-main:active{transform:scale(.92)}.voice-call-action:disabled{opacity:.38}.voice-call-action.is-muted{background:rgba(239,68,68,.16);border-color:rgba(248,113,113,.18)}.voice-call-main.is-end{background:linear-gradient(145deg,#ef4444,#dc2626);box-shadow:0 12px 28px rgba(220,38,38,.26)}.voice-call-main.is-accept{background:linear-gradient(145deg,#22c55e,#16a34a);box-shadow:0 12px 28px rgba(34,197,94,.24)}.voice-call-main.is-incoming{animation:voiceCallMainPulse 1.3s ease-in-out infinite}@keyframes voiceCallMainPulse{0%,100%{box-shadow:0 12px 28px rgba(37,130,235,.28)}50%{box-shadow:0 0 0 10px rgba(59,130,246,.09),0 14px 32px rgba(37,99,235,.32)}}#voiceCallRemoteAudio{display:none}@media(max-width:480px){.voice-call-overlay{padding:12px}.voice-call-card{border-radius:24px;padding:15px 14px 18px}.voice-call-avatar-wrap{width:108px;height:108px;margin-top:24px}}@media(prefers-reduced-motion:reduce){.voice-call-overlay,.voice-call-btn,.voice-call-action,.voice-call-main{transition:none}.voice-call-overlay.is-ringing .voice-call-ring,.voice-call-main.is-incoming{animation:none}}
+
+</style>
+
+<style id="lucky-call-history-v1">
+.call-history-row{
+    width:100%;
+    display:flex;
+    justify-content:center;
+    margin:8px 0;
+}
+.call-history-message{
+    min-width:210px;
+    max-width:86%;
+    padding:0 !important;
+    border-radius:16px !important;
+    background:transparent !important;
+    box-shadow:none !important;
+}
+.call-history-card{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    border-radius:16px;
+    border:1px solid rgba(148,163,184,.14);
+    background:linear-gradient(145deg,rgba(20,31,50,.84),rgba(9,18,32,.94));
+    box-shadow:0 8px 24px rgba(0,0,0,.16);
+}
+.call-history-message.message-own .call-history-card{
+    border-color:rgba(96,165,250,.22);
+    background:linear-gradient(145deg,rgba(30,58,95,.68),rgba(14,30,52,.92));
+}
+.call-history-icon{
+    width:34px;
+    height:34px;
+    flex:0 0 34px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:11px;
+    background:rgba(59,130,246,.12);
+    font-size:17px;
+}
+.call-history-copy{
+    min-width:0;
+    flex:1;
+}
+.call-history-label{
+    color:#e5eefc;
+    font-size:12px;
+    font-weight:750;
+    line-height:1.25;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.call-history-meta{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    margin-top:3px;
+    color:#94a3b8;
+    font-size:10px;
+}
+.call-history-status{
+    font-weight:800;
+    letter-spacing:.04em;
+}
+.call-history-message[data-call-status="missed"] .call-history-icon,
+.call-history-message[data-call-status="rejected"] .call-history-icon,
+.call-history-message[data-call-status="unavailable"] .call-history-icon{
+    background:rgba(239,68,68,.12);
+}
+.call-history-message[data-call-status="missed"] .call-history-status,
+.call-history-message[data-call-status="rejected"] .call-history-status,
+.call-history-message[data-call-status="unavailable"] .call-history-status{
+    color:#fca5a5;
+}
+.call-history-message[data-call-status="ended"] .call-history-status,
+.call-history-message[data-call-status="active"] .call-history-status{
+    color:#86efac;
+}
+@media(max-width:480px){
+    .call-history-message{
+        min-width:190px;
+        max-width:92%;
+    }
+}
 </style>
 
 <div id="pinnedBar" class="pinned-bar">
@@ -1353,7 +1441,7 @@ Welcome to Lucky Chat 🚀
 </style>
 
 <script src="/static/js/crypto.core.js?v=20260824-fix8"></script>
-<script src="/static/js/chat.core.js?v=20260825-quality-indicator-v1"></script>
+<script src="/static/js/chat.core.js?v=20260825-call-history-v1"></script>
 
 </body>
 </html>

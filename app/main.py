@@ -452,6 +452,110 @@ async def websocket_endpoint(websocket: WebSocket):
 
             print("Received:", data)
 
+
+            async def persist_call_history_event(call_id, caller, callee, event_type):
+                """Persist a single voice-call lifecycle row and notify both participants."""
+                if not call_id or not caller or not callee:
+                    return None
+
+                db_call = SessionLocal()
+                try:
+                    marker = "call:" + str(call_id)
+                    row = (
+                        db_call.query(Message)
+                        .filter(
+                            Message.media_type == "call",
+                            Message.media_url == marker
+                        )
+                        .first()
+                    )
+
+                    if row is None:
+                        row = Message(
+                            sender=caller,
+                            receiver=callee,
+                            text="{}",
+                            timestamp=utc_now_iso(),
+                            media_url=marker,
+                            media_type="call",
+                            media_duration=0,
+                            unread=0,
+                            delivered=1,
+                            read=1,
+                            seen_in_chat=1
+                        )
+                        db_call.add(row)
+
+                    status = {
+                        "ringing": "ringing",
+                        "active": "active",
+                        "ended": "ended",
+                        "missed": "missed",
+                        "rejected": "rejected",
+                        "busy": "busy",
+                        "unavailable": "unavailable"
+                    }.get(event_type, "ended")
+
+                    duration = int(row.media_duration or 0)
+
+                    if status == "ended":
+                        try:
+                            started = datetime.fromisoformat(
+                                str(row.timestamp).replace("Z", "+00:00")
+                            )
+                            duration = max(
+                                0,
+                                int(
+                                    (datetime.now(timezone.utc) - started).total_seconds()
+                                )
+                            )
+                        except Exception:
+                            pass
+
+                    row.text = json.dumps(
+                        {
+                            "type": "voice_call",
+                            "status": status,
+                            "duration": duration
+                        },
+                        separators=(",", ":")
+                    )
+                    row.media_duration = duration
+                    row.unread = 0
+                    row.delivered = 1
+                    row.read = 1
+                    row.seen_in_chat = 1
+
+                    db_call.commit()
+                    db_call.refresh(row)
+
+                    payload = {
+                        "type": "call_history_update",
+                        "call": {
+                            "id": row.id,
+                            "sender": row.sender,
+                            "receiver": row.receiver,
+                            "text": row.text,
+                            "timestamp": row.timestamp,
+                            "media_url": row.media_url,
+                            "media_type": row.media_type,
+                            "media_duration": row.media_duration or 0
+                        }
+                    }
+
+                    await manager.send(row.sender, payload)
+                    if row.receiver != row.sender:
+                        await manager.send(row.receiver, payload)
+
+                    return row
+                except Exception as exc:
+                    db_call.rollback()
+                    print("CALL HISTORY ERROR:", exc)
+                    traceback.print_exc()
+                    return None
+                finally:
+                    db_call.close()
+
             VOICE_CALL_SIGNAL_TYPES = {"call_offer","call_answer","call_ice","call_reject","call_busy","call_end","call_ping"}
             if data.get("type") in VOICE_CALL_SIGNAL_TYPES:
                 signal_type=data.get("type")
@@ -468,6 +572,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not target_user:
                     print(f"VOICE CALL TARGET USER NOT FOUND: {requested_target} ({signal_type})")
                     if signal_type in {"call_ping", "call_offer"}:
+                        if data.get("call_id"):
+                            await persist_call_history_event(
+                                data.get("call_id"),
+                                username,
+                                requested_target,
+                                "unavailable"
+                            )
                         await manager.send(username, {
                             "type": "call_unavailable",
                             "call_id": data.get("call_id"),
@@ -480,12 +591,77 @@ async def websocket_endpoint(websocket: WebSocket):
                 if target == username:
                     continue
 
-                payload={"type":signal_type,"call_id":data.get("call_id"),"sender":username}
+                call_id = data.get("call_id")
+
+                # Persist the call lifecycle. ICE-restart offers/answers are
+                # renegotiations and must not create duplicate history rows.
+                if call_id and signal_type == "call_ping":
+                    await persist_call_history_event(
+                        call_id, username, target, "ringing"
+                    )
+                elif call_id and signal_type == "call_offer" and not data.get("ice_restart"):
+                    await persist_call_history_event(
+                        call_id, username, target, "ringing"
+                    )
+                elif call_id and signal_type == "call_answer" and not data.get("ice_restart"):
+                    await persist_call_history_event(
+                        call_id, target, username, "active"
+                    )
+                elif call_id and signal_type == "call_reject":
+                    await persist_call_history_event(
+                        call_id, target, username, "rejected"
+                    )
+                elif call_id and signal_type == "call_busy":
+                    await persist_call_history_event(
+                        call_id, target, username, "busy"
+                    )
+                elif call_id and signal_type == "call_end":
+                    db_lookup = SessionLocal()
+                    try:
+                        marker = "call:" + str(call_id)
+                        existing = (
+                            db_lookup.query(Message)
+                            .filter(
+                                Message.media_type == "call",
+                                Message.media_url == marker
+                            )
+                            .first()
+                        )
+
+                        caller = existing.sender if existing else target
+                        callee = existing.receiver if existing else username
+                        prior_status = "ended"
+
+                        if existing and existing.text:
+                            try:
+                                prior_status = json.loads(
+                                    existing.text or "{}"
+                                ).get("status", "ended")
+                            except Exception:
+                                pass
+                    finally:
+                        db_lookup.close()
+
+                    await persist_call_history_event(
+                        call_id,
+                        caller,
+                        callee,
+                        "missed" if prior_status == "ringing" else "ended"
+                    )
+
+                payload={"type":signal_type,"call_id":call_id,"sender":username}
                 if signal_type in {"call_offer","call_answer"}: payload["sdp"]=data.get("sdp")
                 elif signal_type=="call_ice": payload["candidate"]=data.get("candidate")
                 delivered = await manager.send(target, payload)
                 if not delivered and signal_type in {"call_ping", "call_offer"}:
                     print(f"VOICE CALL TARGET NOT CONNECTED: {target} ({signal_type})")
+                    if data.get("call_id"):
+                        await persist_call_history_event(
+                            data.get("call_id"),
+                            username,
+                            target,
+                            "unavailable"
+                        )
                     await manager.send(username, {
                         "type": "call_unavailable",
                         "call_id": data.get("call_id"),

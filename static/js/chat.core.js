@@ -838,6 +838,10 @@ function renderPinnedBar(){
         ? "📷 Photo"
         : latest.media_type === "video" && latest.media_url
         ? "🎬 Video"
+        : latest.media_type === "audio" && latest.media_url
+        ? "🎙️ Voice message"
+        : latest.media_type === "call"
+        ? "📞 Voice call"
         : (latest.text || "Message");
 
     text.textContent = sender + ": " + preview;
@@ -993,11 +997,13 @@ async function loadMessages() {
             msg.reaction = savedReactions[msg.id];
         }
 
-        try {
-            msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
-        } catch (error) {
-            console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
-            msg.text = "🔒 Unable to decrypt this message";
+        if (msg.media_type !== "call") {
+            try {
+                msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
+            } catch (error) {
+                console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
+                msg.text = "🔒 Unable to decrypt this message";
+            }
         }
 
         messageMap[msg.id] = msg;
@@ -1467,6 +1473,11 @@ async function handleSocketMessage(event) {
     if (data.type === "call_busy" && window.LuckyVoiceCall?.handleBusy) { window.LuckyVoiceCall.handleBusy(data); return; }
     if (data.type === "call_end" && window.LuckyVoiceCall?.handleEnd) { window.LuckyVoiceCall.handleEnd(data); return; }
     if (data.type === "call_unavailable" && window.LuckyVoiceCall?.handleUnavailable) { window.LuckyVoiceCall.handleUnavailable(data); return; }
+
+    if (data.type === "call_history_update" && data.call) {
+        addMessage(data.call);
+        return;
+    }
 
     if (data.type === "message") {
         // Outgoing messages are already rendered locally. Never make the
@@ -2124,9 +2135,132 @@ async function sendOptimisticMessage(optimisticMessage, image, audio, video) {
     }
 }
 
+
+function parseCallHistoryData(msg){
+    if(!msg || msg.media_type!=="call") return null;
+
+    try{
+        const value=typeof msg.text==="string"
+            ? JSON.parse(msg.text||"{}")
+            : msg.text;
+
+        if(value && value.type==="voice_call"){
+            return value;
+        }
+    }catch(_){}
+
+    return {
+        type:"voice_call",
+        status:"ended",
+        duration:Number(msg.media_duration||0)
+    };
+}
+
+function formatCallHistoryDuration(seconds){
+    const total=Math.max(0,Math.floor(Number(seconds)||0));
+    const minutes=Math.floor(total/60);
+    const secs=String(total%60).padStart(2,"0");
+    return `${String(minutes).padStart(2,"0")}:${secs}`;
+}
+
+function callHistoryLabel(msg,call){
+    const outgoing=msg.sender===username;
+    const duration=Number(call.duration||msg.media_duration||0);
+
+    if(call.status==="missed"){
+        return outgoing ? "Cancelled voice call" : "Missed voice call";
+    }
+    if(call.status==="rejected"){
+        return outgoing ? "Voice call declined" : "Declined voice call";
+    }
+    if(call.status==="busy"){
+        return "Voice call busy";
+    }
+    if(call.status==="unavailable"){
+        return "Voice call unavailable";
+    }
+    if(call.status==="ringing"){
+        return outgoing ? "Calling…" : "Incoming voice call";
+    }
+    if(call.status==="active"){
+        return "Voice call connected";
+    }
+    if(call.status==="ended"){
+        return duration>0
+            ? `Voice call • ${formatCallHistoryDuration(duration)}`
+            : "Voice call ended";
+    }
+
+    return "Voice call";
+}
+
+function renderCallHistoryMessage(msg){
+    const call=parseCallHistoryData(msg);
+    if(!call || !messages) return;
+
+    const existing=document.querySelector(`[data-msg="${msg.id}"]`);
+    const outgoing=msg.sender===username;
+    const status=String(call.status||"ended");
+    const label=callHistoryLabel(msg,call);
+
+    if(existing){
+        const labelNode=existing.querySelector(".call-history-label");
+        const statusNode=existing.querySelector(".call-history-status");
+        const iconNode=existing.querySelector(".call-history-icon");
+
+        if(labelNode) labelNode.textContent=label;
+        if(statusNode) statusNode.textContent=status.toUpperCase();
+        if(iconNode){
+            iconNode.textContent=(
+                status==="missed" ||
+                status==="rejected" ||
+                status==="unavailable"
+            ) ? "📵" : "📞";
+        }
+
+        existing.dataset.callStatus=status;
+        return;
+    }
+
+    const row=document.createElement("div");
+    row.className="message-row call-history-row";
+
+    row.innerHTML=`
+        <div class="message ${outgoing ? "message-own" : "message-other"} call-history-message"
+             data-msg="${msg.id}"
+             data-call-status="${escapeHTML(status)}">
+            <div class="call-history-card">
+                <div class="call-history-icon" aria-hidden="true">${
+                    (
+                        status==="missed" ||
+                        status==="rejected" ||
+                        status==="unavailable"
+                    ) ? "📵" : "📞"
+                }</div>
+                <div class="call-history-copy">
+                    <div class="call-history-label">${escapeHTML(label)}</div>
+                    <div class="call-history-meta">
+                        <span class="call-history-status">${escapeHTML(status.toUpperCase())}</span>
+                        <span class="msg-time">${formatMessageTimestamp(msg.timestamp)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    messages.appendChild(row);
+}
+
+
 function addMessage(msg){
 
     if (deletedMessages[msg.id]) {
+        return;
+    }
+
+    if (msg.media_type === "call") {
+        messageMap[msg.id] = msg;
+        renderCallHistoryMessage(msg);
         return;
     }
 
@@ -4546,27 +4680,46 @@ async function voiceCallStart(){
         alert("Voice calling is not supported by this browser.");
         return;
     }
-    if(!sendSocket({type:"call_ping",target:friend})){
-        connectSocket();
-        alert("Connecting to the chat server. Try the call again in a moment.");
-        return;
-    }
 
     voiceCallStarting=true;
+
     try{
+        // Create the call ID before the initial ping so the server can
+        // persist the same call record from the first call event.
         voiceCallId=voiceCallNewId();
+
+        if(!sendSocket({
+            type:"call_ping",
+            call_id:voiceCallId,
+            target:friend
+        })){
+            connectSocket();
+            voiceCallId=null;
+            alert("Connecting to the chat server. Try the call again in a moment.");
+            return;
+        }
+
         voiceCallPendingCandidates=[];
         await voiceCallGetLocalStream();
-        // Mark the call state before any further async signaling can re-enter
-        // the outgoing path.
+
         voiceCallConfigureOutgoing();
+
         const offer=await voiceCallPeer.createOffer();
         await voiceCallPeer.setLocalDescription(offer);
-        sendSocket({type:"call_offer",call_id:voiceCallId,target:friend,sdp:voiceCallPeer.localDescription});
+
+        sendSocket({
+            type:"call_offer",
+            call_id:voiceCallId,
+            target:friend,
+            sdp:voiceCallPeer.localDescription
+        });
     }catch(e){
         console.error("VOICE CALL START ERROR:",e);
-        voiceCallSetStatus(e?.message || "Could not start voice call.","Call failed");
-        setTimeout(() => voiceCallEnd(false), 900);
+        voiceCallSetStatus(
+            e?.message || "Could not start voice call.",
+            "Call failed"
+        );
+        setTimeout(() => voiceCallEnd(true), 900);
     }finally{
         voiceCallStarting=false;
     }
