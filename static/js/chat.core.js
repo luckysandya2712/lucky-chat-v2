@@ -4242,6 +4242,7 @@ const voiceCallTimer=document.getElementById("voiceCallTimer");
 const voiceCallRemoteAudio=document.getElementById("voiceCallRemoteAudio");
 const VOICE_CALL_ICE_SERVERS=[{urls:"stun:stun.l.google.com:19302"}];
 let voiceCallPeer=null,voiceCallLocalStream=null,voiceCallRemoteStream=null,voiceCallId=null,voiceCallState="idle",voiceCallPendingOffer=null,voiceCallPendingCandidates=[],voiceCallTimerId=null,voiceCallStartedAt=0,voiceCallMuted=false,voiceCallStarting=false,voiceCallSpeakerLow=false;
+let voiceCallRemoteTrackId=null;
 let voiceCallQualityTimerId=null;
 let voiceCallQualityLabel=null;
 let voiceCallReconnectTimerId=null;
@@ -4522,7 +4523,10 @@ function voiceCallResetControls(){
         voiceCallSpeakerBtn.textContent="🔊";
         voiceCallSpeakerBtn.setAttribute("aria-label","Reduce speaker volume");
     }
-    if(voiceCallRemoteAudio)voiceCallRemoteAudio.volume=0.88;
+    if(voiceCallRemoteAudio){
+        voiceCallRemoteAudio.volume=0.88;
+        voiceCallRemoteAudio.muted=false;
+    }
     if(voiceCallMainBtn){
         voiceCallMainBtn.classList.remove("is-end","is-accept","is-incoming");
         voiceCallMainBtn.textContent="📞";
@@ -4600,20 +4604,47 @@ function voiceCallEnsurePeer(){
     };
 
     voiceCallPeer.ontrack = event => {
-        voiceCallRemoteStream = event.streams?.[0] || voiceCallRemoteStream;
-
-        if(!voiceCallRemoteStream && event.track){
-            voiceCallRemoteStream = new MediaStream([event.track]);
+        // This is an audio-only call. Ignore anything that is not an audio track.
+        if(!event.track || event.track.kind !== "audio"){
+            return;
         }
 
-        if(voiceCallRemoteAudio && voiceCallRemoteStream){
+        // Chrome/Android can surface the same remote track more than once during
+        // renegotiation/ICE restart. Rebinding the same track to the audio
+        // element can make previously buffered speech sound like it repeats.
+        if(voiceCallRemoteTrackId === event.track.id &&
+           voiceCallRemoteAudio?.srcObject){
+            if(voiceCallState !== "active"){
+                voiceCallConfigureActive();
+            }
+            return;
+        }
+
+        voiceCallRemoteTrackId = event.track.id;
+
+        // Keep exactly one remote audio track in the playback stream.
+        // Do not reuse an event.streams[] object that may contain multiple
+        // audio tracks after renegotiation.
+        voiceCallRemoteStream = new MediaStream([event.track]);
+
+        if(voiceCallRemoteAudio){
+            const currentVolume = voiceCallSpeakerLow ? 0.58 : 0.88;
+
+            voiceCallRemoteAudio.pause();
+            voiceCallRemoteAudio.srcObject = null;
             voiceCallRemoteAudio.srcObject = voiceCallRemoteStream;
+            voiceCallRemoteAudio.volume = currentVolume;
+            voiceCallRemoteAudio.muted = false;
 
-            // Keep a little headroom for mobile speaker/microphone AEC.
-            voiceCallRemoteAudio.volume = 0.88;
-
+            // Start playback only once for this newly received track.
             void voiceCallRemoteAudio.play().catch(() => {});
         }
+
+        event.track.onended = () => {
+            if(voiceCallRemoteTrackId === event.track.id){
+                voiceCallRemoteTrackId = null;
+            }
+        };
 
         if(voiceCallState !== "active"){
             voiceCallConfigureActive();
@@ -4811,7 +4842,7 @@ function voiceCallToggleSpeaker(){
     );
 }
 
-function voiceCallEnd(sendSignal=true){voiceCallStopTone();voiceCallStopReconnect();voiceCallStopQualityMonitor();const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){
+function voiceCallEnd(sendSignal=true){voiceCallStopTone();voiceCallStopReconnect();voiceCallStopQualityMonitor();const id=voiceCallId;if(sendSignal&&id&&voiceCallState!=="idle")sendSocket({type:"call_end",call_id:id,target:friend});voiceCallStarting=false;voiceCallLocalStream?.getTracks().forEach(t=>t.stop());try{voiceCallPeer?.close()}catch(_){}voiceCallPeer=null;voiceCallLocalStream=null;voiceCallRemoteStream=null;voiceCallRemoteTrackId=null;voiceCallPendingOffer=null;voiceCallPendingCandidates=[];voiceCallId=null;voiceCallState="idle";voiceCallMuted=false;voiceCallStopTimer();voiceCallResetControls();if(voiceCallRemoteAudio){
     try{voiceCallRemoteAudio.pause()}catch(_){}
     voiceCallRemoteAudio.srcObject=null;
     voiceCallRemoteAudio.volume=1;
