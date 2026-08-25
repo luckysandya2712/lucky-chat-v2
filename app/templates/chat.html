@@ -124,7 +124,7 @@
 
 </style>
 
-<style id="lucky-call-history-v1">
+<style id="lucky-call-history-v2">
 .call-history-row{
     width:100%;
     display:flex;
@@ -148,6 +148,7 @@
     border:1px solid rgba(148,163,184,.14);
     background:linear-gradient(145deg,rgba(20,31,50,.84),rgba(9,18,32,.94));
     box-shadow:0 8px 24px rgba(0,0,0,.16);
+    transition:border-color .18s ease,background .18s ease,box-shadow .18s ease;
 }
 .call-history-message.message-own .call-history-card{
     border-color:rgba(96,165,250,.22);
@@ -189,20 +190,83 @@
     font-weight:800;
     letter-spacing:.04em;
 }
-.call-history-message[data-call-status="missed"] .call-history-icon,
-.call-history-message[data-call-status="rejected"] .call-history-icon,
-.call-history-message[data-call-status="unavailable"] .call-history-icon{
-    background:rgba(239,68,68,.12);
+
+/* Completed call */
+.call-history-message[data-call-status="ended"] .call-history-card{
+    border-color:rgba(74,222,128,.20);
+    background:linear-gradient(145deg,rgba(20,54,42,.72),rgba(9,26,28,.94));
 }
-.call-history-message[data-call-status="missed"] .call-history-status,
-.call-history-message[data-call-status="rejected"] .call-history-status,
-.call-history-message[data-call-status="unavailable"] .call-history-status{
-    color:#fca5a5;
+.call-history-message[data-call-status="ended"] .call-history-icon{
+    background:rgba(34,197,94,.14);
 }
-.call-history-message[data-call-status="ended"] .call-history-status,
-.call-history-message[data-call-status="active"] .call-history-status{
+.call-history-message[data-call-status="ended"] .call-history-status{
     color:#86efac;
 }
+
+/* Missed call */
+.call-history-message[data-call-status="missed"] .call-history-card{
+    border-color:rgba(248,113,113,.28);
+    background:linear-gradient(145deg,rgba(72,30,38,.72),rgba(31,17,27,.95));
+}
+.call-history-message[data-call-status="missed"] .call-history-icon{
+    background:rgba(239,68,68,.16);
+}
+.call-history-message[data-call-status="missed"] .call-history-status{
+    color:#fca5a5;
+}
+.call-history-message[data-call-status="missed"] .call-history-label{
+    color:#fee2e2;
+}
+
+/* Declined call */
+.call-history-message[data-call-status="rejected"] .call-history-card{
+    border-color:rgba(251,191,36,.28);
+    background:linear-gradient(145deg,rgba(70,53,24,.72),rgba(34,27,16,.95));
+}
+.call-history-message[data-call-status="rejected"] .call-history-icon{
+    background:rgba(245,158,11,.16);
+}
+.call-history-message[data-call-status="rejected"] .call-history-status{
+    color:#fcd34d;
+}
+.call-history-message[data-call-status="rejected"] .call-history-label{
+    color:#fef3c7;
+}
+
+/* Busy call */
+.call-history-message[data-call-status="busy"] .call-history-card{
+    border-color:rgba(249,115,22,.23);
+    background:linear-gradient(145deg,rgba(68,39,22,.70),rgba(33,22,16,.94));
+}
+.call-history-message[data-call-status="busy"] .call-history-icon{
+    background:rgba(249,115,22,.15);
+}
+.call-history-message[data-call-status="busy"] .call-history-status{
+    color:#fdba74;
+}
+
+/* Unavailable call */
+.call-history-message[data-call-status="unavailable"] .call-history-card{
+    border-color:rgba(148,163,184,.24);
+    background:linear-gradient(145deg,rgba(38,45,58,.72),rgba(19,24,33,.95));
+}
+.call-history-message[data-call-status="unavailable"] .call-history-icon{
+    background:rgba(148,163,184,.14);
+}
+.call-history-message[data-call-status="unavailable"] .call-history-status{
+    color:#cbd5e1;
+}
+
+/* Live/in-progress states */
+.call-history-message[data-call-status="active"] .call-history-status,
+.call-history-message[data-call-status="ringing"] .call-history-status{
+    color:#93c5fd;
+}
+.call-history-message[data-call-status="active"] .call-history-icon,
+.call-history-message[data-call-status="ringing"] .call-history-icon{
+    background:rgba(59,130,246,.14);
+}
+
 @media(max-width:480px){
     .call-history-message{
         min-width:190px;
@@ -1441,7 +1505,7 @@ Welcome to Lucky Chat 🚀
 </style>
 
 <script src="/static/js/crypto.core.js?v=20260824-fix8"></script>
-<script src="/static/js/chat.core.js?v=20260825-call-history-v1"></script>
+<script src="/static/js/chat.core.js?v=20260825-call-status-v2"></script>
 
 </body>
 </html>

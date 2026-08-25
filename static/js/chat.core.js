@@ -2211,11 +2211,12 @@ function renderCallHistoryMessage(msg){
         if(labelNode) labelNode.textContent=label;
         if(statusNode) statusNode.textContent=status.toUpperCase();
         if(iconNode){
-            iconNode.textContent=(
-                status==="missed" ||
-                status==="rejected" ||
-                status==="unavailable"
-            ) ? "📵" : "📞";
+            iconNode.textContent =
+                status==="missed" ? "📵" :
+                status==="rejected" ? "🚫" :
+                status==="busy" ? "📞" :
+                status==="unavailable" ? "⚠️" :
+                "📞";
         }
 
         existing.dataset.callStatus=status;
@@ -2231,11 +2232,10 @@ function renderCallHistoryMessage(msg){
              data-call-status="${escapeHTML(status)}">
             <div class="call-history-card">
                 <div class="call-history-icon" aria-hidden="true">${
-                    (
-                        status==="missed" ||
-                        status==="rejected" ||
-                        status==="unavailable"
-                    ) ? "📵" : "📞"
+                    status==="missed" ? "📵" :
+                    status==="rejected" ? "🚫" :
+                    status==="unavailable" ? "⚠️" :
+                    "📞"
                 }</div>
                 <div class="call-history-copy">
                     <div class="call-history-label">${escapeHTML(label)}</div>
