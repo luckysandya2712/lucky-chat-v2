@@ -4524,7 +4524,7 @@ function voiceCallResetControls(){
         voiceCallSpeakerBtn.setAttribute("aria-label","Reduce speaker volume");
     }
     if(voiceCallRemoteAudio){
-        voiceCallRemoteAudio.volume=0.88;
+        voiceCallRemoteAudio.volume=0.72;
         voiceCallRemoteAudio.muted=false;
     }
     if(voiceCallMainBtn){
@@ -4535,7 +4535,22 @@ function voiceCallResetControls(){
 }
 function voiceCallConfigureOutgoing(){voiceCallState="outgoing";voiceCallOpen("outgoing");voiceCallSetStatus("Calling…","Calling");voiceCallResetControls();voiceCallStartTone("outgoing");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}}
 function voiceCallConfigureIncoming(){voiceCallState="incoming";voiceCallOpen("incoming");voiceCallSetStatus("Incoming voice call","Incoming call");voiceCallResetControls();voiceCallStartTone("incoming");if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-accept","is-incoming");voiceCallMainBtn.textContent="📞"}}
-function voiceCallConfigureActive(){voiceCallStopTone();voiceCallStopReconnect();voiceCallState="active";voiceCallOpen("active");voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer();voiceCallStartQualityMonitor();voiceCallSetQuality("unknown")}
+function voiceCallConfigureActive(){
+    voiceCallStopTone();
+    voiceCallStopReconnect();
+    voiceCallState="active";
+    voiceCallOpen("active");
+
+    const activeMicTrack=voiceCallLocalStream?.getAudioTracks?.()[0];
+    if(activeMicTrack?.applyConstraints){
+        void activeMicTrack.applyConstraints({
+            echoCancellation:true,
+            noiseSuppression:true,
+            autoGainControl:true,
+            channelCount:1
+        }).catch(()=>{});
+    }
+voiceCallSetStatus("Voice call connected","Connected");voiceCallResetControls();if(voiceCallMainBtn){voiceCallMainBtn.classList.add("is-end");voiceCallMainBtn.textContent="📵"}if(voiceCallMuteBtn)voiceCallMuteBtn.disabled=false;if(voiceCallSpeakerBtn)voiceCallSpeakerBtn.disabled=false;voiceCallStartTimer();voiceCallStartQualityMonitor();voiceCallSetQuality("unknown")}
 function voiceCallNewId(){return window.crypto?.randomUUID?window.crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`}
 async function voiceCallAttachLocalTracks(){
     if(!voiceCallPeer || !voiceCallLocalStream) return;
@@ -4647,7 +4662,7 @@ function voiceCallEnsurePeer(){
         }
 
         if(voiceCallRemoteAudio){
-            const currentVolume = voiceCallSpeakerLow ? 0.58 : 0.88;
+            const currentVolume = voiceCallSpeakerLow ? 0.45 : 0.72;
 
             voiceCallRemoteAudio.volume = currentVolume;
             voiceCallRemoteAudio.muted = false;
@@ -4727,14 +4742,32 @@ async function voiceCallGetLocalStream(){
     if(!voiceCallLocalStream){
         voiceCallLocalStream = await navigator.mediaDevices.getUserMedia({
             audio:{
-                echoCancellation:{ideal:true},
-                noiseSuppression:{ideal:true},
-                autoGainControl:{ideal:true},
-                channelCount:{ideal:1},
-                latency:{ideal:0.01}
+                // Prefer the browser's hardware/OS acoustic echo canceller.
+                // These are explicit requirements rather than "ideal" hints.
+                echoCancellation:true,
+                noiseSuppression:true,
+                autoGainControl:true,
+                channelCount:1
             },
             video:false
         });
+
+        // Some Android browsers still negotiate weaker processing than the
+        // getUserMedia request suggests. Apply the same constraints directly
+        // to the live microphone track when the platform supports it.
+        const micTrack=voiceCallLocalStream.getAudioTracks()[0];
+        if(micTrack?.applyConstraints){
+            try{
+                await micTrack.applyConstraints({
+                    echoCancellation:true,
+                    noiseSuppression:true,
+                    autoGainControl:true,
+                    channelCount:1
+                });
+            }catch(error){
+                console.debug("VOICE MIC CONSTRAINT FALLBACK:",error);
+            }
+        }
     }
 
     voiceCallEnsurePeer();
@@ -4862,7 +4895,7 @@ function voiceCallToggleSpeaker(){
     if(!voiceCallRemoteAudio) return;
 
     voiceCallSpeakerLow=!voiceCallSpeakerLow;
-    voiceCallRemoteAudio.volume=voiceCallSpeakerLow ? 0.58 : 0.88;
+    voiceCallRemoteAudio.volume=voiceCallSpeakerLow ? 0.45 : 0.72;
 
     if(voiceCallSpeakerBtn){
         voiceCallSpeakerBtn.classList.toggle("is-low",voiceCallSpeakerLow);
