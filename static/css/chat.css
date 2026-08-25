@@ -7578,3 +7578,132 @@ body{
         font-size:16px !important;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — LAST-SEEN FIT V10
+   Keep the clean header; give status text enough room to be
+   fully readable on narrow Android screens.
+   JS / calls / messages are untouched.
+   ========================================================= */
+
+.header{
+    width:calc(100% - 16px) !important;
+    height:88px !important;
+    min-height:88px !important;
+    margin:6px 8px 0 !important;
+    padding:8px 8px !important;
+    gap:6px !important;
+}
+
+/* Slightly smaller fixed controls so the identity column gets more width. */
+.header .back-btn{
+    width:41px !important;
+    height:41px !important;
+    min-width:41px !important;
+    flex:0 0 41px !important;
+}
+
+.header-avatar{
+    width:52px !important;
+    height:52px !important;
+    min-width:52px !important;
+    flex:0 0 52px !important;
+}
+
+/* The identity area owns all remaining width. */
+.header > div{
+    flex:1 1 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+    overflow:hidden !important;
+}
+
+/* Name remains compact and single-line. */
+.header-name{
+    width:100% !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    font-size:18px !important;
+    line-height:1.08 !important;
+}
+
+/* Status may use two lines, allowing "Last seen yesterday at 10:42 pm"
+   to be fully readable instead of being truncated. */
+#online-users.chat-header-status{
+    display:-webkit-box !important;
+    width:100% !important;
+    max-width:none !important;
+    margin-top:4px !important;
+    padding:0 !important;
+    font-size:9.8px !important;
+    line-height:1.18 !important;
+    white-space:normal !important;
+    overflow:hidden !important;
+    text-overflow:clip !important;
+    -webkit-box-orient:vertical !important;
+    -webkit-line-clamp:2 !important;
+}
+
+/* The action deck uses slightly smaller controls on this compact header. */
+.chat-search-btn,
+.voice-call-btn,
+.chat-media-gallery-btn{
+    width:35px !important;
+    height:35px !important;
+    min-width:35px !important;
+    flex:0 0 35px !important;
+    border-radius:12px !important;
+    font-size:16px !important;
+}
+
+/* Narrow Android screens: prioritize identity/status width. */
+@media(max-width:480px){
+    .header{
+        width:calc(100% - 12px) !important;
+        height:88px !important;
+        min-height:88px !important;
+        margin:5px 6px 0 !important;
+        padding:8px 6px !important;
+        gap:5px !important;
+        border-radius:19px !important;
+    }
+
+    .header .back-btn{
+        width:40px !important;
+        height:40px !important;
+        min-width:40px !important;
+        flex-basis:40px !important;
+    }
+
+    .header-avatar{
+        width:50px !important;
+        height:50px !important;
+        min-width:50px !important;
+        flex-basis:50px !important;
+    }
+
+    .header-name{
+        font-size:18px !important;
+    }
+
+    #online-users.chat-header-status{
+        font-size:9.5px !important;
+        line-height:1.2 !important;
+        margin-top:4px !important;
+        -webkit-line-clamp:2 !important;
+    }
+
+    .chat-search-btn,
+    .voice-call-btn,
+    .chat-media-gallery-btn{
+        width:34px !important;
+        height:34px !important;
+        min-width:34px !important;
+        flex-basis:34px !important;
+        border-radius:11px !important;
+        font-size:15px !important;
+    }
+}
