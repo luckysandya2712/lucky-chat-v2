@@ -5320,3 +5320,120 @@ body.chat-media-gallery-open{overflow:hidden!important}
         letter-spacing:.05px;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — MOBILE HEADER REDESIGN
+   Name + last-seen status get their own readable column.
+   Existing JavaScript/HTML behavior is untouched.
+   ========================================================= */
+
+.header{
+    height:86px !important;
+    padding:8px 10px !important;
+    gap:8px !important;
+    align-items:center !important;
+    overflow:hidden !important;
+}
+
+.header > div{
+    flex:1 1 0 !important;
+    min-width:0 !important;
+    max-width:none !important;
+    height:58px !important;
+    display:flex !important;
+    flex-direction:column !important;
+    justify-content:center !important;
+    align-items:flex-start !important;
+    overflow:hidden !important;
+}
+
+.header-name{
+    width:100% !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    margin:0 !important;
+    font-size:19px !important;
+    line-height:1.15 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+#online-users{
+    width:100% !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    margin:3px 0 0 !important;
+    padding:0 !important;
+    font-size:11px !important;
+    line-height:1.15 !important;
+    font-weight:700 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+/* Keep the right-side controls compact and fixed-width. */
+.chat-header-actions{
+    flex:0 0 auto !important;
+    min-width:max-content !important;
+    gap:6px !important;
+    margin-left:0 !important;
+    display:flex !important;
+    align-items:center !important;
+}
+
+.chat-header-actions > button{
+    flex:0 0 40px !important;
+    width:40px !important;
+    min-width:40px !important;
+    height:40px !important;
+    padding:0 !important;
+}
+
+.header-avatar{
+    flex:0 0 48px !important;
+    width:48px !important;
+    height:48px !important;
+}
+
+@media (max-width:430px){
+    .header{
+        height:86px !important;
+        padding:8px 8px !important;
+        gap:7px !important;
+    }
+
+    .back-btn{
+        flex:0 0 42px !important;
+        width:42px !important;
+        min-width:42px !important;
+        height:42px !important;
+    }
+
+    .header-avatar{
+        flex:0 0 46px !important;
+        width:46px !important;
+        height:46px !important;
+    }
+
+    .header-name{
+        font-size:18px !important;
+    }
+
+    #online-users{
+        font-size:10.5px !important;
+    }
+
+    .chat-header-actions{
+        gap:5px !important;
+    }
+
+    .chat-header-actions > button{
+        flex-basis:38px !important;
+        width:38px !important;
+        min-width:38px !important;
+        height:38px !important;
+    }
+}
