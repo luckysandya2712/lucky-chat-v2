@@ -5258,3 +5258,65 @@ body.chat-media-gallery-open{overflow:hidden!important}
         min-width:38px !important;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — LAST SEEN HEADER FIT FIX
+   Give the identity/status block the remaining header width
+   instead of letting the action buttons squeeze it away.
+   ========================================================= */
+
+.header > div{
+    flex:1 1 auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+    overflow:hidden !important;
+}
+
+.header-name,
+#online-users{
+    min-width:0 !important;
+    max-width:100% !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis;
+    white-space:nowrap !important;
+}
+
+#online-users{
+    display:block !important;
+}
+
+@media (max-width:430px){
+    .header{
+        gap:7px !important;
+        padding-left:8px !important;
+        padding-right:8px !important;
+    }
+
+    .back-btn{
+        width:42px !important;
+        height:42px !important;
+        min-width:42px !important;
+        flex:0 0 42px !important;
+    }
+
+    .header-avatar{
+        width:46px !important;
+        height:46px !important;
+        flex:0 0 46px !important;
+    }
+
+    .voice-call-btn,
+    .chat-search-btn,
+    .chat-media-gallery-btn{
+        width:40px !important;
+        height:40px !important;
+        min-width:40px !important;
+        flex:0 0 40px !important;
+    }
+
+    #online-users{
+        font-size:11px !important;
+        letter-spacing:.05px;
+    }
+}
