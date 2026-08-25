@@ -88,8 +88,13 @@ class ConnectionManager:
             print(f"SEND ERROR ({username}):", e)
             import traceback
             traceback.print_exc()
+
+            # Clean up the failed socket through the same guarded path used
+            # by normal WebSocketDisconnect handling. This prevents a dead
+            # socket from remaining registered as the user's active connection.
             if self.connections.get(username) is ws:
-                self.connections.pop(username, None)
+                await self.disconnect(username, ws)
+
             return False
 
     async def send_personal(self, payload: dict, username: str):

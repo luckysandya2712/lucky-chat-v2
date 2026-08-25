@@ -36,6 +36,8 @@ let recordingMimeType = "";
 
 let socket = null;
 let reconnectTimer = null;
+let socketHeartbeatTimer = null;
+let socketReconnectAttempt = 0;
 let pendingReadIds = new Set();
 let pendingDeliveredIds = new Set();
 
@@ -1340,6 +1342,51 @@ document.getElementById("editModalOverlay")
 
     });
 
+
+function stopSocketHeartbeat(){
+    clearInterval(socketHeartbeatTimer);
+    socketHeartbeatTimer=null;
+}
+
+function startSocketHeartbeat(ws){
+    stopSocketHeartbeat();
+
+    socketHeartbeatTimer=setInterval(()=>{
+        if(ws !== socket || ws.readyState !== WebSocket.OPEN){
+            stopSocketHeartbeat();
+            return;
+        }
+
+        try{
+            ws.send(JSON.stringify({
+                type:"ws_heartbeat",
+                ts:Date.now()
+            }));
+        }catch(error){
+            console.debug("WEBSOCKET HEARTBEAT SEND FAILED:",error);
+        }
+    },20000);
+}
+
+function scheduleSocketReconnect(){
+    clearTimeout(reconnectTimer);
+
+    const delay=Math.min(
+        30000,
+        Math.max(1000,1000 * Math.pow(1.7, socketReconnectAttempt))
+    );
+
+    socketReconnectAttempt=Math.min(socketReconnectAttempt + 1, 8);
+
+    reconnectTimer=setTimeout(()=>{
+        reconnectTimer=null;
+        if(!socket || socket.readyState===WebSocket.CLOSED){
+            socket=null;
+            connectSocket();
+        }
+    },delay);
+}
+
 function connectSocket() {
 
 document.getElementById("online-users").innerHTML =
@@ -1371,8 +1418,15 @@ console.log("WebSocket URL:",
         "&page=chat"
     );
 
-    socket.onopen = () => {
+    const ws = socket;
+
+    ws.onopen = () => {
+    // Ignore a late open event from a socket that is no longer current.
+    if(ws !== socket) return;
+
     console.log("Chat WebSocket connected");
+    socketReconnectAttempt=0;
+    startSocketHeartbeat(ws);
 
     updateFriendStatus();
     flushPendingReceiptAcknowledgements();
@@ -1410,40 +1464,53 @@ console.log("WebSocket URL:",
     reconnectTimer = null;
 };
 
-    socket.onmessage = async (event) => {
+    ws.onmessage = async (event) => {
+        if(ws !== socket) return;
+
         // Do not log every WebSocket receipt/read event.
         // The chat can receive hundreds of acknowledgements and excessive
         // console logging on mobile can delay visible UI updates.
         try {
+            const incoming=JSON.parse(event.data);
+
+            if(incoming?.type==="ws_heartbeat_ack"){
+                return;
+            }
+
             await handleSocketMessage(event);
         } catch (error) {
             console.error("Socket message handling error:", error);
         }
     };
 
-    socket.onerror = (error) => {
-    console.error("Chat WebSocket error:", error);
+    ws.onerror = (error) => {
+        if(ws !== socket) return;
 
-    document.getElementById("online-users").innerHTML =
-        "🔴 Connection error";
-};
+        console.error("Chat WebSocket error:", error);
 
-    socket.onclose = () => {
+        document.getElementById("online-users").innerHTML =
+            "🔴 Connection error";
+    };
+
+    ws.onclose = () => {
+        if(ws !== socket) return;
+
         console.log("Chat WebSocket closed");
+        stopSocketHeartbeat();
 
         document.getElementById("online-users").innerHTML =
             "🔴 Disconnected";
 
-        clearTimeout(reconnectTimer);
-
-        reconnectTimer = setTimeout(() => {
-            console.log("Reconnecting chat WebSocket...");
-            socket = null;
-            connectSocket();
-        }, 2000);
+        socket = null;
+        scheduleSocketReconnect();
     };
 
 }
+
+window.addEventListener("beforeunload",()=>{
+    stopSocketHeartbeat();
+    clearTimeout(reconnectTimer);
+});
 
 function sendSocket(data) {
 
@@ -1865,7 +1932,7 @@ input.addEventListener("keypress",function(e){
 
 });
 
-window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v2";
+window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v3";
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
 function createOptimisticMessage(text, image, audio, video) {

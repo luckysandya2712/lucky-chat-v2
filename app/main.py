@@ -450,6 +450,15 @@ async def websocket_endpoint(websocket: WebSocket):
             raw = await websocket.receive_text()
             data = json.loads(raw)
 
+            # Browser heartbeat. This keeps the chat WebSocket active through
+            # idle proxy/load-balancer timeouts without touching chat messages.
+            if data.get("type") == "ws_heartbeat":
+                await websocket.send_json({
+                    "type": "ws_heartbeat_ack",
+                    "ts": data.get("ts")
+                })
+                continue
+
             print("Received:", data)
 
 
