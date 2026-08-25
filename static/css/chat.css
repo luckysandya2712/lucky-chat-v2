@@ -5437,3 +5437,174 @@ body.chat-media-gallery-open{overflow:hidden!important}
         height:38px !important;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI POLISH V3
+   Presentation-only layer. Existing message/call JS is untouched.
+   ========================================================= */
+
+/* Cleaner conversation surface */
+.messages{
+    gap:8px !important;
+    padding-left:12px !important;
+    padding-right:12px !important;
+    padding-top:12px !important;
+    padding-bottom:108px !important;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(59,130,246,.045), transparent 34%),
+        linear-gradient(180deg, rgba(10,18,32,.20), rgba(8,15,27,.10));
+}
+
+/* Make ordinary message rows visually calmer and more compact. */
+.message-row{
+    gap:8px !important;
+    margin:0 0 2px !important;
+}
+
+.message{
+    max-width:min(82%, 430px) !important;
+    padding:10px 13px !important;
+    border-radius:18px !important;
+    box-shadow:0 5px 16px rgba(0,0,0,.16) !important;
+}
+
+.message-own{
+    border-radius:18px 18px 6px 18px !important;
+}
+
+.message-other{
+    border-radius:18px 18px 18px 6px !important;
+}
+
+.msg-avatar{
+    width:34px !important;
+    height:34px !important;
+}
+
+/* Metadata stays readable without adding vertical bulk. */
+.message-meta,
+.msg-meta{
+    margin-top:4px !important;
+    gap:5px !important;
+    font-size:10.5px !important;
+}
+
+.msg-time{
+    font-size:10.5px !important;
+}
+
+/* A tighter, clearer visual treatment for common in-chat call/event
+   containers. These selectors apply only when such classes exist. */
+.call-message,
+.call-card,
+.voice-call-message,
+.voice-call-card,
+.call-history-item,
+.voice-call-history-item{
+    width:min(320px, 82vw) !important;
+    margin:2px 0 4px auto !important;
+    padding:0 !important;
+    border-radius:18px !important;
+    overflow:hidden !important;
+    box-shadow:0 8px 22px rgba(0,0,0,.22) !important;
+}
+
+.call-message .call-content,
+.call-card .call-content,
+.voice-call-message .call-content,
+.voice-call-card .call-content,
+.call-history-item .call-content,
+.voice-call-history-item .call-content{
+    padding:10px 12px !important;
+}
+
+.call-message .call-title,
+.call-card .call-title,
+.voice-call-message .call-title,
+.voice-call-card .call-title,
+.call-history-item .call-title,
+.voice-call-history-item .call-title{
+    font-size:14px !important;
+    line-height:1.2 !important;
+    font-weight:800 !important;
+}
+
+.call-message .call-meta,
+.call-card .call-meta,
+.voice-call-message .call-meta,
+.voice-call-card .call-meta,
+.call-history-item .call-meta,
+.voice-call-history-item .call-meta{
+    margin-top:3px !important;
+    font-size:11px !important;
+    line-height:1.2 !important;
+}
+
+/* Reduce the large visual gaps seen between consecutive event/call cards. */
+.call-message + .call-message,
+.call-card + .call-card,
+.voice-call-message + .voice-call-message,
+.voice-call-card + .voice-call-card,
+.call-history-item + .call-history-item,
+.voice-call-history-item + .voice-call-history-item{
+    margin-top:-2px !important;
+}
+
+/* Bottom composer: give the actual message field the most space. */
+.input-area{
+    gap:7px !important;
+    padding:9px 9px 11px !important;
+}
+
+#imageBtn{
+    width:46px !important;
+    min-width:46px !important;
+    flex:0 0 46px !important;
+    height:46px !important;
+    border-radius:15px !important;
+}
+
+#messageInput{
+    flex:1 1 auto !important;
+    min-width:0 !important;
+    height:46px !important;
+    border-radius:15px !important;
+    padding:0 14px !important;
+}
+
+#sendBtn{
+    flex:0 0 78px !important;
+    min-width:78px !important;
+    height:46px !important;
+    padding:0 12px !important;
+    border-radius:15px !important;
+}
+
+/* Keep the redesigned header visually connected to the conversation. */
+.header{
+    box-shadow:0 5px 20px rgba(0,0,0,.22) !important;
+    border-bottom-color:rgba(148,163,184,.12) !important;
+}
+
+/* Small-screen tuning */
+@media (max-width:480px){
+    .messages{
+        gap:7px !important;
+        padding-left:9px !important;
+        padding-right:9px !important;
+    }
+
+    .message{
+        max-width:84% !important;
+    }
+
+    .call-message,
+    .call-card,
+    .voice-call-message,
+    .voice-call-card,
+    .call-history-item,
+    .voice-call-history-item{
+        width:min(304px, 84vw) !important;
+    }
+}
