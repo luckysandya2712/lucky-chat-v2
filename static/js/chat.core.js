@@ -1932,7 +1932,7 @@ input.addEventListener("keypress",function(e){
 
 });
 
-window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v7-mobile-audio-diagnostics";
+window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v8-network-recovery";
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
 function createOptimisticMessage(text, image, audio, video) {
@@ -4317,6 +4317,13 @@ let voiceCallReconnectAttempts=0;
 let voiceCallReconnectInProgress=false;
 let voiceCallInboundDiagTimerId=null;
 
+let voiceCallLossStats=null;
+let voiceCallHighLossIntervals=0;
+let voiceCallLastLossRestartAt=0;
+const VOICE_CALL_LOSS_RESTART_THRESHOLD=0.10;
+const VOICE_CALL_LOSS_RESTART_INTERVALS=2;
+const VOICE_CALL_LOSS_RESTART_COOLDOWN=15000;
+
 let voiceCallToneContext=null;
 let voiceCallToneTimer=null;
 let voiceCallToneKind="";
@@ -4478,8 +4485,61 @@ function voiceCallStopInboundDiagnostics(){
     voiceCallInboundDiagTimerId=null;
 }
 
+function voiceCallResetLossMonitor(){
+    voiceCallLossStats=null;
+    voiceCallHighLossIntervals=0;
+    voiceCallLastLossRestartAt=0;
+}
+
+function voiceCallMaybeRecoverFromPacketLoss(inbound){
+    if(!inbound) return;
+
+    const now=Date.now();
+    const key=String(inbound.ssrc ?? inbound.id ?? "audio");
+    const received=Number(inbound.packetsReceived||0);
+    const lost=Number(inbound.packetsLost||0);
+
+    const previous=voiceCallLossStats;
+    voiceCallLossStats={key,received,lost,timestamp:now};
+
+    if(!previous || previous.key!==key){
+        voiceCallHighLossIntervals=0;
+        return;
+    }
+
+    const deltaReceived=Math.max(0,received-previous.received);
+    const deltaLost=Math.max(0,lost-previous.lost);
+    const deltaTotal=deltaReceived+deltaLost;
+
+    if(deltaTotal<20) return;
+
+    const intervalLoss=deltaLost/deltaTotal;
+
+    if(intervalLoss>=VOICE_CALL_LOSS_RESTART_THRESHOLD){
+        voiceCallHighLossIntervals+=1;
+    }else{
+        voiceCallHighLossIntervals=0;
+        return;
+    }
+
+    if(
+        voiceCallHighLossIntervals>=VOICE_CALL_LOSS_RESTART_INTERVALS &&
+        now-voiceCallLastLossRestartAt>=VOICE_CALL_LOSS_RESTART_COOLDOWN &&
+        !voiceCallReconnectInProgress &&
+        voiceCallState==="active"
+    ){
+        voiceCallLastLossRestartAt=now;
+        voiceCallHighLossIntervals=0;
+        console.warn("VOICE HIGH PACKET LOSS - REQUESTING ICE RESTART:",{
+            intervalLoss,deltaReceived,deltaLost
+        });
+        void voiceCallRestartIce("packet-loss");
+    }
+}
+
 function voiceCallStartQualityMonitor(){
     voiceCallStopQualityMonitor();
+    voiceCallResetLossMonitor();
     voiceCallSetQuality("unknown");
 
     voiceCallQualityTimerId=setInterval(async()=>{
@@ -4495,13 +4555,14 @@ function voiceCallStartQualityMonitor(){
                 if(report.type==="inbound-rtp" && report.kind==="audio"){
                     inbound=report;
                 }
-                if(report.type==="candidate-pair" &&
-                   (report.state==="succeeded" || report.nominated)){
+                if(
+                    report.type==="candidate-pair" &&
+                    (report.state==="succeeded" || report.nominated)
+                ){
                     candidatePair=report;
                 }
             });
 
-            let score=0;
             const jitter=Number(inbound?.jitter||0);
             const packetsLost=Number(inbound?.packetsLost||0);
             const packetsReceived=Number(inbound?.packetsReceived||0);
@@ -4511,13 +4572,31 @@ function voiceCallStartQualityMonitor(){
                 0
             )*1000;
 
-            if(jitter>0.035 || rtt>220 || (packetsReceived>80 && packetsLost/(packetsReceived+packetsLost)>0.06)){
+            voiceCallMaybeRecoverFromPacketLoss(inbound);
+
+            const lifetimeLoss=packetsReceived>0
+                ? packetsLost/(packetsReceived+packetsLost)
+                : 0;
+
+            let score=0;
+            if(
+                jitter>0.035 ||
+                rtt>220 ||
+                (packetsReceived>80 && lifetimeLoss>0.06)
+            ){
                 score=2;
-            }else if(jitter>0.018 || rtt>120 || (packetsReceived>40 && packetsLost/(packetsReceived+packetsLost)>0.025)){
+            }else if(
+                jitter>0.018 ||
+                rtt>120 ||
+                (packetsReceived>40 && lifetimeLoss>0.025)
+            ){
                 score=1;
             }
 
-            voiceCallSetQuality(score===0?"excellent":score===1?"good":"poor");
+            voiceCallSetQuality(
+                score===0 ? "excellent" :
+                score===1 ? "good" : "poor"
+            );
         }catch(error){
             console.debug("VOICE QUALITY CHECK ERROR:",error);
         }
@@ -4529,17 +4608,23 @@ function voiceCallStopReconnect(){
     voiceCallReconnectTimerId=null;
     voiceCallReconnectAttempts=0;
     voiceCallReconnectInProgress=false;
+    voiceCallResetLossMonitor();
 }
 
-async function voiceCallRestartIce(){
-    if(!voiceCallPeer || !voiceCallId || !voiceCallLocalStream || voiceCallState==="idle") return false;
+async function voiceCallRestartIce(reason="connection"){
+    if(!voiceCallPeer || !voiceCallId || !voiceCallLocalStream || voiceCallState==="idle"){
+        return false;
+    }
     if(voiceCallReconnectInProgress) return false;
-    if(voiceCallReconnectAttempts>=3) return false;
+    if(voiceCallReconnectAttempts>=4) return false;
 
     voiceCallReconnectInProgress=true;
     voiceCallReconnectAttempts+=1;
     voiceCallSetQuality("reconnecting");
-    voiceCallSetStatus("Reconnecting…","Reconnecting");
+    voiceCallSetStatus(
+        reason==="packet-loss" ? "Stabilizing audio…" : "Reconnecting…",
+        reason==="packet-loss" ? "Audio recovery" : "Reconnecting"
+    );
 
     try{
         const offer=await voiceCallPeer.createOffer({iceRestart:true});
@@ -4555,6 +4640,7 @@ async function voiceCallRestartIce(){
             throw new Error("Call signaling connection unavailable");
         }
 
+        voiceCallResetLossMonitor();
         return true;
     }catch(error){
         console.warn("VOICE ICE RESTART FAILED:",error);
@@ -4581,7 +4667,7 @@ function voiceCallScheduleReconnect(){
                 }
             },3500);
         }
-    },1200);
+    },1500);
 }
 
 function voiceCallSetStatus(s,p){
