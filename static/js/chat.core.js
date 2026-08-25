@@ -4307,7 +4307,64 @@ const voiceCallStatus=document.getElementById("voiceCallStatus");
 const voiceCallStatePill=document.getElementById("voiceCallStatePill");
 const voiceCallTimer=document.getElementById("voiceCallTimer");
 const voiceCallRemoteAudio=document.getElementById("voiceCallRemoteAudio");
-const VOICE_CALL_ICE_SERVERS=[{urls:"stun:stun.l.google.com:19302"}];
+
+const VOICE_CALL_ICE_SERVERS=[
+    {urls:"stun:stun.l.google.com:19302"}
+];
+let voiceCallIceConfigPromise=null;
+let voiceCallIceServersLoaded=false;
+
+async function voiceCallLoadIceServers(){
+    if(voiceCallIceServersLoaded){
+        return VOICE_CALL_ICE_SERVERS;
+    }
+
+    if(voiceCallIceConfigPromise){
+        return voiceCallIceConfigPromise;
+    }
+
+    voiceCallIceConfigPromise=(async()=>{
+        try{
+            const response=await fetch("/turn-credentials",{
+                credentials:"same-origin",
+                cache:"no-store"
+            });
+
+            if(!response.ok){
+                throw new Error("TURN credentials request failed");
+            }
+
+            const data=await response.json();
+            const configured=Array.isArray(data?.ice_servers)
+                ? data.ice_servers
+                : [];
+
+            if(configured.length){
+                VOICE_CALL_ICE_SERVERS.push(...configured);
+                console.log(
+                    "VOICE ICE CONFIG: TURN enabled",
+                    configured.length
+                );
+            }else{
+                console.log(
+                    "VOICE ICE CONFIG: STUN-only fallback"
+                );
+            }
+        }catch(error){
+            console.warn(
+                "VOICE ICE CONFIG FALLBACK:",
+                error
+            );
+        }finally{
+            voiceCallIceServersLoaded=true;
+        }
+
+        return VOICE_CALL_ICE_SERVERS;
+    })();
+
+    return voiceCallIceConfigPromise;
+}
+
 let voiceCallPeer=null,voiceCallLocalStream=null,voiceCallRemoteStream=null,voiceCallId=null,voiceCallState="idle",voiceCallPendingOffer=null,voiceCallPendingCandidates=[],voiceCallTimerId=null,voiceCallStartedAt=0,voiceCallMuted=false,voiceCallStarting=false,voiceCallSpeakerLow=false;
 let voiceCallRemoteTrackId=null;
 let voiceCallQualityTimerId=null;
@@ -4783,11 +4840,13 @@ async function voiceCallAttachLocalTracks(){
     }
 }
 
-function voiceCallEnsurePeer(){
+async function voiceCallEnsurePeer(){
     if(voiceCallPeer) return voiceCallPeer;
 
+    const iceServers=await voiceCallLoadIceServers();
+
     voiceCallPeer = new RTCPeerConnection({
-        iceServers: VOICE_CALL_ICE_SERVERS
+        iceServers
     });
 
     voiceCallPeer.onicecandidate = event => {
@@ -5150,7 +5209,7 @@ async function voiceCallGetLocalStream(){
         void voiceCallLogAudioSettings(diagnosticTrack);
     }
 
-    voiceCallEnsurePeer();
+    await voiceCallEnsurePeer();
     await voiceCallAttachLocalTracks();
     return voiceCallLocalStream;
 }

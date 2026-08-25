@@ -21,6 +21,10 @@ import shutil
 import os
 import asyncio
 import traceback
+import hmac
+import hashlib
+import base64
+import time
 from pathlib import Path
 from .notification import add_subscription
 
@@ -107,6 +111,62 @@ def resolve_user_by_username(db, username):
     )
 
 templates = Jinja2Templates(directory="app/templates")
+
+TURN_SERVER_URL = os.environ.get("TURN_SERVER_URL", "").strip()
+TURN_SHARED_SECRET = os.environ.get("TURN_SHARED_SECRET", "").strip()
+TURN_CREDENTIAL_TTL = max(
+    60,
+    min(
+        int(os.environ.get("TURN_CREDENTIAL_TTL", "3600") or "3600"),
+        86400
+    )
+)
+
+@app.get("/turn-credentials")
+async def get_turn_credentials(request: Request):
+    """
+    Return short-lived TURN credentials for the authenticated Lucky Chat user.
+
+    The TURN server must be configured with coturn's REST/shared-secret
+    authentication mode using the same TURN_SHARED_SECRET.
+    """
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    if not TURN_SERVER_URL or not TURN_SHARED_SECRET:
+        return {
+            "success": True,
+            "enabled": False,
+            "ice_servers": []
+        }
+
+    expires_at = int(time.time()) + TURN_CREDENTIAL_TTL
+    turn_username = f"{expires_at}:{username}"
+    digest = hmac.new(
+        TURN_SHARED_SECRET.encode("utf-8"),
+        turn_username.encode("utf-8"),
+        hashlib.sha1
+    ).digest()
+    turn_password = base64.b64encode(digest).decode("ascii")
+
+    urls = [
+        TURN_SERVER_URL,
+        TURN_SERVER_URL.replace("turn:", "turns:")
+            if TURN_SERVER_URL.startswith("turn:") else TURN_SERVER_URL
+    ]
+    urls = list(dict.fromkeys(urls))
+
+    return {
+        "success": True,
+        "enabled": True,
+        "ice_servers": [{
+            "urls": urls,
+            "username": turn_username,
+            "credential": turn_password
+        }]
+    }
+
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
