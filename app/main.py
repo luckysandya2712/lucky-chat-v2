@@ -1958,22 +1958,39 @@ async def upload_profile(
         User.username == username
     ).first()
 
-    if user:
+    if not user:
+        db.close()
+        return RedirectResponse(
+            "/profile?error=user_not_found",
+            status_code=303
+        )
 
-        # Cache-bust profile picture URLs so browsers do not keep showing the old image
-        # after the same username-based filename is replaced on the server.
-        user.profile_picture = "/static/profile/" + filename + "?v=" + str(int(time.time() * 1000))
+    # Store a cache-busted URL so browsers fetch the newly uploaded image even
+    # though the username-based filename remains the same.
+    cache_version = int(time.time() * 1000)
+    profile_picture_url = (
+        "/static/profile/" + filename + "?v=" + str(cache_version)
+    )
 
-        db.commit()
-
-    # Tell the user's other open pages that the profile picture changed
-
-    await manager.broadcast_profile_update(
-        username,
-        user.profile_picture
-)
-
+    user.profile_picture = profile_picture_url
+    db.commit()
     db.close()
+
+    # The HTTP upload must never wait for a possibly stale/disconnected
+    # WebSocket. Broadcast the change in the background.
+    async def broadcast_profile_picture_update():
+        try:
+            await asyncio.wait_for(
+                manager.broadcast_profile_update(
+                    username,
+                    profile_picture_url
+                ),
+                timeout=2.0
+            )
+        except Exception as exc:
+            print("PROFILE PICTURE BROADCAST ERROR:", exc)
+
+    asyncio.create_task(broadcast_profile_picture_update())
 
     return RedirectResponse(
         "/profile",
