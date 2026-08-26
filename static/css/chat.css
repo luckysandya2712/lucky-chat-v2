@@ -7930,3 +7930,114 @@ body{
         transition:none !important;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — MESSAGE BUBBLE RESTORE V2
+   Fixes the oversized/right-aligned text bubbles from V1.
+   Header and call-history UI intentionally untouched.
+   ========================================================= */
+
+/* Every normal message row stays a horizontal layout; the bubble
+   itself must shrink-wrap to its content instead of filling the row. */
+.message-row:not(.call-history-row){
+    display:flex !important;
+    width:100% !important;
+    align-items:flex-end !important;
+    gap:8px !important;
+}
+
+.message-row:not(.call-history-row) .message{
+    position:relative !important;
+    display:block !important;
+    flex:0 1 auto !important;
+    width:max-content !important;
+    min-width:0 !important;
+    max-width:min(78%, 430px) !important;
+    height:auto !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:9px 12px 7px !important;
+    box-sizing:border-box !important;
+    overflow:visible !important;
+    text-align:left !important;
+}
+
+/* Sent bubbles should sit at the right without stretching. */
+.message-row:not(.call-history-row) .message-own{
+    margin-left:auto !important;
+    align-self:flex-end !important;
+    text-align:left !important;
+    border-radius:18px 18px 6px 18px !important;
+    background:linear-gradient(145deg,#2f73ec,#3f82f4) !important;
+}
+
+/* Received bubbles remain compact on the left. */
+.message-row:not(.call-history-row) .message-other{
+    align-self:flex-start !important;
+    text-align:left !important;
+    border-radius:18px 18px 18px 6px !important;
+    background:linear-gradient(145deg,#30415a,#2a394f) !important;
+}
+
+/* The message text must not inherit an accidental right-alignment. */
+.message-row:not(.call-history-row) .msg-text{
+    display:block !important;
+    width:auto !important;
+    max-width:100% !important;
+    margin:0 !important;
+    padding:0 !important;
+    text-align:left !important;
+    white-space:pre-wrap !important;
+    overflow-wrap:anywhere !important;
+    word-break:normal !important;
+    font-size:15px !important;
+    line-height:1.34 !important;
+}
+
+/* Metadata stays in a small bottom line. */
+.message-row:not(.call-history-row) .msg-meta{
+    display:flex !important;
+    width:100% !important;
+    justify-content:flex-end !important;
+    align-items:center !important;
+    gap:5px !important;
+    margin-top:4px !important;
+    min-height:13px !important;
+    padding:0 !important;
+    text-align:right !important;
+}
+
+.message-row:not(.call-history-row) .msg-time{
+    font-size:9.5px !important;
+    line-height:1 !important;
+    white-space:nowrap !important;
+}
+
+.message-row:not(.call-history-row) .ticks{
+    font-size:11px !important;
+    line-height:1 !important;
+    letter-spacing:-1px !important;
+}
+
+/* Keep short consecutive messages compact instead of creating tall columns. */
+.message-row:not(.call-history-row) + .message-row:not(.call-history-row){
+    margin-top:1px !important;
+}
+
+@media(max-width:480px){
+    .message-row:not(.call-history-row) .message{
+        max-width:84% !important;
+        width:max-content !important;
+        padding:9px 11px 7px !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-text{
+        font-size:15px !important;
+        line-height:1.34 !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-time{
+        font-size:9.5px !important;
+    }
+}
