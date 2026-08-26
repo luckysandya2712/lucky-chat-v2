@@ -1091,39 +1091,12 @@ body{
 }
 
 
-/* TEMPORARY DASHBOARD CRYPTO DIAGNOSTIC */
-#luckyDebugPanel{
-    position:fixed; left:10px; right:10px; bottom:10px; z-index:20000;
-    display:none; max-height:42vh; overflow:auto; padding:12px 14px;
-    border:1px solid rgba(248,113,113,.35); border-radius:14px;
-    background:rgba(15,23,42,.97); color:#f8fafc;
-    font:12px/1.45 monospace; box-shadow:0 18px 45px rgba(0,0,0,.45);
-    white-space:pre-wrap;
-}
-#luckyDebugPanel.show{display:block;}
-#luckyDebugPanel .dbg-title{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    margin-bottom:7px; color:#fca5a5; font:600 12px Poppins,sans-serif;
-}
-#luckyDebugPanel button{
-    border:0; border-radius:9px; padding:5px 8px;
-    background:#1e293b; color:#e2e8f0; font:600 11px Poppins,sans-serif;
-}
 
 </style>
 
 </head>
 
 <body>
-<div id="luckyDebugPanel" aria-live="polite">
-  <div class="dbg-title">
-    <span>Lucky Chat diagnostic</span>
-    <button type="button" onclick="window.hideLuckyDebug()">Hide</button>
-  </div>
-  <div id="luckyDebugContent"></div>
-</div>
-
-
 <div class="app">
 
     <aside class="sidebar">
@@ -1315,37 +1288,6 @@ body{
 </div>
 
 <script src="/static/js/crypto.core.js?v=20260826-recovery-v2"></script>
-<script>
-window.__LUCKY_DASH_DEBUG__ = [];
-
-window.showLuckyDebug = function(label, error, extra){
-    try{
-        const panel = document.getElementById("luckyDebugPanel");
-        const content = document.getElementById("luckyDebugContent");
-        if(!panel || !content) return;
-
-        const message = error && error.message ? error.message : String(error || "Unknown error");
-        const stack = error && error.stack ? "\n" + error.stack : "";
-        const line = [
-            "[" + new Date().toLocaleTimeString() + "] " + label,
-            message,
-            extra ? JSON.stringify(extra, null, 2) : "",
-            stack
-        ].filter(Boolean).join("\n");
-
-        window.__LUCKY_DASH_DEBUG__.push(line);
-        window.__LUCKY_DASH_DEBUG__ = window.__LUCKY_DASH_DEBUG__.slice(-8);
-        content.textContent = window.__LUCKY_DASH_DEBUG__.join("\n\n");
-        panel.classList.add("show");
-    }catch(_){}
-};
-
-window.hideLuckyDebug = function(){
-    document.getElementById("luckyDebugPanel")?.classList.remove("show");
-};
-</script>
-
-
 <script>
 
 async function updateOnlineUsers(){
@@ -1942,7 +1884,6 @@ async function ensureDashboardCrypto(){
                 return true;
             } catch (error) {
                 console.error("Dashboard crypto initialization failed:", error);
-                window.showLuckyDebug("Dashboard crypto initialization failed", error);
                 dashboardCryptoReady = null;
                 return false;
             }
@@ -2051,15 +1992,6 @@ async function decryptDashboardPreview(chat){
                 error,
                 chat.id
             );
-            window.showLuckyDebug(
-                "Dashboard message decryption failed",
-                error,
-                {
-                    message_id: Number(chat.id) || 0,
-                    encrypted_format: raw.startsWith("LCE2:") ? "LCE2" : "LCE1"
-                }
-            );
-            throw error;
         }
     }
 
@@ -2223,7 +2155,6 @@ async function refreshDashboard(){
 
     } catch (error) {
         console.error("DASHBOARD REFRESH ERROR:", error);
-        window.showLuckyDebug("Dashboard refresh failed", error);
     }
 }
 
