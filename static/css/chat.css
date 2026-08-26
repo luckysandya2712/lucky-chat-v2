@@ -8284,72 +8284,94 @@ body{
 }
 
 
-<style id="lucky-text-bubbles-final-v5">
 /* =========================================================
-   LUCKY CHAT — TEXT BUBBLES FINAL V5
-   Final author rule: compact messenger bubbles.
+   LUCKY CHAT — TEXT BUBBLE LAYOUT FIX V6
+   Root layout correction for short message bubbles.
    Header + call-history UI intentionally untouched.
    ========================================================= */
 
-.message-row:not(.call-history-row) {
+/* Incoming row: avatar + naturally sized bubble. */
+.message-row:not(.call-history-row):has(> .message-other){
+    display:grid !important;
+    grid-template-columns:max-content minmax(0, max-content) !important;
+    align-items:end !important;
+    justify-content:start !important;
     width:100% !important;
     max-width:100% !important;
     min-width:0 !important;
-    display:flex !important;
-    flex-direction:row !important;
-    align-items:flex-end !important;
-    justify-content:flex-start !important;
-    gap:7px !important;
-    margin:3px 0 !important;
+    gap:8px !important;
+    margin:2px 0 !important;
     padding:0 !important;
 }
 
-.message-row:not(.call-history-row) > .message {
-    /* Critical: max-content makes short messages shrink to their content. */
-    display:flex !important;
-    flex-direction:column !important;
-    flex:0 0 auto !important;
-    align-self:flex-end !important;
-    inline-size:max-content !important;
-    width:max-content !important;
-    max-inline-size:min(78vw, 430px) !important;
-    max-width:min(78vw, 430px) !important;
-    min-inline-size:0 !important;
-    min-width:0 !important;
-    block-size:auto !important;
-    height:auto !important;
-    min-block-size:0 !important;
-    min-height:0 !important;
-    margin:0 !important;
-    padding:8px 11px 7px !important;
-    box-sizing:border-box !important;
-    overflow:visible !important;
-    text-align:left !important;
-}
-
-.message-row:not(.call-history-row) > .message-own {
-    margin-left:auto !important;
-    margin-right:0 !important;
-    align-self:flex-end !important;
-    text-align:left !important;
-}
-
-.message-row:not(.call-history-row) > .message-other {
-    margin-left:0 !important;
-    margin-right:auto !important;
-    align-self:flex-start !important;
-    text-align:left !important;
-}
-
-.message-row:not(.call-history-row) .msg-text {
-    display:block !important;
-    flex:0 0 auto !important;
-    inline-size:auto !important;
-    width:auto !important;
-    min-inline-size:0 !important;
-    min-width:0 !important;
-    max-inline-size:100% !important;
+/* Outgoing row: flexible empty space + naturally sized bubble on the right. */
+.message-row:not(.call-history-row):has(> .message-own){
+    display:grid !important;
+    grid-template-columns:minmax(0, 1fr) max-content !important;
+    align-items:end !important;
+    justify-content:stretch !important;
+    width:100% !important;
     max-width:100% !important;
+    min-width:0 !important;
+    gap:8px !important;
+    margin:2px 0 !important;
+    padding:0 !important;
+}
+
+/* Incoming avatar stays in the first column. */
+.message-row:not(.call-history-row):has(> .message-other) > .msg-avatar{
+    grid-column:1 !important;
+    grid-row:1 !important;
+    width:32px !important;
+    height:32px !important;
+    min-width:32px !important;
+    min-height:32px !important;
+    flex:none !important;
+    align-self:end !important;
+    margin:0 0 2px 0 !important;
+}
+
+/* Both text bubbles are content-sized, not row-sized. */
+.message-row:not(.call-history-row) > .message{
+    display:block !important;
+    position:relative !important;
+    grid-row:1 !important;
+    width:max-content !important;
+    min-width:0 !important;
+    max-width:min(78vw, 430px) !important;
+    height:auto !important;
+    min-height:0 !important;
+    box-sizing:border-box !important;
+    margin:0 !important;
+    padding:9px 11px 7px !important;
+    overflow:visible !important;
+    align-self:end !important;
+}
+
+/* Outgoing bubble occupies the second/max-content column. */
+.message-row:not(.call-history-row):has(> .message-own) > .message-own{
+    grid-column:2 !important;
+    justify-self:end !important;
+    align-self:end !important;
+    margin:0 !important;
+}
+
+/* Incoming bubble occupies the second/max-content column. */
+.message-row:not(.call-history-row):has(> .message-other) > .message-other{
+    grid-column:2 !important;
+    justify-self:start !important;
+    align-self:end !important;
+    margin:0 !important;
+}
+
+/* Keep message text from introducing width or height of its own. */
+.message-row:not(.call-history-row) .msg-text{
+    display:block !important;
+    width:auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+    min-height:0 !important;
+    height:auto !important;
     margin:0 !important;
     padding:0 !important;
     text-align:left !important;
@@ -8360,52 +8382,51 @@ body{
     line-height:1.35 !important;
 }
 
-.message-row:not(.call-history-row) .msg-meta {
+/* Metadata is content-sized and cannot force a fixed bubble width. */
+.message-row:not(.call-history-row) .msg-meta{
     display:flex !important;
-    flex:0 0 auto !important;
-    inline-size:max-content !important;
-    width:max-content !important;
-    max-inline-size:100% !important;
-    max-width:100% !important;
-    min-inline-size:0 !important;
-    min-width:0 !important;
-    align-self:flex-end !important;
-    justify-content:flex-end !important;
     align-items:center !important;
-    gap:4px !important;
+    justify-content:flex-end !important;
+    width:max-content !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    height:auto !important;
+    min-height:0 !important;
     margin:4px 0 0 auto !important;
     padding:0 !important;
-    min-height:0 !important;
+    gap:5px !important;
+    line-height:1 !important;
+    white-space:nowrap !important;
+}
+
+/* Prevent inherited generic bubble sizing from re-expanding the bubble. */
+.message-row:not(.call-history-row) > .message-own,
+.message-row:not(.call-history-row) > .message-other{
+    box-sizing:border-box !important;
+    flex:none !important;
+    width:max-content !important;
+    min-width:0 !important;
     height:auto !important;
-    line-height:1 !important;
-    white-space:nowrap !important;
+    min-height:0 !important;
 }
 
-.message-row:not(.call-history-row) .msg-time {
-    font-size:9.5px !important;
-    line-height:1 !important;
-    white-space:nowrap !important;
-    font-variant-numeric:tabular-nums !important;
-}
-
-.message-row:not(.call-history-row) .ticks {
-    font-size:11px !important;
-    line-height:1 !important;
-    letter-spacing:-1px !important;
-}
-
-@media (max-width:480px) {
-    .message-row:not(.call-history-row) > .message {
-        inline-size:max-content !important;
-        width:max-content !important;
-        max-inline-size:78vw !important;
-        max-width:78vw !important;
-        padding:8px 11px 7px !important;
+@media(max-width:480px){
+    .message-row:not(.call-history-row):has(> .message-other){
+        grid-template-columns:max-content minmax(0, max-content) !important;
     }
 
-    .message-row:not(.call-history-row) .msg-text {
+    .message-row:not(.call-history-row):has(> .message-own){
+        grid-template-columns:minmax(0, 1fr) max-content !important;
+    }
+
+    .message-row:not(.call-history-row) > .message{
+        width:max-content !important;
+        max-width:78vw !important;
+        padding:9px 11px 7px !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-text{
         font-size:15px !important;
         line-height:1.35 !important;
     }
 }
-</style>
