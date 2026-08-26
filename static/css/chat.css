@@ -7707,3 +7707,226 @@ body{
         font-size:15px !important;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — PREMIUM MESSAGE BUBBLES V1
+   Phase 2: message bubble + spacing polish.
+   Header intentionally left untouched.
+   ========================================================= */
+
+/* Conversation rhythm */
+.messages{
+    gap:6px !important;
+    padding:12px 10px 112px !important;
+    scroll-padding-bottom:112px !important;
+}
+
+.message-row:not(.call-history-row){
+    width:100% !important;
+    margin:1px 0 !important;
+    gap:8px !important;
+    align-items:flex-end !important;
+}
+
+/* Base bubble */
+.message-row:not(.call-history-row) .message{
+    position:relative !important;
+    width:fit-content !important;
+    max-width:min(78%, 430px) !important;
+    padding:10px 12px 8px !important;
+    margin:0 !important;
+    border:1px solid rgba(255,255,255,.055) !important;
+    border-radius:18px !important;
+    box-shadow:
+        0 6px 18px rgba(0,0,0,.16),
+        inset 0 1px 0 rgba(255,255,255,.025) !important;
+    transition:transform .14s ease, box-shadow .14s ease !important;
+}
+
+/* Sender / receiver surfaces */
+.message-row:not(.call-history-row) .message-own{
+    margin-left:auto !important;
+    background:
+        linear-gradient(145deg,#2f73ec 0%,#3f82f4 100%) !important;
+    color:#f8fbff !important;
+    border-color:rgba(147,197,253,.15) !important;
+    border-radius:18px 18px 6px 18px !important;
+}
+
+.message-row:not(.call-history-row) .message-other{
+    background:
+        linear-gradient(145deg,#26364d 0%,#30425a 100%) !important;
+    color:#eef4fb !important;
+    border-color:rgba(148,163,184,.10) !important;
+    border-radius:18px 18px 18px 6px !important;
+}
+
+/* Small bubble tail accents. */
+.message-row:not(.call-history-row) .message-own::after,
+.message-row:not(.call-history-row) .message-other::after{
+    content:"";
+    position:absolute;
+    bottom:0;
+    width:10px;
+    height:10px;
+    z-index:0;
+}
+
+.message-row:not(.call-history-row) .message-own::after{
+    right:-1px;
+    background:inherit;
+    clip-path:polygon(100% 0,100% 100%,0 100%);
+}
+
+.message-row:not(.call-history-row) .message-other::after{
+    left:-1px;
+    background:inherit;
+    clip-path:polygon(0 0,100% 100%,0 100%);
+}
+
+/* Keep actual content above the decorative tail. */
+.message-row:not(.call-history-row) .msg-text,
+.message-row:not(.call-history-row) .msg-meta,
+.message-row:not(.call-history-row) .reply-quote,
+.message-row:not(.call-history-row) .reaction,
+.message-row:not(.call-history-row) .chat-image,
+.message-row:not(.call-history-row) .chat-video,
+.message-row:not(.call-history-row) .voice-message,
+.message-row:not(.call-history-row) .video-message{
+    position:relative !important;
+    z-index:1 !important;
+}
+
+/* Text */
+.message-row:not(.call-history-row) .msg-text{
+    font-size:15.5px !important;
+    line-height:1.34 !important;
+    letter-spacing:.02px !important;
+    color:inherit !important;
+    white-space:pre-wrap !important;
+    overflow-wrap:anywhere !important;
+}
+
+/* Metadata */
+.message-row:not(.call-history-row) .msg-meta{
+    display:flex !important;
+    justify-content:flex-end !important;
+    align-items:center !important;
+    gap:5px !important;
+    min-height:15px !important;
+    margin-top:5px !important;
+    font-size:10px !important;
+    line-height:1 !important;
+    color:rgba(235,244,255,.72) !important;
+}
+
+.message-row:not(.call-history-row) .msg-time{
+    font-size:10px !important;
+    font-variant-numeric:tabular-nums !important;
+    white-space:nowrap !important;
+}
+
+.message-row:not(.call-history-row) .message-own .msg-meta{
+    color:rgba(240,248,255,.82) !important;
+}
+
+.message-row:not(.call-history-row) .ticks{
+    font-size:12px !important;
+    line-height:1 !important;
+    font-weight:800 !important;
+    letter-spacing:-1px !important;
+}
+
+.message-row:not(.call-history-row) .ticks.read{
+    color:#55d7ff !important;
+}
+
+/* Edited marker stays secondary. */
+.message-row:not(.call-history-row) .edited-label{
+    font-size:9px !important;
+    opacity:.72 !important;
+}
+
+/* Sender avatar: slightly smaller and visually quieter than the header avatar. */
+.message-row:not(.call-history-row) .msg-avatar{
+    width:32px !important;
+    height:32px !important;
+    min-width:32px !important;
+    flex:0 0 32px !important;
+    border:2px solid rgba(59,130,246,.70) !important;
+    box-shadow:0 4px 12px rgba(0,0,0,.20) !important;
+    margin-bottom:2px !important;
+}
+
+/* Group consecutive messages from the same side. */
+.message-row:not(.call-history-row) + .message-row:not(.call-history-row){
+    margin-top:-1px !important;
+}
+
+/* Incoming groups */
+.message-row:not(.call-history-row):has(.message-other) +
+.message-row:not(.call-history-row):has(.message-other){
+    margin-top:-4px !important;
+}
+
+.message-row:not(.call-history-row):has(.message-other) +
+.message-row:not(.call-history-row):has(.message-other) .message-other{
+    border-top-left-radius:9px !important;
+}
+
+/* Outgoing groups */
+.message-row:not(.call-history-row):has(.message-own) +
+.message-row:not(.call-history-row):has(.message-own){
+    margin-top:-4px !important;
+}
+
+.message-row:not(.call-history-row):has(.message-own) +
+.message-row:not(.call-history-row):has(.message-own) .message-own{
+    border-top-right-radius:9px !important;
+}
+
+/* Keep the first item in a group looking like a distinct bubble. */
+.message-row:not(.call-history-row):has(.message-other) +
+.message-row:not(.call-history-row):has(.message-other) .msg-avatar{
+    visibility:hidden !important;
+}
+
+.message-row:not(.call-history-row):has(.message-own) +
+.message-row:not(.call-history-row):has(.message-own){
+    padding-right:0 !important;
+}
+
+/* Long messages should use the available width instead of becoming overly tall. */
+@media(max-width:480px){
+    .message-row:not(.call-history-row) .message{
+        max-width:84% !important;
+        padding:9px 11px 8px !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-text{
+        font-size:15px !important;
+        line-height:1.34 !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-meta{
+        font-size:9.5px !important;
+        margin-top:4px !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-time{
+        font-size:9.5px !important;
+    }
+}
+
+/* Touch feedback only; no behavior change. */
+.message-row:not(.call-history-row) .message:active{
+    transform:scale(.985) !important;
+    box-shadow:0 4px 14px rgba(0,0,0,.18) !important;
+}
+
+@media(prefers-reduced-motion:reduce){
+    .message-row:not(.call-history-row) .message{
+        transition:none !important;
+    }
+}
