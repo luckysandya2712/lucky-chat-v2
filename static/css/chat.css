@@ -8169,44 +8169,61 @@ body{
 
 
 /* =========================================================
-   LUCKY CHAT — TEXT MESSAGE CORRECTION V4
-   Root fix for oversized/odd text bubbles:
-   1) .msg-text no longer receives template indentation/newlines.
-   2) Bubble sizing is independent of metadata width.
-   3) Short messages remain compact.
-   Header and call cards intentionally untouched.
+   LUCKY CHAT — TEXT BUBBLES FINAL V7
+   One authoritative text-message layout layer.
+   Header / call-history / media UI are untouched.
    ========================================================= */
 
-.message-row:not(.call-history-row){
-    display:flex !important;
-    flex-direction:row !important;
-    align-items:flex-end !important;
+/* Normal message rows are full-width containers only. */
+.messages .message-row:not(.call-history-row){
     width:100% !important;
     max-width:100% !important;
     min-width:0 !important;
-    margin:2px 0 !important;
-    padding:0 !important;
+    display:flex !important;
+    flex-direction:row !important;
+    align-items:flex-end !important;
     gap:8px !important;
+    margin:3px 0 !important;
+    padding:0 !important;
+    box-sizing:border-box !important;
 }
 
-.message-row:not(.call-history-row) > .message{
-    display:block !important;
-    flex:0 1 auto !important;
-    align-self:flex-end !important;
-    box-sizing:border-box !important;
-    width:fit-content !important;
+/* Outgoing rows push the bubble to the right. */
+.messages .message-row:not(.call-history-row):has(> .message-own){
+    justify-content:flex-end !important;
+}
+
+/* Incoming rows keep avatar + bubble on the left. */
+.messages .message-row:not(.call-history-row):has(> .message-other){
+    justify-content:flex-start !important;
+}
+
+/* The bubble itself is shrink-wrapped to its actual contents. */
+.messages .message-row:not(.call-history-row) > .message{
+    display:inline-flex !important;
+    flex:0 0 auto !important;
+    flex-direction:column !important;
+    align-items:stretch !important;
+    justify-content:flex-start !important;
+    position:relative !important;
+    width:max-content !important;
     min-width:0 !important;
-    max-width:min(78%, 430px) !important;
+    max-width:min(78vw, 430px) !important;
     height:auto !important;
     min-height:0 !important;
+    max-height:none !important;
+    aspect-ratio:auto !important;
+    box-sizing:border-box !important;
     margin:0 !important;
-    padding:9px 12px 7px !important;
-    text-align:left !important;
+    padding:10px 12px 7px !important;
     overflow:visible !important;
+    text-align:left !important;
+    vertical-align:bottom !important;
 }
 
-/* Sent / received positioning */
-.message-row:not(.call-history-row) > .message-own{
+/* Sent / received appearance. */
+.messages .message-row:not(.call-history-row) > .message-own{
+    align-self:flex-end !important;
     margin-left:auto !important;
     margin-right:0 !important;
     border-radius:18px 18px 6px 18px !important;
@@ -8214,7 +8231,8 @@ body{
     color:#f8fbff !important;
 }
 
-.message-row:not(.call-history-row) > .message-other{
+.messages .message-row:not(.call-history-row) > .message-other{
+    align-self:flex-end !important;
     margin-left:0 !important;
     margin-right:auto !important;
     border-radius:18px 18px 18px 6px !important;
@@ -8222,210 +8240,105 @@ body{
     color:#eef4fb !important;
 }
 
-/* Actual text content: preserve USER line breaks, but not template whitespace. */
-.message-row:not(.call-history-row) .msg-text{
+/* Text is a single natural-height block. */
+.messages .message-row:not(.call-history-row) .msg-text{
     display:block !important;
     width:auto !important;
-    min-width:0 !important;
     max-width:none !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    height:auto !important;
     margin:0 !important;
     padding:0 !important;
+    color:inherit !important;
     text-align:left !important;
     white-space:pre-wrap !important;
     overflow-wrap:anywhere !important;
     word-break:normal !important;
     font-family:Poppins,sans-serif !important;
-    font-size:15px !important;
+    font-size:15.5px !important;
     font-weight:400 !important;
     line-height:1.35 !important;
 }
 
-/* Metadata cannot dictate the bubble width. */
-.message-row:not(.call-history-row) .msg-meta{
+/* Metadata is only as wide as time + ticks, never 100% of the bubble. */
+.messages .message-row:not(.call-history-row) .msg-meta{
     display:flex !important;
+    flex:0 0 auto !important;
+    width:max-content !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    min-height:0 !important;
+    height:auto !important;
     align-items:center !important;
     justify-content:flex-end !important;
-    width:max-content !important;
-    max-width:100% !important;
-    min-width:0 !important;
+    gap:5px !important;
     margin:4px 0 0 auto !important;
     padding:0 !important;
-    gap:5px !important;
+    color:rgba(235,244,255,.78) !important;
     line-height:1 !important;
+    white-space:nowrap !important;
     text-align:right !important;
-    white-space:nowrap !important;
 }
 
-.message-row:not(.call-history-row) .msg-time{
-    font-size:9.5px !important;
+.messages .message-row:not(.call-history-row) .msg-time{
+    display:inline-block !important;
+    width:auto !important;
+    min-width:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+    font-size:10px !important;
     line-height:1 !important;
-    font-family:Poppins,sans-serif !important;
-    font-variant-numeric:tabular-nums !important;
     white-space:nowrap !important;
+    font-variant-numeric:tabular-nums !important;
 }
 
-.message-row:not(.call-history-row) .ticks{
-    font-size:11px !important;
+.messages .message-row:not(.call-history-row) .ticks{
+    display:inline-block !important;
+    width:auto !important;
+    min-width:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+    font-size:12px !important;
     line-height:1 !important;
     letter-spacing:-1px !important;
 }
 
-@media(max-width:480px){
-    .message-row:not(.call-history-row) > .message{
-        width:fit-content !important;
-        max-width:84% !important;
-        padding:9px 11px 7px !important;
-    }
-
-    .message-row:not(.call-history-row) .msg-text{
-        font-size:15px !important;
-        line-height:1.35 !important;
-    }
-}
-
-
-/* =========================================================
-   LUCKY CHAT — TEXT BUBBLE LAYOUT FIX V6
-   Root layout correction for short message bubbles.
-   Header + call-history UI intentionally untouched.
-   ========================================================= */
-
-/* Incoming row: avatar + naturally sized bubble. */
-.message-row:not(.call-history-row):has(> .message-other){
-    display:grid !important;
-    grid-template-columns:max-content minmax(0, max-content) !important;
-    align-items:end !important;
-    justify-content:start !important;
-    width:100% !important;
-    max-width:100% !important;
-    min-width:0 !important;
-    gap:8px !important;
-    margin:2px 0 !important;
-    padding:0 !important;
-}
-
-/* Outgoing row: flexible empty space + naturally sized bubble on the right. */
-.message-row:not(.call-history-row):has(> .message-own){
-    display:grid !important;
-    grid-template-columns:minmax(0, 1fr) max-content !important;
-    align-items:end !important;
-    justify-content:stretch !important;
-    width:100% !important;
-    max-width:100% !important;
-    min-width:0 !important;
-    gap:8px !important;
-    margin:2px 0 !important;
-    padding:0 !important;
-}
-
-/* Incoming avatar stays in the first column. */
-.message-row:not(.call-history-row):has(> .message-other) > .msg-avatar{
-    grid-column:1 !important;
-    grid-row:1 !important;
+/* Incoming avatar is compact and never stretches the bubble. */
+.messages .message-row:not(.call-history-row) > .msg-avatar{
     width:32px !important;
     height:32px !important;
     min-width:32px !important;
     min-height:32px !important;
-    flex:none !important;
-    align-self:end !important;
+    flex:0 0 32px !important;
+    align-self:flex-end !important;
     margin:0 0 2px 0 !important;
 }
 
-/* Both text bubbles are content-sized, not row-sized. */
-.message-row:not(.call-history-row) > .message{
-    display:block !important;
-    position:relative !important;
-    grid-row:1 !important;
-    width:max-content !important;
-    min-width:0 !important;
-    max-width:min(78vw, 430px) !important;
-    height:auto !important;
-    min-height:0 !important;
-    box-sizing:border-box !important;
-    margin:0 !important;
-    padding:9px 11px 7px !important;
-    overflow:visible !important;
-    align-self:end !important;
+/* Keep short consecutive messages compact but clearly separated. */
+.messages .message-row:not(.call-history-row) + .message-row:not(.call-history-row){
+    margin-top:2px !important;
 }
 
-/* Outgoing bubble occupies the second/max-content column. */
-.message-row:not(.call-history-row):has(> .message-own) > .message-own{
-    grid-column:2 !important;
-    justify-self:end !important;
-    align-self:end !important;
-    margin:0 !important;
-}
-
-/* Incoming bubble occupies the second/max-content column. */
-.message-row:not(.call-history-row):has(> .message-other) > .message-other{
-    grid-column:2 !important;
-    justify-self:start !important;
-    align-self:end !important;
-    margin:0 !important;
-}
-
-/* Keep message text from introducing width or height of its own. */
-.message-row:not(.call-history-row) .msg-text{
-    display:block !important;
-    width:auto !important;
-    min-width:0 !important;
-    max-width:none !important;
-    min-height:0 !important;
-    height:auto !important;
-    margin:0 !important;
-    padding:0 !important;
-    text-align:left !important;
-    white-space:pre-wrap !important;
-    overflow-wrap:anywhere !important;
-    word-break:normal !important;
-    font-size:15px !important;
-    line-height:1.35 !important;
-}
-
-/* Metadata is content-sized and cannot force a fixed bubble width. */
-.message-row:not(.call-history-row) .msg-meta{
-    display:flex !important;
-    align-items:center !important;
-    justify-content:flex-end !important;
-    width:max-content !important;
-    min-width:0 !important;
-    max-width:100% !important;
-    height:auto !important;
-    min-height:0 !important;
-    margin:4px 0 0 auto !important;
-    padding:0 !important;
-    gap:5px !important;
-    line-height:1 !important;
-    white-space:nowrap !important;
-}
-
-/* Prevent inherited generic bubble sizing from re-expanding the bubble. */
-.message-row:not(.call-history-row) > .message-own,
-.message-row:not(.call-history-row) > .message-other{
-    box-sizing:border-box !important;
-    flex:none !important;
-    width:max-content !important;
-    min-width:0 !important;
-    height:auto !important;
-    min-height:0 !important;
+/* Neutralize older group-shaping rules that can alter bubble geometry. */
+.messages .message-row:not(.call-history-row):has(> .message-own) +
+.messages .message-row:not(.call-history-row):has(> .message-own),
+.messages .message-row:not(.call-history-row):has(> .message-other) +
+.messages .message-row:not(.call-history-row):has(> .message-other){
+    margin-top:2px !important;
+    padding-right:0 !important;
 }
 
 @media(max-width:480px){
-    .message-row:not(.call-history-row):has(> .message-other){
-        grid-template-columns:max-content minmax(0, max-content) !important;
-    }
-
-    .message-row:not(.call-history-row):has(> .message-own){
-        grid-template-columns:minmax(0, 1fr) max-content !important;
-    }
-
-    .message-row:not(.call-history-row) > .message{
+    .messages .message-row:not(.call-history-row) > .message{
         width:max-content !important;
         max-width:78vw !important;
+        min-height:0 !important;
+        height:auto !important;
         padding:9px 11px 7px !important;
     }
 
-    .message-row:not(.call-history-row) .msg-text{
+    .messages .message-row:not(.call-history-row) .msg-text{
         font-size:15px !important;
         line-height:1.35 !important;
     }
