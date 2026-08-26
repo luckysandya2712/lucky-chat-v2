@@ -1,6 +1,7 @@
 const LuckyCrypto = {
     initialized: false,
     keyPair: null,
+    keyHistory: [],
     publicKeyCache: new Map(),
     initPromise: null,
 
@@ -55,14 +56,45 @@ const LuckyCrypto = {
     async loadOrCreateKeyPair() {
         const stored = await this.loadKeyPairFromDB();
 
+        // New format:
+        // {
+        //   current: CryptoKeyPair,
+        //   history: CryptoKeyPair[]
+        // }
+        //
+        // Backward compatibility: older builds stored the CryptoKeyPair
+        // directly under the "identity" key.
+        if (stored?.current?.publicKey && stored?.current?.privateKey) {
+            this.keyPair = stored.current;
+            this.keyHistory = Array.isArray(stored.history)
+                ? stored.history.filter(pair => pair?.privateKey && pair?.publicKey)
+                : [];
+
+            console.log(
+                "🔑 Encryption key loaded with",
+                this.keyHistory.length,
+                "archived key(s)"
+            );
+            return;
+        }
+
         if (stored?.publicKey && stored?.privateKey) {
             this.keyPair = stored;
-            console.log("🔑 Existing encryption key loaded");
+            this.keyHistory = [];
+            await this.saveKeyPairToDB({
+                current: this.keyPair,
+                history: []
+            });
+            console.log("🔑 Existing encryption key migrated to key-history format");
             return;
         }
 
         this.keyPair = await this.generateKeyPair();
-        await this.saveKeyPairToDB(this.keyPair);
+        this.keyHistory = [];
+        await this.saveKeyPairToDB({
+            current: this.keyPair,
+            history: []
+        });
         console.log("🔑 New encryption key pair generated");
     },
 
@@ -305,39 +337,66 @@ const LuckyCrypto = {
 
         const wrappedKey = this.base64ToArrayBuffer(envelope.keys[username]);
 
-        const rawAesKey = await window.crypto.subtle.decrypt(
-            { name: "RSA-OAEP" },
-            this.keyPair.privateKey,
-            wrappedKey
-        );
+        // Try the active key first, then archived private keys. This makes
+        // previously encrypted messages survive a normal key rotation.
+        const candidatePairs = [this.keyPair, ...this.keyHistory];
 
-        const aesKey = await window.crypto.subtle.importKey(
-            "raw",
-            rawAesKey,
-            { name: "AES-GCM" },
-            false,
-            ["decrypt"]
-        );
+        let lastError = null;
 
-        const plaintextBuffer = await window.crypto.subtle.decrypt(
-            {
-                name: "AES-GCM",
-                iv: new Uint8Array(this.base64ToArrayBuffer(envelope.iv)),
-                tagLength: 128
-            },
-            aesKey,
-            this.base64ToArrayBuffer(envelope.ciphertext)
-        );
+        for (let index = 0; index < candidatePairs.length; index += 1) {
+            const pair = candidatePairs[index];
 
-        return new TextDecoder().decode(plaintextBuffer);
+            if (!pair?.privateKey) {
+                continue;
+            }
+
+            try {
+                const rawAesKey = await window.crypto.subtle.decrypt(
+                    { name: "RSA-OAEP" },
+                    pair.privateKey,
+                    wrappedKey
+                );
+
+                const aesKey = await window.crypto.subtle.importKey(
+                    "raw",
+                    rawAesKey,
+                    { name: "AES-GCM" },
+                    false,
+                    ["decrypt"]
+                );
+
+                const plaintextBuffer = await window.crypto.subtle.decrypt(
+                    {
+                        name: "AES-GCM",
+                        iv: new Uint8Array(this.base64ToArrayBuffer(envelope.iv)),
+                        tagLength: 128
+                    },
+                    aesKey,
+                    this.base64ToArrayBuffer(envelope.ciphertext)
+                );
+
+                // If an archived key succeeded, silently continue using that
+                // key for this historical message. Do not rewrite ciphertext.
+                if (index > 0) {
+                    console.debug("🔑 Decrypted message with archived key");
+                }
+
+                return new TextDecoder().decode(plaintextBuffer);
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        throw lastError || new Error("No matching decryption key found");
     },
+
 
     clearCachedPublicKey(username) {
         const name = String(username || "").trim();
         if (name) this.publicKeyCache.delete(name);
     },
 
-    async saveKeyPairToDB(keyPair) {
+    async saveKeyPairToDB(keyStore) {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open("LuckyChatCrypto", 1);
 
@@ -354,7 +413,7 @@ const LuckyCrypto = {
                 const transaction = db.transaction("keys", "readwrite");
                 const store = transaction.objectStore("keys");
 
-                store.put(keyPair, "identity");
+                store.put(keyStore, "identity");
 
                 transaction.oncomplete = () => {
                     db.close();
