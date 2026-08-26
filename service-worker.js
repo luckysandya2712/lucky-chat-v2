@@ -1,4 +1,4 @@
-const CACHE_NAME = "lucky-chat-pwa-v1";
+const CACHE_NAME = "lucky-chat-pwa-v2";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", event => {
@@ -54,6 +54,26 @@ self.addEventListener("fetch", event => {
     if (request.mode === "navigate") {
         event.respondWith(
             fetch(request).catch(() => caches.match(OFFLINE_URL))
+        );
+        return;
+    }
+
+    // Encryption code must always be fetched from the server when online.
+    // A stale crypto.core.js can break dashboard previews even when the
+    // dashboard itself has been updated.
+    if (
+        url.pathname === "/static/js/crypto.core.js"
+    ) {
+        event.respondWith(
+            fetch(request, { cache: "no-store" }).then(response => {
+                if (response && response.ok) {
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(request, copy);
+                    });
+                }
+                return response;
+            }).catch(() => caches.match(request))
         );
         return;
     }

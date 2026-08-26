@@ -87,6 +87,41 @@ def _ensure_message_media_columns():
 _ensure_message_media_columns()
 
 
+def _ensure_crypto_key_columns():
+    """Add encrypted-key-recovery columns to existing users tables."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("users"):
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("users")}
+        statements = []
+
+        if "public_key_history" not in columns:
+            statements.append(
+                "ALTER TABLE users ADD COLUMN public_key_history TEXT DEFAULT '[]'"
+            )
+
+        if "crypto_key_backup" not in columns:
+            statements.append(
+                "ALTER TABLE users ADD COLUMN crypto_key_backup TEXT"
+            )
+
+        if statements:
+            with engine.begin() as connection:
+                for statement in statements:
+                    connection.execute(sqlalchemy_text(statement))
+
+            print("CRYPTO KEY SCHEMA: recovery columns added")
+    except Exception as exc:
+        print("CRYPTO KEY SCHEMA ERROR:", exc)
+        traceback.print_exc()
+
+
+_ensure_crypto_key_columns()
+
+
+
 def resolve_user_by_username(db, username):
     """Resolve a user by exact username, then normalized username.
 
@@ -250,6 +285,63 @@ class PublicKeyUpload(BaseModel):
     public_key: str
 
 
+
+
+class CryptoBackupPayload(BaseModel):
+    backup: str
+
+
+@app.get("/crypto/backup")
+async def get_crypto_backup(request: Request):
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+        return {"success": True, "backup": user.crypto_key_backup or ""}
+    finally:
+        db.close()
+
+
+@app.post("/crypto/backup")
+async def save_crypto_backup(
+    data: CryptoBackupPayload,
+    request: Request
+):
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    backup = (data.backup or "").strip()
+    if not backup:
+        return {"success": False, "error": "Backup is required"}
+    if len(backup) > 200_000:
+        return {"success": False, "error": "Backup is too large"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        # The backup is encrypted in the browser with the recovery code.
+        # The server never receives the recovery code itself.
+        user.crypto_key_backup = backup
+        db.commit()
+        return {"success": True}
+    except Exception as exc:
+        db.rollback()
+        print("CRYPTO BACKUP SAVE ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save crypto backup"}
+    finally:
+        db.close()
+
+
 @app.post("/keys/upload")
 async def upload_public_key(
     data: PublicKeyUpload,
@@ -282,12 +374,31 @@ async def upload_public_key(
                 "error": "User not found"
             }
 
+        history = []
+        try:
+            parsed = json.loads(user.public_key_history or "[]")
+            if isinstance(parsed, list):
+                history = [
+                    str(value).strip()
+                    for value in parsed
+                    if str(value).strip()
+                ]
+        except Exception:
+            history = []
+
+        current = str(user.public_key or "").strip()
+
+        if current and current != public_key and current not in history:
+            history.append(current)
+
         user.public_key = public_key
+        user.public_key_history = json.dumps(history[-12:], separators=(",", ":"))
         db.commit()
 
         return {
             "success": True,
-            "username": username
+            "username": user.username,
+            "key_count": len(history[-12:]) + 1
         }
 
     except Exception as e:
@@ -317,10 +428,28 @@ async def get_public_key(username: str):
                 "error": "User not found"
             }
 
+        history = []
+        try:
+            parsed = json.loads(user.public_key_history or "[]")
+            if isinstance(parsed, list):
+                history = [
+                    str(value).strip()
+                    for value in parsed
+                    if str(value).strip()
+                ]
+        except Exception:
+            history = []
+
+        public_keys = []
+        for value in history + [str(user.public_key or "").strip()]:
+            if value and value not in public_keys:
+                public_keys.append(value)
+
         return {
             "success": True,
             "username": user.username,
-            "public_key": user.public_key
+            "public_key": user.public_key,
+            "public_keys": public_keys
         }
 
     finally:
@@ -395,6 +524,13 @@ async def dashboard(request: Request):
     }
 
 )
+
+@app.get("/crypto-recovery", response_class=HTMLResponse)
+async def crypto_recovery(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="crypto_recovery.html"
+    )
 
 @app.get("/chat/{friend}", response_class=HTMLResponse)
 async def chat(friend: str, request: Request):

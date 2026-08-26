@@ -23,6 +23,8 @@ class User(Base):
     last_seen = Column(DateTime, nullable=True)
 
     public_key = Column(String, nullable=True)
+    public_key_history = Column(Text, nullable=True, default="[]")
+    crypto_key_backup = Column(Text, nullable=True)
 
 class Message(Base):
     __tablename__ = "messages"
