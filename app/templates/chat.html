@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lucky Chat</title>
 
-<link rel="stylesheet" href="/static/css/chat.css?v=20260826-text-message-v4">
+<link rel="stylesheet" href="/static/css/chat.css?v=20260826-text-bubbles-v5">
 
 </head>
 
@@ -1506,6 +1506,133 @@ Welcome to Lucky Chat 🚀
 
 <script src="/static/js/crypto.core.js?v=20260824-fix8"></script>
 <script src="/static/js/chat.core.js?v=20260825-turn-support-v9"></script>
+
+
+<style id="lucky-text-bubbles-final-v5">
+/* =========================================================
+   LUCKY CHAT — TEXT BUBBLES FINAL V5
+   Final author rule: compact messenger bubbles.
+   Header + call-history UI intentionally untouched.
+   ========================================================= */
+
+.message-row:not(.call-history-row) {
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    display:flex !important;
+    flex-direction:row !important;
+    align-items:flex-end !important;
+    justify-content:flex-start !important;
+    gap:7px !important;
+    margin:3px 0 !important;
+    padding:0 !important;
+}
+
+.message-row:not(.call-history-row) > .message {
+    /* Critical: max-content makes short messages shrink to their content. */
+    display:flex !important;
+    flex-direction:column !important;
+    flex:0 0 auto !important;
+    align-self:flex-end !important;
+    inline-size:max-content !important;
+    width:max-content !important;
+    max-inline-size:min(78vw, 430px) !important;
+    max-width:min(78vw, 430px) !important;
+    min-inline-size:0 !important;
+    min-width:0 !important;
+    block-size:auto !important;
+    height:auto !important;
+    min-block-size:0 !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:8px 11px 7px !important;
+    box-sizing:border-box !important;
+    overflow:visible !important;
+    text-align:left !important;
+}
+
+.message-row:not(.call-history-row) > .message-own {
+    margin-left:auto !important;
+    margin-right:0 !important;
+    align-self:flex-end !important;
+    text-align:left !important;
+}
+
+.message-row:not(.call-history-row) > .message-other {
+    margin-left:0 !important;
+    margin-right:auto !important;
+    align-self:flex-start !important;
+    text-align:left !important;
+}
+
+.message-row:not(.call-history-row) .msg-text {
+    display:block !important;
+    flex:0 0 auto !important;
+    inline-size:auto !important;
+    width:auto !important;
+    min-inline-size:0 !important;
+    min-width:0 !important;
+    max-inline-size:100% !important;
+    max-width:100% !important;
+    margin:0 !important;
+    padding:0 !important;
+    text-align:left !important;
+    white-space:pre-wrap !important;
+    overflow-wrap:anywhere !important;
+    word-break:normal !important;
+    font-size:15px !important;
+    line-height:1.35 !important;
+}
+
+.message-row:not(.call-history-row) .msg-meta {
+    display:flex !important;
+    flex:0 0 auto !important;
+    inline-size:max-content !important;
+    width:max-content !important;
+    max-inline-size:100% !important;
+    max-width:100% !important;
+    min-inline-size:0 !important;
+    min-width:0 !important;
+    align-self:flex-end !important;
+    justify-content:flex-end !important;
+    align-items:center !important;
+    gap:4px !important;
+    margin:4px 0 0 auto !important;
+    padding:0 !important;
+    min-height:0 !important;
+    height:auto !important;
+    line-height:1 !important;
+    white-space:nowrap !important;
+}
+
+.message-row:not(.call-history-row) .msg-time {
+    font-size:9.5px !important;
+    line-height:1 !important;
+    white-space:nowrap !important;
+    font-variant-numeric:tabular-nums !important;
+}
+
+.message-row:not(.call-history-row) .ticks {
+    font-size:11px !important;
+    line-height:1 !important;
+    letter-spacing:-1px !important;
+}
+
+@media (max-width:480px) {
+    .message-row:not(.call-history-row) > .message {
+        inline-size:max-content !important;
+        width:max-content !important;
+        max-inline-size:78vw !important;
+        max-width:78vw !important;
+        padding:8px 11px 7px !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-text {
+        font-size:15px !important;
+        line-height:1.35 !important;
+    }
+}
+</style>
 
 </body>
 </html>
