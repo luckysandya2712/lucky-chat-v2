@@ -8166,3 +8166,119 @@ body{
         font-size:9.5px !important;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — TEXT MESSAGE CORRECTION V4
+   Root fix for oversized/odd text bubbles:
+   1) .msg-text no longer receives template indentation/newlines.
+   2) Bubble sizing is independent of metadata width.
+   3) Short messages remain compact.
+   Header and call cards intentionally untouched.
+   ========================================================= */
+
+.message-row:not(.call-history-row){
+    display:flex !important;
+    flex-direction:row !important;
+    align-items:flex-end !important;
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    margin:2px 0 !important;
+    padding:0 !important;
+    gap:8px !important;
+}
+
+.message-row:not(.call-history-row) > .message{
+    display:block !important;
+    flex:0 1 auto !important;
+    align-self:flex-end !important;
+    box-sizing:border-box !important;
+    width:fit-content !important;
+    min-width:0 !important;
+    max-width:min(78%, 430px) !important;
+    height:auto !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:9px 12px 7px !important;
+    text-align:left !important;
+    overflow:visible !important;
+}
+
+/* Sent / received positioning */
+.message-row:not(.call-history-row) > .message-own{
+    margin-left:auto !important;
+    margin-right:0 !important;
+    border-radius:18px 18px 6px 18px !important;
+    background:linear-gradient(145deg,#2f73ec,#3f82f4) !important;
+    color:#f8fbff !important;
+}
+
+.message-row:not(.call-history-row) > .message-other{
+    margin-left:0 !important;
+    margin-right:auto !important;
+    border-radius:18px 18px 18px 6px !important;
+    background:linear-gradient(145deg,#30415a,#2a394f) !important;
+    color:#eef4fb !important;
+}
+
+/* Actual text content: preserve USER line breaks, but not template whitespace. */
+.message-row:not(.call-history-row) .msg-text{
+    display:block !important;
+    width:auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+    margin:0 !important;
+    padding:0 !important;
+    text-align:left !important;
+    white-space:pre-wrap !important;
+    overflow-wrap:anywhere !important;
+    word-break:normal !important;
+    font-family:Poppins,sans-serif !important;
+    font-size:15px !important;
+    font-weight:400 !important;
+    line-height:1.35 !important;
+}
+
+/* Metadata cannot dictate the bubble width. */
+.message-row:not(.call-history-row) .msg-meta{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:flex-end !important;
+    width:max-content !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    margin:4px 0 0 auto !important;
+    padding:0 !important;
+    gap:5px !important;
+    line-height:1 !important;
+    text-align:right !important;
+    white-space:nowrap !important;
+}
+
+.message-row:not(.call-history-row) .msg-time{
+    font-size:9.5px !important;
+    line-height:1 !important;
+    font-family:Poppins,sans-serif !important;
+    font-variant-numeric:tabular-nums !important;
+    white-space:nowrap !important;
+}
+
+.message-row:not(.call-history-row) .ticks{
+    font-size:11px !important;
+    line-height:1 !important;
+    letter-spacing:-1px !important;
+}
+
+@media(max-width:480px){
+    .message-row:not(.call-history-row) > .message{
+        width:fit-content !important;
+        max-width:84% !important;
+        padding:9px 11px 7px !important;
+    }
+
+    .message-row:not(.call-history-row) .msg-text{
+        font-size:15px !important;
+        line-height:1.35 !important;
+    }
+}

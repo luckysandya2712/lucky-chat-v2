@@ -2514,9 +2514,7 @@ function addMessage(msg){
 
                  ${mediaHtml}
 
-                 <div class="msg-text">
-                 ${escapeHTML(msg.text)}
-                 </div>
+                 <div class="msg-text">${escapeHTML(msg.text)}</div>
 
                 <div class="msg-meta">
                     <span class="msg-time">${formatMessageTimestamp(msg.timestamp)}</span>
@@ -2548,9 +2546,7 @@ function addMessage(msg){
 
                 ${mediaHtml}
 
-                <div class="msg-text">
-                ${escapeHTML(msg.text)}
-                </div>
+                <div class="msg-text">${escapeHTML(msg.text)}</div>
 
                 <div class="msg-meta">
                     <span class="msg-time">${formatMessageTimestamp(msg.timestamp)}</span>
