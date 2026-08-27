@@ -1584,6 +1584,14 @@ async function handleSocketMessage(event) {
 
         addMessage(data);
         playNotificationSound();
+
+        if (typeof window.luckyNotify === "function") {
+            window.luckyNotify(
+                data.sender || friend || "Lucky Chat",
+                data.text || "New message"
+            );
+        }
+
         queueMessageReceipt(data.id);
         return;
     }
@@ -1942,9 +1950,15 @@ function setupPushNotifications() {
     window.addEventListener("load", requestNotify);
 
     window.luckyNotify = function (sender, message) {
+        // Respect the Message Notifications setting.
+        if (localStorage.getItem("lucky_setting_notifications") === "0") {
+            return;
+        }
+
         if (!("Notification" in window)) return;
         if (document.visibilityState === "visible") return;
         if (Notification.permission !== "granted") return;
+
         const body = message || "New message";
         const n = new Notification(sender || "Lucky Chat", {
             body,
