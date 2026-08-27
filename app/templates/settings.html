@@ -481,6 +481,77 @@ html.lucky-light .about-row strong{
 }
 
 </style>
+
+<style id="lucky-change-password-style">
+
+/* =========================================================
+   CHANGE PASSWORD PANEL
+   ========================================================= */
+.password-overlay{
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+    padding:20px; background:rgba(3,10,22,.64); backdrop-filter:blur(7px);
+    -webkit-backdrop-filter:blur(7px); z-index:10000;
+}
+.password-overlay.show{display:flex}
+.password-panel{
+    width:min(420px,100%); background:linear-gradient(155deg,#1b2940,#101a2b);
+    border:1px solid rgba(148,163,184,.16); border-radius:22px; padding:22px;
+    box-shadow:0 28px 80px rgba(0,0,0,.40); animation:passwordIn .18s ease-out;
+}
+.password-title{margin:0;color:#f8fafc;font-size:21px;font-weight:800}
+.password-subtitle{margin:6px 0 18px;color:#93a4b8;font-size:12px;line-height:1.45}
+.password-field{display:block;margin-top:12px}
+.password-label{display:block;margin:0 0 6px 2px;color:#cbd5e1;font-size:12px;font-weight:700}
+.password-input-wrap{position:relative}
+.password-input{
+    width:100%; min-height:46px; padding:0 46px 0 13px; border:1px solid rgba(148,163,184,.18);
+    border-radius:13px; outline:none; background:#0f1a2b; color:#f8fafc; font:inherit; font-size:14px;
+}
+.password-input:focus{border-color:rgba(96,165,250,.55);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.password-toggle{
+    position:absolute;top:50%;right:6px;transform:translateY(-50%);width:36px;height:36px;
+    padding:0;border:0;border-radius:10px;background:transparent;color:#94a3b8;cursor:pointer;
+}
+.password-toggle:hover{background:rgba(148,163,184,.08)}
+.password-error,.password-success{
+    display:none;margin-top:10px;padding:9px 11px;border-radius:11px;font-size:12px;line-height:1.4;
+}
+.password-error{border:1px solid rgba(248,113,113,.18);background:rgba(127,29,29,.14);color:#fca5a5}
+.password-success{border:1px solid rgba(74,222,128,.18);background:rgba(22,101,52,.14);color:#86efac}
+.password-error.show,.password-success.show{display:block}
+.password-actions{display:flex;gap:9px;margin-top:18px}
+.password-cancel,.password-submit{
+    flex:1;min-height:46px;border-radius:13px;font-size:14px;font-weight:800;cursor:pointer;
+}
+.password-cancel{border:1px solid rgba(148,163,184,.14);background:#273449;color:#cbd5e1}
+.password-submit{
+    border:1px solid rgba(96,165,250,.22);background:#2563eb;color:#fff;
+    box-shadow:0 9px 22px rgba(37,99,235,.20);
+}
+.password-submit:disabled{opacity:.62;cursor:not-allowed}
+.password-cancel:active,.password-submit:active{transform:scale(.985)}
+
+html.lucky-light .password-overlay{background:rgba(15,23,42,.30)}
+html.lucky-light .password-panel{
+    background:linear-gradient(155deg,#ffffff,#edf3f8);border-color:#d7e2ec;
+    box-shadow:0 28px 80px rgba(15,23,42,.18);
+}
+html.lucky-light .password-title{color:#0f172a}
+html.lucky-light .password-subtitle{color:#64748b}
+html.lucky-light .password-label{color:#334155}
+html.lucky-light .password-input{background:#f2f6fa;border-color:#d4dfeb;color:#0f172a}
+html.lucky-light .password-input::placeholder{color:#7b8798}
+html.lucky-light .password-toggle{color:#64748b}
+html.lucky-light .password-error{background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.18);color:#b91c1c}
+html.lucky-light .password-success{background:rgba(22,163,74,.06);border-color:rgba(22,163,74,.18);color:#15803d}
+html.lucky-light .password-cancel{background:#e8eef5;border-color:#d4dfeb;color:#334155}
+
+@keyframes passwordIn{
+    from{opacity:0;transform:translateY(10px) scale(.97)}
+    to{opacity:1;transform:translateY(0) scale(1)}
+}
+
+</style>
 </head>
 
 <body>
@@ -505,7 +576,7 @@ html.lucky-light .about-row strong{
             <span class="chevron">›</span>
         </button>
 
-        <button class="setting" type="button" onclick="showComingSoon('Change password')">
+        <button class="setting" type="button" onclick="openPassword()">
             <span class="icon">🔑</span>
             <span class="setting-text">
                 <span class="setting-name">Change Password</span>
@@ -609,6 +680,47 @@ html.lucky-light .about-row strong{
 </div>
 
 
+
+<div id="passwordOverlay" class="password-overlay" role="dialog" aria-modal="true" aria-labelledby="passwordTitle">
+    <div class="password-panel">
+        <h2 id="passwordTitle" class="password-title">Change Password</h2>
+        <p class="password-subtitle">Enter your current password, then choose a new one.</p>
+
+        <label class="password-field">
+            <span class="password-label">Current password</span>
+            <span class="password-input-wrap">
+                <input id="currentPassword" class="password-input" type="password" autocomplete="current-password">
+                <button class="password-toggle" type="button" data-target="currentPassword" aria-label="Show current password">👁️</button>
+            </span>
+        </label>
+
+        <label class="password-field">
+            <span class="password-label">New password</span>
+            <span class="password-input-wrap">
+                <input id="newPassword" class="password-input" type="password" autocomplete="new-password">
+                <button class="password-toggle" type="button" data-target="newPassword" aria-label="Show new password">👁️</button>
+            </span>
+        </label>
+
+        <label class="password-field">
+            <span class="password-label">Confirm new password</span>
+            <span class="password-input-wrap">
+                <input id="confirmPassword" class="password-input" type="password" autocomplete="new-password">
+                <button class="password-toggle" type="button" data-target="confirmPassword" aria-label="Show confirmed password">👁️</button>
+            </span>
+        </label>
+
+        <div id="passwordError" class="password-error" role="alert"></div>
+        <div id="passwordSuccess" class="password-success" role="status"></div>
+
+        <div class="password-actions">
+            <button class="password-cancel" type="button" onclick="closePassword()">Cancel</button>
+            <button id="passwordSubmit" class="password-submit" type="button" onclick="submitPasswordChange()">Update Password</button>
+        </div>
+    </div>
+</div>
+
+
 <div id="aboutOverlay" class="about-overlay" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
     <div class="about-panel">
         <div class="about-icon">🚀</div>
@@ -638,6 +750,101 @@ html.lucky-light .about-row strong{
 
 
 <script>
+
+
+function openPassword(){
+    const overlay = document.getElementById("passwordOverlay");
+    if(!overlay) return;
+
+    ["currentPassword","newPassword","confirmPassword"].forEach(id => {
+        const input = document.getElementById(id);
+        if(input) input.value = "";
+    });
+
+    const error = document.getElementById("passwordError");
+    const success = document.getElementById("passwordSuccess");
+    if(error){ error.textContent=""; error.classList.remove("show"); }
+    if(success){ success.textContent=""; success.classList.remove("show"); }
+
+    const submit = document.getElementById("passwordSubmit");
+    if(submit){ submit.disabled=false; submit.textContent="Update Password"; }
+
+    overlay.classList.add("show");
+    document.body.style.overflow = "hidden";
+    setTimeout(() => document.getElementById("currentPassword")?.focus(), 30);
+}
+
+function closePassword(){
+    const overlay = document.getElementById("passwordOverlay");
+    if(!overlay) return;
+    overlay.classList.remove("show");
+    document.body.style.overflow = "";
+}
+
+function setPasswordMessage(type, message){
+    const error = document.getElementById("passwordError");
+    const success = document.getElementById("passwordSuccess");
+
+    if(error){ error.textContent=""; error.classList.remove("show"); }
+    if(success){ success.textContent=""; success.classList.remove("show"); }
+
+    const target = type === "success" ? success : error;
+    if(target){ target.textContent=message; target.classList.add("show"); }
+}
+
+async function submitPasswordChange(){
+    const current = document.getElementById("currentPassword")?.value || "";
+    const next = document.getElementById("newPassword")?.value || "";
+    const confirm = document.getElementById("confirmPassword")?.value || "";
+    const submit = document.getElementById("passwordSubmit");
+
+    if(!current){ setPasswordMessage("error","Please enter your current password."); return; }
+    if(next.length < 8){ setPasswordMessage("error","Your new password must be at least 8 characters."); return; }
+    if(next !== confirm){ setPasswordMessage("error","The new passwords do not match."); return; }
+    if(current === next){ setPasswordMessage("error","Your new password must be different from the current password."); return; }
+
+    if(submit){ submit.disabled=true; submit.textContent="Updating…"; }
+    try{
+        const response = await fetch("/settings/change-password",{
+            method:"POST",
+            credentials:"same-origin",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({current_password:current,new_password:next})
+        });
+        const data = await response.json();
+        if(!response.ok || !data.success) throw new Error(data.error || "Could not change password.");
+
+        setPasswordMessage("success","Password changed successfully.");
+        document.getElementById("currentPassword").value="";
+        document.getElementById("newPassword").value="";
+        document.getElementById("confirmPassword").value="";
+        setTimeout(closePassword,1000);
+    }catch(error){
+        setPasswordMessage("error",error.message || "Could not change password.");
+    }finally{
+        if(submit){ submit.disabled=false; submit.textContent="Update Password"; }
+    }
+}
+
+document.addEventListener("click", event => {
+    const toggle = event.target.closest(".password-toggle");
+    if(toggle){
+        const target = document.getElementById(toggle.dataset.target);
+        if(target){
+            const show = target.type === "password";
+            target.type = show ? "text" : "password";
+            toggle.setAttribute("aria-label", show ? "Hide password" : "Show password");
+        }
+    }
+
+    const overlay = document.getElementById("passwordOverlay");
+    if(overlay && event.target === overlay) closePassword();
+});
+
+document.addEventListener("keydown", event => {
+    if(event.key === "Escape") closePassword();
+});
+
 
 function openAbout(){
     const overlay = document.getElementById("aboutOverlay");

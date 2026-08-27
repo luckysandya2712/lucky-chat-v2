@@ -344,6 +344,10 @@ class PublicKeyUpload(BaseModel):
 
 
 
+class ChangePasswordPayload(BaseModel):
+    current_password: str
+    new_password: str
+
 class ReadReceiptsPayload(BaseModel):
     enabled: bool
 
@@ -2158,6 +2162,49 @@ async def set_online_status_setting(
     finally:
         db.close()
 
+
+@app.post("/settings/change-password")
+async def change_password(
+    data: ChangePasswordPayload,
+    request: Request
+):
+    # Change the signed-in user's password after verifying the current password.
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    current_password = str(data.current_password or "")
+    new_password = str(data.new_password or "")
+
+    if not current_password:
+        return {"success": False, "error": "Current password is required"}
+
+    if len(new_password) < 8:
+        return {"success": False, "error": "New password must be at least 8 characters"}
+
+    if current_password == new_password:
+        return {"success": False, "error": "New password must be different from the current password"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        from app.auth import verify_password
+        if not verify_password(current_password, user.password):
+            return {"success": False, "error": "Current password is incorrect"}
+
+        user.password = hash_password(new_password)
+        db.commit()
+        return {"success": True}
+    except Exception as exc:
+        db.rollback()
+        print("CHANGE PASSWORD ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not change password"}
+    finally:
+        db.close()
 
 @app.get("/settings/read-receipts")
 async def get_read_receipts_setting(request: Request):
