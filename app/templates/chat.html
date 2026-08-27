@@ -7,6 +7,59 @@
 
 <link rel="stylesheet" href="/static/css/chat.css?v=20260826-text-bubbles-v7">
 
+<style>
+
+/* Lucky Chat theme preference */
+html.lucky-light {
+    color-scheme: light;
+}
+html.lucky-light body {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+html.lucky-light .settings-card,
+html.lucky-light .setting,
+html.lucky-light .header,
+html.lucky-light .back-btn,
+html.lucky-light .logout,
+html.lucky-light .icon,
+html.lucky-light .slider,
+html.lucky-light .voice-call-card,
+html.lucky-light .voice-call-overlay,
+html.lucky-light .chat-search-top,
+html.lucky-light .chat-search-results {
+    color: #0f172a;
+}
+
+</style>
+<script>
+
+(function(){
+    const KEY = "lucky_setting_darkMode";
+
+    function isDarkModeEnabled() {
+        return localStorage.getItem(KEY) !== "0";
+    }
+
+    function applyLuckyTheme() {
+        document.documentElement.classList.toggle("lucky-light", !isDarkModeEnabled());
+        document.documentElement.dataset.luckyTheme =
+            isDarkModeEnabled() ? "dark" : "light";
+    }
+
+    window.applyLuckyTheme = applyLuckyTheme;
+    applyLuckyTheme();
+
+    window.addEventListener("storage", event => {
+        if (event.key === KEY) applyLuckyTheme();
+    });
+
+    window.addEventListener("lucky-setting-changed", event => {
+        if (event?.detail?.key === "darkMode") applyLuckyTheme();
+    });
+})();
+
+</script>
 </head>
 
 <body data-chat-friend="{{ friend }}">
@@ -1507,5 +1560,52 @@ Welcome to Lucky Chat 🚀
 <script src="/static/js/crypto.core.js?v=20260826-recovery-v2"></script>
 <script src="/static/js/chat.core.js?v=20260825-turn-support-v9"></script>
 
+<style>
+
+html.lucky-light body {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+html.lucky-light .header,
+html.lucky-light .chat-header {
+    background: rgba(255,255,255,.96) !important;
+    color: #0f172a !important;
+    border-color: #dbe3ee !important;
+}
+html.lucky-light .header-name,
+html.lucky-light .header-info h3,
+html.lucky-light .voice-call-name {
+    color: #0f172a !important;
+}
+html.lucky-light .chat-header-status,
+html.lucky-light .voice-call-status,
+html.lucky-light .voice-call-timer {
+    color: #64748b !important;
+}
+html.lucky-light .messages {
+    background: #eef3f8 !important;
+}
+html.lucky-light .message:not(.message-own) {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid #dbe3ee !important;
+}
+html.lucky-light .message.own {
+    color: #ffffff !important;
+}
+html.lucky-light .msg-time,
+html.lucky-light .message-preview {
+    color: #64748b !important;
+}
+html.lucky-light .back-btn,
+html.lucky-light .chat-search-btn,
+html.lucky-light .voice-call-btn,
+html.lucky-light .chat-media-gallery-btn {
+    background: #e8eef6 !important;
+    color: #0f172a !important;
+    border-color: #d6dee9 !important;
+}
+
+</style>
 </body>
 </html>

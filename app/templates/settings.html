@@ -227,7 +227,58 @@ body{
         width:calc(100% - 26px);
     }
 }
+
+/* Lucky Chat theme preference */
+html.lucky-light {
+    color-scheme: light;
+}
+html.lucky-light body {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+html.lucky-light .settings-card,
+html.lucky-light .setting,
+html.lucky-light .header,
+html.lucky-light .back-btn,
+html.lucky-light .logout,
+html.lucky-light .icon,
+html.lucky-light .slider,
+html.lucky-light .voice-call-card,
+html.lucky-light .voice-call-overlay,
+html.lucky-light .chat-search-top,
+html.lucky-light .chat-search-results {
+    color: #0f172a;
+}
+
 </style>
+<script>
+
+(function(){
+    const KEY = "lucky_setting_darkMode";
+
+    function isDarkModeEnabled() {
+        return localStorage.getItem(KEY) !== "0";
+    }
+
+    function applyLuckyTheme() {
+        document.documentElement.classList.toggle("lucky-light", !isDarkModeEnabled());
+        document.documentElement.dataset.luckyTheme =
+            isDarkModeEnabled() ? "dark" : "light";
+    }
+
+    window.applyLuckyTheme = applyLuckyTheme;
+    applyLuckyTheme();
+
+    window.addEventListener("storage", event => {
+        if (event.key === KEY) applyLuckyTheme();
+    });
+
+    window.addEventListener("lucky-setting-changed", event => {
+        if (event?.detail?.key === "darkMode") applyLuckyTheme();
+    });
+})();
+
+</script>
 </head>
 
 <body>
@@ -300,7 +351,7 @@ body{
                 <span class="setting-desc">Use the Lucky Chat dark interface</span>
             </span>
             <label class="switch">
-                <input type="checkbox" data-setting-key="darkMode" checked onchange="savePreference('darkMode',this.checked)">
+                <input type="checkbox" data-setting-key="darkMode" checked onchange="savePreference('darkMode',this.checked); window.dispatchEvent(new CustomEvent('lucky-setting-changed', { detail: { key: 'darkMode', value: this.checked } }))">
                 <span class="slider"></span>
             </label>
         </div>

@@ -1094,6 +1094,108 @@ body{
 
 </style>
 
+<style>
+
+/* Lucky Chat theme preference */
+html.lucky-light {
+    color-scheme: light;
+}
+html.lucky-light body {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+html.lucky-light .settings-card,
+html.lucky-light .setting,
+html.lucky-light .header,
+html.lucky-light .back-btn,
+html.lucky-light .logout,
+html.lucky-light .icon,
+html.lucky-light .slider,
+html.lucky-light .voice-call-card,
+html.lucky-light .voice-call-overlay,
+html.lucky-light .chat-search-top,
+html.lucky-light .chat-search-results {
+    color: #0f172a;
+}
+
+</style>
+<script>
+
+(function(){
+    const KEY = "lucky_setting_darkMode";
+
+    function isDarkModeEnabled() {
+        return localStorage.getItem(KEY) !== "0";
+    }
+
+    function applyLuckyTheme() {
+        document.documentElement.classList.toggle("lucky-light", !isDarkModeEnabled());
+        document.documentElement.dataset.luckyTheme =
+            isDarkModeEnabled() ? "dark" : "light";
+    }
+
+    window.applyLuckyTheme = applyLuckyTheme;
+    applyLuckyTheme();
+
+    window.addEventListener("storage", event => {
+        if (event.key === KEY) applyLuckyTheme();
+    });
+
+    window.addEventListener("lucky-setting-changed", event => {
+        if (event?.detail?.key === "darkMode") applyLuckyTheme();
+    });
+})();
+
+</script>
+<style>
+
+html.lucky-light body {
+    background: #f1f5f9 !important;
+}
+html.lucky-light .sidebar {
+    background: #ffffff !important;
+    border-right-color: #dbe3ee !important;
+    box-shadow: 18px 0 45px rgba(15,23,42,.08) !important;
+}
+html.lucky-light .logo,
+html.lucky-light .chat-header {
+    background: rgba(255,255,255,.94) !important;
+    color: #0f172a !important;
+    border-color: #dbe3ee !important;
+}
+html.lucky-light .search input {
+    background: #e8eef6 !important;
+    color: #0f172a !important;
+    border-color: #d6dee9 !important;
+}
+html.lucky-light .search input::placeholder {
+    color: #64748b !important;
+}
+html.lucky-light .chat {
+    background: #eef3f8 !important;
+}
+html.lucky-light .chat-item:hover {
+    background: rgba(59,130,246,.07) !important;
+}
+html.lucky-light .chat-name-row h4,
+html.lucky-light .chat-top h4,
+html.lucky-light .header-info h3,
+html.lucky-light .logo {
+    color: #0f172a !important;
+}
+html.lucky-light .message-preview,
+html.lucky-light .time,
+html.lucky-light .status,
+html.lucky-light .chat-meta small {
+    color: #64748b !important;
+}
+html.lucky-light .settings-btn {
+    background: #e8eef6 !important;
+    color: #0f172a !important;
+    border-color: #d6dee9 !important;
+}
+
+</style>
 </head>
 
 <body>
