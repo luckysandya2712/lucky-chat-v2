@@ -357,6 +357,130 @@ html.lucky-light .version{
 }
 
 </style>
+
+<style id="lucky-about-panel-style">
+
+/* =========================================================
+   LUCKY CHAT — ABOUT PANEL
+   Front-end only. No existing settings logic changed.
+   ========================================================= */
+.about-overlay{
+    position:fixed;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    background:rgba(3,10,22,.62);
+    backdrop-filter:blur(7px);
+    -webkit-backdrop-filter:blur(7px);
+    z-index:10000;
+}
+.about-overlay.show{
+    display:flex;
+}
+.about-panel{
+    width:min(400px,100%);
+    background:linear-gradient(155deg,#1b2940,#101a2b);
+    border:1px solid rgba(148,163,184,.16);
+    border-radius:22px;
+    padding:22px;
+    box-shadow:0 28px 80px rgba(0,0,0,.38);
+    animation:aboutIn .18s ease-out;
+}
+.about-icon{
+    width:62px;
+    height:62px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:18px;
+    margin-bottom:14px;
+    background:linear-gradient(145deg,#253a59,#182841);
+    font-size:31px;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+}
+.about-title{
+    margin:0;
+    color:#f8fafc;
+    font-size:21px;
+    font-weight:800;
+}
+.about-subtitle{
+    margin:5px 0 16px;
+    color:#93a4b8;
+    font-size:12px;
+}
+.about-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:11px 12px;
+    margin-top:8px;
+    border:1px solid rgba(148,163,184,.10);
+    border-radius:13px;
+    background:rgba(15,23,42,.38);
+    color:#dbe5ef;
+    font-size:12px;
+}
+.about-row strong{
+    color:#f8fafc;
+}
+.about-close{
+    width:100%;
+    min-height:46px;
+    margin-top:17px;
+    border:1px solid rgba(96,165,250,.24);
+    border-radius:13px;
+    background:#2563eb;
+    color:#fff;
+    font-size:14px;
+    font-weight:800;
+    cursor:pointer;
+}
+.about-close:active{
+    transform:scale(.985);
+}
+
+html.lucky-light .about-overlay{
+    background:rgba(15,23,42,.32);
+}
+html.lucky-light .about-panel{
+    background:linear-gradient(155deg,#ffffff,#edf3f8);
+    border-color:#d7e2ec;
+    box-shadow:0 28px 80px rgba(15,23,42,.18);
+}
+html.lucky-light .about-icon{
+    background:linear-gradient(145deg,#edf3f8,#e1eaf3);
+    box-shadow:0 10px 24px rgba(15,23,42,.07);
+}
+html.lucky-light .about-title{
+    color:#0f172a;
+}
+html.lucky-light .about-subtitle{
+    color:#64748b;
+}
+html.lucky-light .about-row{
+    background:linear-gradient(145deg,#f7fafc,#edf3f8);
+    border-color:#dfe7ef;
+    color:#52677b;
+}
+html.lucky-light .about-row strong{
+    color:#172033;
+}
+
+@keyframes aboutIn{
+    from{
+        opacity:0;
+        transform:translateY(10px) scale(.97);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0) scale(1);
+    }
+}
+
+</style>
 </head>
 
 <body>
@@ -466,7 +590,7 @@ html.lucky-light .version{
     <section class="section">
         <h3 class="section-title">About</h3>
 
-        <button class="setting" type="button" onclick="showComingSoon('About Lucky Chat')">
+        <button class="setting" type="button" onclick="openAbout()">
             <span class="icon">🚀</span>
             <span class="setting-text">
                 <span class="setting-name">Lucky Chat</span>
@@ -484,7 +608,64 @@ html.lucky-light .version{
 
 </div>
 
+
+<div id="aboutOverlay" class="about-overlay" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div class="about-panel">
+        <div class="about-icon">🚀</div>
+        <h2 id="aboutTitle" class="about-title">Lucky Chat</h2>
+        <p class="about-subtitle">A secure and modern messaging experience</p>
+
+        <div class="about-row">
+            <span>💬</span>
+            <span><strong>Messaging</strong> · Real-time conversations</span>
+        </div>
+        <div class="about-row">
+            <span>🔒</span>
+            <span><strong>Privacy</strong> · Encrypted message support</span>
+        </div>
+        <div class="about-row">
+            <span>🎙️</span>
+            <span><strong>Voice</strong> · Voice messaging and calling</span>
+        </div>
+        <div class="about-row">
+            <span>🎨</span>
+            <span><strong>Appearance</strong> · Dark and Light themes</span>
+        </div>
+
+        <button class="about-close" type="button" onclick="closeAbout()">Close</button>
+    </div>
+</div>
+
+
 <script>
+
+function openAbout(){
+    const overlay = document.getElementById("aboutOverlay");
+    if(!overlay) return;
+    overlay.classList.add("show");
+    document.body.style.overflow = "hidden";
+}
+
+function closeAbout(){
+    const overlay = document.getElementById("aboutOverlay");
+    if(!overlay) return;
+    overlay.classList.remove("show");
+    document.body.style.overflow = "";
+}
+
+document.addEventListener("keydown", event => {
+    if(event.key === "Escape"){
+        closeAbout();
+    }
+});
+
+document.addEventListener("click", event => {
+    const overlay = document.getElementById("aboutOverlay");
+    if(overlay && event.target === overlay){
+        closeAbout();
+    }
+});
+
 function openProfile(){
     window.location.href = "/profile";
 }
