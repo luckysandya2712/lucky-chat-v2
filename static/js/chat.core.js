@@ -1583,6 +1583,7 @@ async function handleSocketMessage(event) {
         }
 
         addMessage(data);
+        playNotificationSound();
         queueMessageReceipt(data.id);
         return;
     }
@@ -1865,6 +1866,69 @@ function bindImageAndSendControls() {
         };
     }
 }
+
+
+let luckyNotificationAudioContext = null;
+
+function isNotificationSoundEnabled() {
+    const saved = localStorage.getItem("lucky_setting_notificationSound");
+    return saved !== "0";
+}
+
+function playNotificationSound() {
+    if (!isNotificationSoundEnabled()) return;
+
+    try {
+        const AudioContextClass =
+            window.AudioContext || window.webkitAudioContext;
+
+        if (!AudioContextClass) return;
+
+        if (!luckyNotificationAudioContext) {
+            luckyNotificationAudioContext = new AudioContextClass();
+        }
+
+        const context = luckyNotificationAudioContext;
+
+        if (context.state === "suspended") {
+            context.resume().catch(() => {});
+        }
+
+        const start = context.currentTime;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, start);
+        oscillator.frequency.exponentialRampToValueAtTime(660, start + 0.10);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.16, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+
+        oscillator.start(start);
+        oscillator.stop(start + 0.17);
+    } catch (error) {
+        console.debug("Notification sound could not play:", error);
+    }
+}
+
+window.addEventListener("lucky-setting-changed", event => {
+    if (event?.detail?.key !== "notificationSound") return;
+
+    if (event.detail.value === false && luckyNotificationAudioContext) {
+        try {
+            luckyNotificationAudioContext.suspend();
+        } catch (_) {}
+    } else if (event.detail.value === true && luckyNotificationAudioContext) {
+        try {
+            luckyNotificationAudioContext.resume().catch(() => {});
+        } catch (_) {}
+    }
+});
 
 function setupPushNotifications() {
     async function requestNotify() {

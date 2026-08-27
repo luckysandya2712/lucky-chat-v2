@@ -272,7 +272,7 @@ body{
                 <span class="setting-desc">Show notifications for new messages</span>
             </span>
             <label class="switch">
-                <input type="checkbox" checked onchange="savePreference('notifications',this.checked)">
+                <input type="checkbox" data-setting-key="notifications" checked onchange="savePreference('notifications',this.checked)">
                 <span class="slider"></span>
             </label>
         </div>
@@ -284,7 +284,7 @@ body{
                 <span class="setting-desc">Play a sound for new messages</span>
             </span>
             <label class="switch">
-                <input type="checkbox" checked onchange="savePreference('notificationSound',this.checked)">
+                <input type="checkbox" data-setting-key="notificationSound" checked onchange="savePreference('notificationSound',this.checked); window.dispatchEvent(new CustomEvent('lucky-setting-changed', { detail: { key: 'notificationSound', value: this.checked } }))">
                 <span class="slider"></span>
             </label>
         </div>
@@ -300,7 +300,7 @@ body{
                 <span class="setting-desc">Use the Lucky Chat dark interface</span>
             </span>
             <label class="switch">
-                <input type="checkbox" checked onchange="savePreference('darkMode',this.checked)">
+                <input type="checkbox" data-setting-key="darkMode" checked onchange="savePreference('darkMode',this.checked)">
                 <span class="slider"></span>
             </label>
         </div>
@@ -316,7 +316,7 @@ body{
                 <span class="setting-desc">Allow others to see when you're online</span>
             </span>
             <label class="switch">
-                <input type="checkbox" checked onchange="savePreference('onlineStatus',this.checked)">
+                <input type="checkbox" data-setting-key="onlineStatus" checked onchange="savePreference('onlineStatus',this.checked)">
                 <span class="slider"></span>
             </label>
         </div>
@@ -328,7 +328,7 @@ body{
                 <span class="setting-desc">Show when you've read messages</span>
             </span>
             <label class="switch">
-                <input type="checkbox" checked onchange="savePreference('readReceipts',this.checked)">
+                <input type="checkbox" data-setting-key="readReceipts" checked onchange="savePreference('readReceipts',this.checked)">
                 <span class="slider"></span>
             </label>
         </div>
@@ -367,6 +367,21 @@ function showComingSoon(name){
 function savePreference(key,value){
     localStorage.setItem("lucky_setting_" + key, value ? "1" : "0");
 }
+
+function loadPreferences(){
+    document.querySelectorAll("input[data-setting-key]").forEach(input => {
+        const key = input.dataset.settingKey;
+        const saved = localStorage.getItem("lucky_setting_" + key);
+
+        // Keep the existing default (checked) when no preference has
+        // previously been saved.
+        if(saved !== null){
+            input.checked = saved === "1";
+        }
+    });
+}
+
+document.addEventListener("DOMContentLoaded", loadPreferences);
 </script>
 
 </body>
