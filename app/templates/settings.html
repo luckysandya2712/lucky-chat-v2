@@ -552,6 +552,149 @@ html.lucky-light .password-cancel{background:#e8eef5;border-color:#d4dfeb;color:
 }
 
 </style>
+
+<style id="lucky-language-style">
+
+/* =========================================================
+   LUCKY CHAT — LANGUAGE SELECTOR
+   Persists the selection locally and updates this page UI.
+   ========================================================= */
+.language-panel{
+    position:fixed;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    background:rgba(3,10,22,.62);
+    backdrop-filter:blur(7px);
+    -webkit-backdrop-filter:blur(7px);
+    z-index:10000;
+}
+.language-panel.show{display:flex}
+.language-box{
+    width:min(390px,100%);
+    background:linear-gradient(155deg,#1b2940,#101a2b);
+    border:1px solid rgba(148,163,184,.16);
+    border-radius:22px;
+    padding:20px;
+    box-shadow:0 28px 80px rgba(0,0,0,.4);
+    animation:languageIn .18s ease-out;
+}
+.language-title{
+    margin:0;
+    color:#f8fafc;
+    font-size:20px;
+    font-weight:800;
+}
+.language-subtitle{
+    margin:6px 0 16px;
+    color:#93a4b8;
+    font-size:12px;
+    line-height:1.4;
+}
+.language-option{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:12px;
+    margin-top:8px;
+    border:1px solid rgba(148,163,184,.12);
+    border-radius:14px;
+    background:rgba(15,23,42,.42);
+    color:#dbe5ef;
+    cursor:pointer;
+    text-align:left;
+    transition:.16s ease;
+}
+.language-option:hover{
+    background:rgba(37,99,235,.10);
+    border-color:rgba(96,165,250,.28);
+}
+.language-option.active{
+    background:rgba(37,99,235,.14);
+    border-color:rgba(96,165,250,.42);
+}
+.language-flag{
+    width:38px;
+    height:38px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:11px;
+    background:#1d2b43;
+    font-size:20px;
+}
+.language-name{
+    flex:1;
+    min-width:0;
+    font-size:14px;
+    font-weight:750;
+}
+.language-code{
+    color:#94a3b8;
+    font-size:11px;
+    font-weight:700;
+    text-transform:uppercase;
+}
+.language-check{
+    opacity:0;
+    color:#60a5fa;
+    font-size:18px;
+    font-weight:800;
+}
+.language-option.active .language-check{opacity:1}
+.language-close{
+    width:100%;
+    min-height:44px;
+    margin-top:16px;
+    border:1px solid rgba(148,163,184,.14);
+    border-radius:13px;
+    background:#273449;
+    color:#dbe5ef;
+    font-size:14px;
+    font-weight:800;
+    cursor:pointer;
+}
+
+html.lucky-light .language-panel{background:rgba(15,23,42,.30)}
+html.lucky-light .language-box{
+    background:linear-gradient(155deg,#ffffff,#edf3f8);
+    border-color:#d7e2ec;
+    box-shadow:0 28px 80px rgba(15,23,42,.18);
+}
+html.lucky-light .language-title{color:#0f172a}
+html.lucky-light .language-subtitle{color:#64748b}
+html.lucky-light .language-option{
+    background:linear-gradient(145deg,#f7fafc,#edf3f8);
+    border-color:#dfe7ef;
+    color:#172033;
+}
+html.lucky-light .language-option:hover{
+    background:#fff;
+    border-color:#cbd9e6;
+}
+html.lucky-light .language-option.active{
+    background:rgba(59,130,246,.09);
+    border-color:rgba(59,130,246,.32);
+}
+html.lucky-light .language-flag{
+    background:linear-gradient(145deg,#edf3f8,#e1eaf3);
+}
+html.lucky-light .language-code{color:#64748b}
+html.lucky-light .language-close{
+    background:#e8eef5;
+    border-color:#d4dfeb;
+    color:#334155;
+}
+
+@keyframes languageIn{
+    from{opacity:0;transform:translateY(10px) scale(.97)}
+    to{opacity:1;transform:translateY(0) scale(1)}
+}
+
+</style>
 </head>
 
 <body>
@@ -659,6 +802,18 @@ html.lucky-light .password-cancel{background:#e8eef5;border-color:#d4dfeb;color:
     </section>
 
     <section class="section">
+        <h3 class="section-title">General</h3>
+        <button class="setting" type="button" data-setting-row="language" onclick="openLanguage()">
+            <span class="icon">🌐</span>
+            <span class="setting-text">
+                <span class="setting-name">Language</span>
+                <span class="setting-desc">Choose the language used by Lucky Chat</span>
+            </span>
+            <span class="chevron">›</span>
+        </button>
+    </section>
+
+    <section class="section">
         <h3 class="section-title">About</h3>
 
         <button class="setting" type="button" onclick="openAbout()">
@@ -679,6 +834,31 @@ html.lucky-light .password-cancel{background:#e8eef5;border-color:#d4dfeb;color:
 
 </div>
 
+
+
+
+<div id="languagePanel" class="language-panel" role="dialog" aria-modal="true" aria-labelledby="languageTitle">
+    <div class="language-box">
+        <h2 id="languageTitle" class="language-title">Language</h2>
+        <p id="languageSubtitle" class="language-subtitle">Choose the language used by Lucky Chat.</p>
+
+        <button class="language-option" type="button" data-language="en" onclick="selectLanguage('en')">
+            <span class="language-flag">🇬🇧</span>
+            <span class="language-name">English</span>
+            <span class="language-code">EN</span>
+            <span class="language-check">✓</span>
+        </button>
+
+        <button class="language-option" type="button" data-language="hi" onclick="selectLanguage('hi')">
+            <span class="language-flag">🇮🇳</span>
+            <span class="language-name">हिन्दी</span>
+            <span class="language-code">HI</span>
+            <span class="language-check">✓</span>
+        </button>
+
+        <button class="language-close" type="button" onclick="closeLanguage()">Close</button>
+    </div>
+</div>
 
 
 <div id="passwordOverlay" class="password-overlay" role="dialog" aria-modal="true" aria-labelledby="passwordTitle">
@@ -750,6 +930,175 @@ html.lucky-light .password-cancel{background:#e8eef5;border-color:#d4dfeb;color:
 
 
 <script>
+
+
+
+const LUCKY_LANGUAGE_KEY = "lucky_setting_language";
+
+const LUCKY_I18N = {
+    en: {
+        settings:"Settings",
+        account:"Account",
+        profile:"Profile",
+        profileDesc:"Manage your name, bio and profile picture",
+        changePassword:"Change Password",
+        changePasswordDesc:"Update your account password",
+        notifications:"Notifications",
+        messageNotifications:"Message Notifications",
+        messageNotificationsDesc:"Show notifications for new messages",
+        notificationSound:"Notification Sound",
+        notificationSoundDesc:"Play a sound for new messages",
+        appearance:"Appearance",
+        darkMode:"Dark Mode",
+        darkModeDesc:"Use the Lucky Chat dark interface",
+        privacy:"Privacy",
+        onlineStatus:"Online Status",
+        onlineStatusDesc:"Allow others to see when you're online",
+        readReceipts:"Read Receipts",
+        readReceiptsDesc:"Show when you've read messages",
+        about:"About",
+        aboutDesc:"App information and version",
+        logout:"Logout",
+        version:"Lucky Chat • Settings",
+        language:"Language",
+        languageDesc:"Choose the language used by Lucky Chat.",
+        close:"Close"
+    },
+    hi: {
+        settings:"सेटिंग्स",
+        account:"खाता",
+        profile:"प्रोफ़ाइल",
+        profileDesc:"अपना नाम, बायो और प्रोफ़ाइल फोटो प्रबंधित करें",
+        changePassword:"पासवर्ड बदलें",
+        changePasswordDesc:"अपने खाते का पासवर्ड अपडेट करें",
+        notifications:"सूचनाएँ",
+        messageNotifications:"संदेश सूचनाएँ",
+        messageNotificationsDesc:"नए संदेशों की सूचनाएँ दिखाएँ",
+        notificationSound:"सूचना ध्वनि",
+        notificationSoundDesc:"नए संदेशों के लिए ध्वनि चलाएँ",
+        appearance:"दिखावट",
+        darkMode:"डार्क मोड",
+        darkModeDesc:"Lucky Chat का डार्क इंटरफ़ेस उपयोग करें",
+        privacy:"गोपनीयता",
+        onlineStatus:"ऑनलाइन स्थिति",
+        onlineStatusDesc:"दूसरों को आपकी ऑनलाइन स्थिति देखने दें",
+        readReceipts:"रीड रिसीट्स",
+        readReceiptsDesc:"दिखाएँ कि आपने संदेश पढ़ा है",
+        about:"इसके बारे में",
+        aboutDesc:"ऐप की जानकारी और संस्करण",
+        logout:"लॉग आउट",
+        version:"Lucky Chat • सेटिंग्स",
+        language:"भाषा",
+        languageDesc:"Lucky Chat की भाषा चुनें।",
+        close:"बंद करें"
+    }
+};
+
+function getLuckyLanguage(){
+    return localStorage.getItem(LUCKY_LANGUAGE_KEY) || "en";
+}
+
+function applyLuckyLanguage(){
+    const lang = getLuckyLanguage();
+    const t = LUCKY_I18N[lang] || LUCKY_I18N.en;
+
+    const setText = (selector, key) => {
+        const el = document.querySelector(selector);
+        if(el && t[key] !== undefined) el.textContent = t[key];
+    };
+
+    setText(".header-title","settings");
+    setText(".section:nth-of-type(1) .section-title","account");
+    setText(".section:nth-of-type(2) .section-title","notifications");
+    setText(".section:nth-of-type(3) .section-title","appearance");
+    setText(".section:nth-of-type(4) .section-title","privacy");
+    setText(".section:nth-of-type(6) .section-title","about");
+
+    const names = document.querySelectorAll(".setting-name");
+    const descs = document.querySelectorAll(".setting-desc");
+
+    const nameKeys = [
+        "profile","changePassword",
+        "messageNotifications","notificationSound",
+        "darkMode",
+        "onlineStatus","readReceipts",
+        "language",
+        "luckyAbout"
+    ];
+    const descKeys = [
+        "profileDesc","changePasswordDesc",
+        "messageNotificationsDesc","notificationSoundDesc",
+        "darkModeDesc",
+        "onlineStatusDesc","readReceiptsDesc",
+        "languageDesc",
+        "aboutDesc"
+    ];
+
+    names.forEach((el,i) => {
+        const key = nameKeys[i];
+        if(key === "luckyAbout") el.textContent = "Lucky Chat";
+        else if(t[key] !== undefined) el.textContent = t[key];
+    });
+
+    descs.forEach((el,i) => {
+        const key = descKeys[i];
+        if(t[key] !== undefined) el.textContent = t[key];
+    });
+
+    const logout = document.querySelector(".logout");
+    if(logout){
+        logout.textContent = "🚪 " + t.logout;
+    }
+
+    const version = document.querySelector(".version");
+    if(version) version.textContent = t.version;
+
+    const title = document.getElementById("languageTitle");
+    const subtitle = document.getElementById("languageSubtitle");
+    const close = document.querySelector(".language-close");
+    if(title) title.textContent = t.language;
+    if(subtitle) subtitle.textContent = t.languageDesc;
+    if(close) close.textContent = t.close;
+
+    document.querySelectorAll(".language-option").forEach(option => {
+        option.classList.toggle("active", option.dataset.language === lang);
+    });
+
+    document.documentElement.lang = lang;
+}
+
+function openLanguage(){
+    const panel = document.getElementById("languagePanel");
+    if(!panel) return;
+    applyLuckyLanguage();
+    panel.classList.add("show");
+    document.body.style.overflow = "hidden";
+}
+
+function closeLanguage(){
+    const panel = document.getElementById("languagePanel");
+    if(!panel) return;
+    panel.classList.remove("show");
+    document.body.style.overflow = "";
+}
+
+function selectLanguage(lang){
+    if(!LUCKY_I18N[lang]) return;
+    localStorage.setItem(LUCKY_LANGUAGE_KEY, lang);
+    applyLuckyLanguage();
+    window.dispatchEvent(new CustomEvent("lucky-setting-changed", {
+        detail:{key:"language",value:lang}
+    }));
+}
+
+document.addEventListener("click", event => {
+    const panel = document.getElementById("languagePanel");
+    if(panel && event.target === panel) closeLanguage();
+});
+
+document.addEventListener("keydown", event => {
+    if(event.key === "Escape") closeLanguage();
+});
 
 
 function openPassword(){
@@ -981,7 +1330,14 @@ async function loadPreferences(){
     }
 }
 
-document.addEventListener("DOMContentLoaded", loadPreferences);
+window.addEventListener("pageshow", () => {
+    applyLuckyLanguage();
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    loadPreferences();
+    applyLuckyLanguage();
+});
 </script>
 
 </body>
