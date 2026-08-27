@@ -8343,3 +8343,1055 @@ body{
         line-height:1.35 !important;
     }
 }
+
+
+
+/* =========================================================
+   LUCKY CHAT — ADVANCED LIGHT CHAT EXPERIENCE
+   Visual-only layer. Existing DOM, classes and JS behavior
+   are preserved.
+   ========================================================= */
+
+/* Main surface */
+html.lucky-light body{
+    background:
+        radial-gradient(circle at 8% 0%,rgba(59,130,246,.12),transparent 28%),
+        radial-gradient(circle at 95% 18%,rgba(14,165,233,.07),transparent 25%),
+        linear-gradient(180deg,#f7faff 0%,#eef4f9 100%) !important;
+    color:#0f172a !important;
+}
+
+/* Header: elevated frosted card */
+html.lucky-light .header{
+    background:rgba(255,255,255,.86) !important;
+    border-bottom:1px solid #dce6ef !important;
+    box-shadow:0 10px 30px rgba(15,23,42,.07) !important;
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+}
+
+html.lucky-light .header-avatar{
+    border-color:#3b82f6 !important;
+    box-shadow:
+        0 0 0 4px rgba(59,130,246,.08),
+        0 8px 20px rgba(37,99,235,.15) !important;
+}
+
+html.lucky-light .header-name{
+    color:#0f172a !important;
+    font-weight:800 !important;
+    letter-spacing:.1px;
+}
+
+html.lucky-light #online-users{
+    color:#16a34a !important;
+    font-weight:650 !important;
+}
+
+/* Header action buttons */
+html.lucky-light .back-btn,
+html.lucky-light .chat-search-btn,
+html.lucky-light .voice-call-btn,
+html.lucky-light .chat-media-gallery-btn{
+    background:linear-gradient(145deg,#f5f8fb,#e7eef5) !important;
+    border:1px solid #d3dee8 !important;
+    color:#1e3a5f !important;
+    box-shadow:
+        0 7px 18px rgba(15,23,42,.07),
+        inset 0 1px 0 rgba(255,255,255,.9) !important;
+}
+
+html.lucky-light .back-btn:hover,
+html.lucky-light .chat-search-btn:hover,
+html.lucky-light .voice-call-btn:hover,
+html.lucky-light .chat-media-gallery-btn:hover{
+    background:#ffffff !important;
+    border-color:#bfd0df !important;
+}
+
+html.lucky-light .back-btn:active,
+html.lucky-light .chat-search-btn:active,
+html.lucky-light .voice-call-btn:active,
+html.lucky-light .chat-media-gallery-btn:active{
+    transform:scale(.94) !important;
+}
+
+/* Conversation canvas */
+html.lucky-light .messages{
+    background:
+        radial-gradient(circle at 100% 0%,rgba(59,130,246,.06),transparent 28%),
+        radial-gradient(circle at 0% 55%,rgba(14,165,233,.035),transparent 30%),
+        linear-gradient(180deg,#f8fbfe 0%,#eef4f9 100%) !important;
+    padding-left:16px !important;
+    padding-right:16px !important;
+    scrollbar-color:#cbd5e1 transparent;
+}
+
+/* Received bubbles */
+html.lucky-light .message-other,
+html.lucky-light .received{
+    background:linear-gradient(145deg,#ffffff,#edf3f8) !important;
+    color:#172033 !important;
+    border:1px solid #d7e2ec !important;
+    box-shadow:
+        0 8px 22px rgba(15,23,42,.065),
+        inset 0 1px 0 rgba(255,255,255,.92) !important;
+}
+
+/* Sent bubbles */
+html.lucky-light .message-own,
+html.lucky-light .sent{
+    background:linear-gradient(145deg,#3b82f6,#2563eb) !important;
+    color:#ffffff !important;
+    border:1px solid rgba(59,130,246,.22) !important;
+    box-shadow:
+        0 10px 24px rgba(37,99,235,.18),
+        inset 0 1px 0 rgba(255,255,255,.12) !important;
+}
+
+/* Bubble typography */
+html.lucky-light .message{
+    font-size:16px !important;
+    line-height:1.38 !important;
+}
+
+html.lucky-light .message-own .message-meta{
+    color:rgba(255,255,255,.80) !important;
+}
+
+html.lucky-light .message-other .message-meta{
+    color:#718096 !important;
+}
+
+html.lucky-light .msg-time{
+    color:inherit !important;
+    opacity:.9;
+}
+
+html.lucky-light .ticks{
+    font-weight:800 !important;
+}
+
+html.lucky-light .ticks.read{
+    color:#67e8f9 !important;
+}
+
+/* Sender avatar in grouped incoming messages */
+html.lucky-light .msg-avatar{
+    border-color:#3b82f6 !important;
+    box-shadow:0 6px 16px rgba(37,99,235,.12) !important;
+    background:#e8eef5;
+}
+
+/* Reply blocks */
+html.lucky-light .reply-box{
+    background:rgba(255,255,255,.62) !important;
+    border-left-color:#3b82f6 !important;
+    color:#334155 !important;
+    box-shadow:inset 0 0 0 1px rgba(148,163,184,.10);
+}
+
+html.lucky-light .message-own .reply-box{
+    background:rgba(255,255,255,.12) !important;
+    border-left-color:rgba(255,255,255,.72) !important;
+}
+
+html.lucky-light .reply-sender,
+html.lucky-light .reply-preview-sender{
+    color:#2563eb !important;
+}
+
+html.lucky-light .message-own .reply-sender{
+    color:#dbeafe !important;
+}
+
+html.lucky-light .reply-text,
+html.lucky-light .reply-preview-text{
+    color:#475569 !important;
+}
+
+html.lucky-light .message-own .reply-text,
+html.lucky-light .message-own .reply-preview-text{
+    color:rgba(255,255,255,.88) !important;
+}
+
+/* Composer */
+html.lucky-light .input-area{
+    background:rgba(255,255,255,.90) !important;
+    border-top:1px solid #dce6ef !important;
+    box-shadow:0 -10px 28px rgba(15,23,42,.065) !important;
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+    padding:12px 13px !important;
+}
+
+html.lucky-light #messageInput{
+    background:linear-gradient(180deg,#f3f7fb,#eaf1f7) !important;
+    color:#0f172a !important;
+    border:1px solid #d3dee8 !important;
+    border-radius:17px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        0 5px 16px rgba(15,23,42,.045) !important;
+}
+
+html.lucky-light #messageInput:focus{
+    background:#ffffff !important;
+    border-color:rgba(59,130,246,.42) !important;
+    box-shadow:
+        0 0 0 4px rgba(59,130,246,.08),
+        0 8px 22px rgba(15,23,42,.07) !important;
+}
+
+html.lucky-light #messageInput::placeholder{
+    color:#7b8798 !important;
+}
+
+html.lucky-light #imageBtn,
+html.lucky-light #videoBtn,
+html.lucky-light #voiceBtn{
+    background:linear-gradient(145deg,#f3f7fb,#e3ebf3) !important;
+    color:#27435f !important;
+    border:1px solid #d2dde8 !important;
+    border-radius:15px !important;
+    box-shadow:0 6px 15px rgba(15,23,42,.06) !important;
+}
+
+html.lucky-light #imageBtn:hover,
+html.lucky-light #videoBtn:hover,
+html.lucky-light #voiceBtn:hover{
+    background:#ffffff !important;
+}
+
+html.lucky-light #sendBtn{
+    background:linear-gradient(145deg,#3b82f6,#2563eb) !important;
+    border:1px solid rgba(37,99,235,.20) !important;
+    border-radius:17px !important;
+    box-shadow:0 10px 24px rgba(37,99,235,.20) !important;
+    font-weight:750 !important;
+}
+
+html.lucky-light #sendBtn:active{
+    transform:scale(.96) !important;
+}
+
+/* Reply / media previews above composer */
+html.lucky-light .reply-preview,
+html.lucky-light .video-preview,
+html.lucky-light .audio-preview,
+html.lucky-light .voice-recording-bar{
+    background:rgba(255,255,255,.96) !important;
+    border-color:#d8e2ec !important;
+    box-shadow:0 12px 30px rgba(15,23,42,.10) !important;
+    color:#0f172a !important;
+}
+
+html.lucky-light .reply-preview-text,
+html.lucky-light .reply-preview-media-label{
+    color:#475569 !important;
+}
+
+html.lucky-light .reply-preview button{
+    color:#334155 !important;
+}
+
+/* Message context menu */
+html.lucky-light .message-menu{
+    background:rgba(255,255,255,.98) !important;
+    border:1px solid #d7e2ec !important;
+    box-shadow:0 22px 55px rgba(15,23,42,.15) !important;
+    backdrop-filter:blur(18px);
+}
+
+html.lucky-light .message-menu div{
+    color:#0f172a !important;
+    border-bottom-color:#e6edf3 !important;
+}
+
+html.lucky-light .message-menu div:hover{
+    background:#eef5fb !important;
+}
+
+/* Reaction controls */
+html.lucky-light .reaction{
+    background:#ffffff !important;
+    border-color:#cfe0ee !important;
+    box-shadow:0 8px 20px rgba(15,23,42,.10) !important;
+}
+
+html.lucky-light .reaction-picker{
+    background:rgba(255,255,255,.98) !important;
+    border-color:#d4e1ec !important;
+    box-shadow:0 18px 42px rgba(15,23,42,.14) !important;
+}
+
+/* Edit/delete dialogs */
+html.lucky-light .delete-modal,
+html.lucky-light .edit-modal{
+    background:linear-gradient(160deg,#ffffff,#eef4f9) !important;
+    border-color:#d8e2ec !important;
+    box-shadow:0 24px 70px rgba(15,23,42,.18) !important;
+}
+
+html.lucky-light .delete-modal-title,
+html.lucky-light .edit-modal-title{
+    color:#0f172a !important;
+}
+
+html.lucky-light .delete-modal-message{
+    color:#475569 !important;
+}
+
+html.lucky-light .delete-cancel-btn,
+html.lucky-light .edit-cancel-btn{
+    background:#e8eef5 !important;
+    color:#334155 !important;
+}
+
+html.lucky-light .edit-modal-input{
+    background:#f2f6fa !important;
+    color:#0f172a !important;
+    border-color:#d2dde8 !important;
+}
+
+/* Search overlay */
+html.lucky-light .chat-search-overlay{
+    background:rgba(242,247,251,.96) !important;
+}
+
+html.lucky-light .chat-search-top,
+html.lucky-light .chat-search-results{
+    background:rgba(255,255,255,.96) !important;
+    color:#0f172a !important;
+    border-color:#dce6ef !important;
+}
+
+html.lucky-light .chat-search-field,
+html.lucky-light #chatSearchInput{
+    background:#f1f5f9 !important;
+    color:#0f172a !important;
+    border-color:#d5e0ea !important;
+}
+
+html.lucky-light .chat-search-field:focus-within,
+html.lucky-light #chatSearchInput:focus{
+    background:#fff !important;
+    border-color:rgba(59,130,246,.40) !important;
+}
+
+/* Voice-call UI */
+html.lucky-light .voice-call-overlay{
+    background:rgba(226,232,240,.72) !important;
+}
+
+html.lucky-light .voice-call-card{
+    background:linear-gradient(160deg,#ffffff,#edf3f8) !important;
+    border-color:#d7e1eb !important;
+    box-shadow:0 28px 80px rgba(15,23,42,.18) !important;
+}
+
+html.lucky-light .voice-call-name{
+    color:#0f172a !important;
+}
+
+html.lucky-light .voice-call-status{
+    color:#64748b !important;
+}
+
+html.lucky-light .voice-call-timer{
+    color:#334155 !important;
+}
+
+html.lucky-light .voice-call-close,
+html.lucky-light .voice-call-action{
+    background:#e8eef5 !important;
+    color:#17324e !important;
+    border-color:#d2dee9 !important;
+}
+
+/* Call-history cards */
+html.lucky-light .call-history-card{
+    background:linear-gradient(145deg,#ffffff,#eef4f9) !important;
+    border-color:#d8e2ec !important;
+    box-shadow:0 9px 25px rgba(15,23,42,.075) !important;
+}
+
+html.lucky-light .call-history-label{
+    color:#0f172a !important;
+}
+
+html.lucky-light .call-history-meta{
+    color:#64748b !important;
+}
+
+/* Mobile refinement */
+@media (max-width:480px){
+    html.lucky-light .header{
+        box-shadow:0 8px 24px rgba(15,23,42,.055) !important;
+    }
+
+    html.lucky-light .messages{
+        padding-left:11px !important;
+        padding-right:11px !important;
+        gap:10px !important;
+    }
+
+    html.lucky-light .message{
+        max-width:78% !important;
+    }
+
+    html.lucky-light .input-area{
+        padding:10px 9px !important;
+        gap:8px !important;
+    }
+
+    html.lucky-light #messageInput{
+        min-height:50px !important;
+    }
+}
+
+
+
+/* =========================================================
+   LUCKY CHAT — LIGHT MODE MESSAGE CONTRAST FIX
+   Keeps sent-message timestamps/read receipts clearly visible.
+   ========================================================= */
+html.lucky-light .message-own .msg-time,
+html.lucky-light .sent .msg-time{
+    color:rgba(255,255,255,.92) !important;
+    opacity:1 !important;
+    text-shadow:0 1px 2px rgba(0,0,0,.16);
+}
+
+html.lucky-light .message-own .message-meta,
+html.lucky-light .sent .message-meta,
+html.lucky-light .message-own .msg-meta,
+html.lucky-light .sent .msg-meta{
+    color:rgba(255,255,255,.90) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .message-own .ticks,
+html.lucky-light .sent .ticks{
+    color:rgba(255,255,255,.88) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .message-own .ticks.read,
+html.lucky-light .sent .ticks.read{
+    color:#bff4ff !important;
+}
+
+html.lucky-light .message-other .msg-time,
+html.lucky-light .received .msg-time{
+    color:#64748b !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .message-other .message-meta,
+html.lucky-light .received .message-meta,
+html.lucky-light .message-other .msg-meta,
+html.lucky-light .received .msg-meta{
+    color:#64748b !important;
+    opacity:1 !important;
+}
+
+/* Voice/call history text inside the message canvas */
+html.lucky-light .message-own .voice-duration,
+html.lucky-light .message-own .voice-meta,
+html.lucky-light .message-own .voice-time{
+    color:rgba(255,255,255,.90) !important;
+}
+
+@media(max-width:480px){
+    html.lucky-light .message-own .msg-time,
+    html.lucky-light .sent .msg-time{
+        font-size:11px !important;
+        font-weight:600 !important;
+    }
+
+    html.lucky-light .message-own .ticks,
+    html.lucky-light .sent .ticks{
+        font-size:14px !important;
+    }
+}
+
+
+
+/* =========================================================
+   LUCKY CHAT — LIGHT MODE CONTRAST REFINEMENT V2
+   Visual-only. Keeps all existing JS/DOM behavior intact.
+   ========================================================= */
+
+/* Incoming message metadata: darker but still soft */
+html.lucky-light .message-other .msg-time,
+html.lucky-light .received .msg-time,
+html.lucky-light .message-other .timestamp,
+html.lucky-light .received .timestamp,
+html.lucky-light .message-other .message-meta,
+html.lucky-light .received .message-meta,
+html.lucky-light .message-other .msg-meta,
+html.lucky-light .received .msg-meta{
+    color:#4b5f73 !important;
+    opacity:1 !important;
+    font-weight:600 !important;
+}
+
+/* Incoming body copy */
+html.lucky-light .message-other .msg-text,
+html.lucky-light .received .msg-text{
+    color:#1f2d3d !important;
+}
+
+/* Voice-call history message: use the light theme instead of the
+   dark card that is currently leaking through in Light Mode. */
+html.lucky-light .call-history-card{
+    background:linear-gradient(145deg,#ffffff,#edf3f8) !important;
+    color:#0f172a !important;
+    border:1px solid #d5e1eb !important;
+    box-shadow:0 10px 26px rgba(15,23,42,.08) !important;
+}
+
+html.lucky-light .call-history-icon{
+    background:linear-gradient(145deg,#e6f0fa,#dbe8f4) !important;
+    color:#23415d !important;
+}
+
+html.lucky-light .call-history-label{
+    color:#142235 !important;
+    font-weight:750 !important;
+}
+
+html.lucky-light .call-history-meta,
+html.lucky-light .call-history-time,
+html.lucky-light .call-history-subtitle{
+    color:#607286 !important;
+    font-weight:600 !important;
+}
+
+/* Call status pill and controls in Light Mode */
+html.lucky-light .voice-call-state-pill{
+    background:rgba(37,99,235,.08) !important;
+    border-color:rgba(37,99,235,.14) !important;
+    color:#2563eb !important;
+}
+
+html.lucky-light .voice-call-main{
+    color:#fff !important;
+}
+
+html.lucky-light .voice-call-main.is-end{
+    color:#fff !important;
+}
+
+html.lucky-light .voice-call-main.is-accept{
+    color:#fff !important;
+}
+
+/* Message reaction / highlight details */
+html.lucky-light .reaction{
+    color:#172033 !important;
+}
+
+/* Slightly stronger visual hierarchy for mobile metadata */
+@media(max-width:480px){
+    html.lucky-light .message-other .msg-time,
+    html.lucky-light .received .msg-time,
+    html.lucky-light .message-other .timestamp,
+    html.lucky-light .received .timestamp{
+        font-size:11px !important;
+        font-weight:650 !important;
+    }
+
+    html.lucky-light .message-other .msg-text,
+    html.lucky-light .received .msg-text{
+        font-size:16px !important;
+    }
+}
+
+
+
+/* =========================================================
+   LUCKY CHAT — LIGHT MODE FINAL CONTRAST PASS
+   CSS/UI only. Existing JS and DOM behavior are unchanged.
+   ========================================================= */
+
+/* Incoming bubble text + timestamps */
+html.lucky-light .message-other,
+html.lucky-light .received{
+    color:#172033 !important;
+}
+
+html.lucky-light .message-other .msg-text,
+html.lucky-light .received .msg-text{
+    color:#172033 !important;
+    font-weight:500 !important;
+}
+
+html.lucky-light .message-other .msg-time,
+html.lucky-light .received .msg-time,
+html.lucky-light .message-other .timestamp,
+html.lucky-light .received .timestamp,
+html.lucky-light .message-other .message-meta,
+html.lucky-light .received .message-meta,
+html.lucky-light .message-other .msg-meta,
+html.lucky-light .received .msg-meta{
+    color:#506277 !important;
+    opacity:1 !important;
+    font-weight:650 !important;
+    text-shadow:none !important;
+}
+
+/* Make incoming bubbles slightly deeper so metadata is easier to read */
+html.lucky-light .message-other,
+html.lucky-light .received{
+    background:linear-gradient(145deg,#f8fbfe,#e5edf5) !important;
+    border-color:#cddae6 !important;
+}
+
+/* Voice/call-history message currently rendered with dark palette */
+html.lucky-light .call-history-card{
+    background:linear-gradient(145deg,#f8fbfe,#e5edf5) !important;
+    border-color:#cddae6 !important;
+    color:#172033 !important;
+}
+
+html.lucky-light .call-history-label{
+    color:#18263a !important;
+    font-weight:750 !important;
+}
+
+html.lucky-light .call-history-meta,
+html.lucky-light .call-history-time,
+html.lucky-light .call-history-subtitle{
+    color:#566b80 !important;
+    font-weight:650 !important;
+}
+
+html.lucky-light .call-history-icon{
+    background:linear-gradient(145deg,#e7f0f8,#dce8f2) !important;
+    color:#284560 !important;
+}
+
+/* If the call history uses generic strong/text nodes, make them light-safe */
+html.lucky-light .call-history-card strong,
+html.lucky-light .call-history-card span,
+html.lucky-light .call-history-card div{
+    text-shadow:none !important;
+}
+
+/* Keep sent metadata bright and consistent */
+html.lucky-light .message-own .msg-time,
+html.lucky-light .sent .msg-time{
+    color:rgba(255,255,255,.96) !important;
+    opacity:1 !important;
+    font-weight:650 !important;
+}
+
+html.lucky-light .message-own .message-meta,
+html.lucky-light .sent .message-meta,
+html.lucky-light .message-own .msg-meta,
+html.lucky-light .sent .msg-meta{
+    color:rgba(255,255,255,.94) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .message-own .ticks,
+html.lucky-light .sent .ticks{
+    opacity:1 !important;
+}
+
+html.lucky-light .message-own .ticks.read,
+html.lucky-light .sent .ticks.read{
+    color:#c8f6ff !important;
+}
+
+/* Mobile */
+@media(max-width:480px){
+    html.lucky-light .message-other .msg-time,
+    html.lucky-light .received .msg-time,
+    html.lucky-light .message-other .timestamp,
+    html.lucky-light .received .timestamp{
+        font-size:11px !important;
+        font-weight:700 !important;
+    }
+}
+
+
+
+/* =========================================================
+   LUCKY CHAT — LIGHT MODE CASCADE FIX
+   Targets the high-specificity mobile message/call rules
+   used by the current chat.css.
+   ========================================================= */
+
+/* The base mobile stylesheet has higher-specificity !important
+   rules for message rows. Match that structure exactly. */
+html.lucky-light .messages .message-row:not(.call-history-row) > .message-other{
+    background:linear-gradient(145deg,#f8fbfe,#e5edf5) !important;
+    color:#172033 !important;
+    border-color:#cddae6 !important;
+    box-shadow:0 8px 22px rgba(15,23,42,.065) !important;
+}
+
+html.lucky-light .messages .message-row:not(.call-history-row) .msg-text{
+    color:#172033 !important;
+    font-weight:500 !important;
+}
+
+/* Exact high-specificity selector for incoming metadata. */
+html.lucky-light .messages .message-row:not(.call-history-row) .msg-meta{
+    color:#506277 !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .messages .message-row:not(.call-history-row) .msg-time{
+    color:#506277 !important;
+    opacity:1 !important;
+    font-weight:700 !important;
+    text-shadow:none !important;
+}
+
+/* Call-history cards also have status-specific !important
+   backgrounds. Match the current markup/status selector. */
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-card{
+    background:linear-gradient(145deg,#f8fbfe,#e5edf5) !important;
+    border-color:#cddae6 !important;
+    color:#172033 !important;
+    box-shadow:0 10px 26px rgba(15,23,42,.08) !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-label{
+    color:#18263a !important;
+    font-weight:800 !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-meta{
+    color:#566b80 !important;
+    font-weight:650 !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-icon{
+    background:linear-gradient(145deg,#e7f0f8,#dce8f2) !important;
+    color:#284560 !important;
+}
+
+/* Keep other call states light-safe too, without changing behavior. */
+html.lucky-light .call-history-message[data-call-status="ended"] .call-history-card,
+html.lucky-light .call-history-message[data-call-status="active"] .call-history-card,
+html.lucky-light .call-history-message[data-call-status="ringing"] .call-history-card{
+    background:linear-gradient(145deg,#f8fbfe,#e5edf5) !important;
+    border-color:#cddae6 !important;
+    color:#172033 !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="ended"] .call-history-label,
+html.lucky-light .call-history-message[data-call-status="active"] .call-history-label,
+html.lucky-light .call-history-message[data-call-status="ringing"] .call-history-label{
+    color:#18263a !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="ended"] .call-history-meta,
+html.lucky-light .call-history-message[data-call-status="active"] .call-history-meta,
+html.lucky-light .call-history-message[data-call-status="ringing"] .call-history-meta{
+    color:#566b80 !important;
+}
+
+/* Preserve meaningful state accents in Light Mode. */
+html.lucky-light .call-history-message[data-call-status="active"] .call-history-status,
+html.lucky-light .call-history-message[data-call-status="ringing"] .call-history-status{
+    color:#2563eb !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="ended"] .call-history-status{
+    color:#15803d !important;
+}
+
+/* Missed/rejected/busy states remain readable in Light Mode. */
+html.lucky-light .call-history-message[data-call-status="missed"] .call-history-card,
+html.lucky-light .call-history-message[data-call-status="rejected"] .call-history-card,
+html.lucky-light .call-history-message[data-call-status="busy"] .call-history-card{
+    background:linear-gradient(145deg,#fff7f7,#f3e8ea) !important;
+    border-color:#e3c5c9 !important;
+    color:#172033 !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="missed"] .call-history-label,
+html.lucky-light .call-history-message[data-call-status="rejected"] .call-history-label,
+html.lucky-light .call-history-message[data-call-status="busy"] .call-history-label{
+    color:#3b2730 !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="missed"] .call-history-meta,
+html.lucky-light .call-history-message[data-call-status="rejected"] .call-history-meta,
+html.lucky-light .call-history-message[data-call-status="busy"] .call-history-meta{
+    color:#705a62 !important;
+}
+
+/* Mobile metadata */
+@media(max-width:480px){
+    html.lucky-light .messages .message-row:not(.call-history-row) .msg-time{
+        font-size:11px !important;
+        font-weight:700 !important;
+    }
+}
+
+
+
+/* =========================================================
+   LUCKY CHAT — LIGHT MODE SENT/RECEIVED BALANCE FIX
+   Current chat.css uses message-row.own for outgoing bubbles.
+   This override restores the sent palette after the earlier
+   incoming-message cascade rules.
+   ========================================================= */
+
+/* Outgoing message body/text */
+html.lucky-light .messages .message-row.own .message-own,
+html.lucky-light .messages .message-row.own .sent{
+    background:linear-gradient(145deg,#3b82f6,#2563eb) !important;
+    color:#ffffff !important;
+}
+
+html.lucky-light .messages .message-row.own .msg-text{
+    color:#ffffff !important;
+    font-weight:500 !important;
+}
+
+/* Outgoing timestamp/meta */
+html.lucky-light .messages .message-row.own .msg-meta,
+html.lucky-light .messages .message-row.own .message-meta{
+    color:rgba(255,255,255,.94) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .messages .message-row.own .msg-time{
+    color:rgba(255,255,255,.97) !important;
+    opacity:1 !important;
+    font-weight:700 !important;
+    text-shadow:0 1px 2px rgba(0,0,0,.14) !important;
+}
+
+/* Outgoing receipt ticks */
+html.lucky-light .messages .message-row.own .ticks{
+    color:rgba(255,255,255,.90) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .messages .message-row.own .ticks.read{
+    color:#c8f6ff !important;
+}
+
+/* Incoming content stays dark/readable */
+html.lucky-light .messages .message-row:not(.own) .msg-text{
+    color:#172033 !important;
+}
+
+html.lucky-light .messages .message-row:not(.own) .msg-time{
+    color:#506277 !important;
+    opacity:1 !important;
+    font-weight:700 !important;
+}
+
+/* Unavailable call-history card: all visible text must match
+   the new light background, not the old dark-card palette. */
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-label{
+    color:#18263a !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-meta,
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-time,
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-subtitle,
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-status{
+    color:#566b80 !important;
+    opacity:1 !important;
+    font-weight:650 !important;
+}
+
+/* Any direct text nodes wrapped in the card should inherit the
+   light palette rather than a dark fallback. */
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-card{
+    color:#18263a !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-card strong{
+    color:#18263a !important;
+}
+
+html.lucky-light .call-history-message[data-call-status="unavailable"] .call-history-card span{
+    color:inherit !important;
+}
+
+/* Mobile readability */
+@media(max-width:480px){
+    html.lucky-light .messages .message-row.own .msg-time{
+        font-size:11px !important;
+        font-weight:700 !important;
+    }
+}
+
+
+
+/* =========================================================
+   LUCKY CHAT — FINAL SENT MESSAGE TEXT CONTRAST
+   Strongly targets the actual outgoing message container and
+   common text descendants. UI-only; no JS/DOM changes.
+   ========================================================= */
+
+/* Outgoing bubble itself */
+html.lucky-light .messages .message-row.own .message-own,
+html.lucky-light .messages .message-row.own .sent,
+html.lucky-light .messages .message-row.own > .message{
+    color:#ffffff !important;
+}
+
+/* Outgoing message text/content in case its node carries
+   its own color declaration. */
+html.lucky-light .messages .message-row.own .message-own .msg-text,
+html.lucky-light .messages .message-row.own .sent .msg-text,
+html.lucky-light .messages .message-row.own > .message .msg-text,
+html.lucky-light .messages .message-row.own .message-own > span,
+html.lucky-light .messages .message-row.own .sent > span{
+    color:#ffffff !important;
+    opacity:1 !important;
+}
+
+/* Common text-bearing descendants generated by the chat renderer.
+   This is intentionally limited to text elements, not images/icons. */
+html.lucky-light .messages .message-row.own .message-own p,
+html.lucky-light .messages .message-row.own .message-own span:not(.ticks),
+html.lucky-light .messages .message-row.own .message-own div:not(.reply-box),
+html.lucky-light .messages .message-row.own .message-own small,
+html.lucky-light .messages .message-row.own .sent p,
+html.lucky-light .messages .message-row.own .sent span:not(.ticks),
+html.lucky-light .messages .message-row.own .sent div:not(.reply-box),
+html.lucky-light .messages .message-row.own .sent small{
+    color:#ffffff !important;
+}
+
+/* Outgoing metadata */
+html.lucky-light .messages .message-row.own .msg-meta,
+html.lucky-light .messages .message-row.own .message-meta{
+    color:rgba(255,255,255,.96) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .messages .message-row.own .msg-time{
+    color:#ffffff !important;
+    opacity:1 !important;
+    font-weight:700 !important;
+    text-shadow:0 1px 2px rgba(0,0,0,.16) !important;
+}
+
+/* Read/delivery ticks */
+html.lucky-light .messages .message-row.own .ticks{
+    color:#ffffff !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .messages .message-row.own .ticks.read{
+    color:#c8f6ff !important;
+}
+
+/* Outgoing reply block keeps its own intentional hierarchy */
+html.lucky-light .messages .message-row.own .reply-box{
+    color:#eaf4ff !important;
+}
+
+html.lucky-light .messages .message-row.own .reply-box .reply-sender{
+    color:#dbeafe !important;
+}
+
+html.lucky-light .messages .message-row.own .reply-box .reply-text,
+html.lucky-light .messages .message-row.own .reply-box div{
+    color:rgba(255,255,255,.90) !important;
+}
+
+/* Mobile */
+@media(max-width:480px){
+    html.lucky-light .messages .message-row.own .msg-time{
+        font-size:11px !important;
+        font-weight:700 !important;
+    }
+}
+
+
+
+/* =========================================================
+   LUCKY CHAT — LIGHT MODE OUTGOING TEXT FINAL TARGET
+   Uses the actual outgoing-row relationship:
+   .message-row:has(.message-own)
+   This avoids relying on the row's optional "own" class.
+   ========================================================= */
+
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-own{
+    background:linear-gradient(145deg,#3b82f6,#2563eb) !important;
+    color:#ffffff !important;
+}
+
+/* Actual outgoing message text */
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-own .msg-text,
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .msg-text{
+    color:#ffffff !important;
+    -webkit-text-fill-color:#ffffff !important;
+    opacity:1 !important;
+}
+
+/* Catch any text-bearing element inside an outgoing bubble that
+   may carry its own color declaration. */
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-own p,
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-own span:not(.ticks),
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-own small,
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-own strong,
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-own em{
+    color:#ffffff !important;
+    -webkit-text-fill-color:#ffffff !important;
+    opacity:1 !important;
+}
+
+/* Actual outgoing timestamp/meta */
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .msg-meta,
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .message-meta{
+    color:rgba(255,255,255,.96) !important;
+    -webkit-text-fill-color:rgba(255,255,255,.96) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .msg-time{
+    color:#ffffff !important;
+    -webkit-text-fill-color:#ffffff !important;
+    opacity:1 !important;
+    font-weight:700 !important;
+    text-shadow:0 1px 2px rgba(0,0,0,.14) !important;
+}
+
+/* Actual outgoing ticks */
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .ticks{
+    color:rgba(255,255,255,.92) !important;
+    -webkit-text-fill-color:rgba(255,255,255,.92) !important;
+    opacity:1 !important;
+}
+
+html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .ticks.read{
+    color:#c8f6ff !important;
+    -webkit-text-fill-color:#c8f6ff !important;
+}
+
+/* Preserve the light incoming appearance on non-outgoing rows. */
+html.lucky-light .messages .message-row:not(.call-history-row):not(:has(.message-own)) .msg-text{
+    color:#172033 !important;
+    -webkit-text-fill-color:#172033 !important;
+}
+
+html.lucky-light .messages .message-row:not(.call-history-row):not(:has(.message-own)) .msg-time{
+    color:#506277 !important;
+    -webkit-text-fill-color:#506277 !important;
+    opacity:1 !important;
+}
+
+/* Mobile */
+@media(max-width:480px){
+    html.lucky-light .messages .message-row:not(.call-history-row):has(.message-own) .msg-time{
+        font-size:11px !important;
+        font-weight:700 !important;
+    }
+}

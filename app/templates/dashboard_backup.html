@@ -1196,6 +1196,275 @@ html.lucky-light .settings-btn {
 }
 
 </style>
+
+<style id="lucky-advanced-light-ui">
+
+/* =========================================================
+   LUCKY CHAT — ADVANCED LIGHT INTERFACE
+   Visual-only layer. Existing functionality is untouched.
+   ========================================================= */
+html.lucky-light body{
+    background:
+        radial-gradient(circle at 10% -5%,rgba(59,130,246,.13),transparent 30%),
+        radial-gradient(circle at 95% 15%,rgba(14,165,233,.07),transparent 26%),
+        #f4f7fb !important;
+    color:#0f172a !important;
+}
+
+html.lucky-light .sidebar{
+    background:rgba(255,255,255,.92) !important;
+    border-right:1px solid #e2e8f0 !important;
+    box-shadow:18px 0 50px rgba(15,23,42,.07) !important;
+    backdrop-filter:blur(16px);
+}
+
+html.lucky-light .logo{
+    background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(248,250,252,.94)) !important;
+    border-bottom:1px solid #e2e8f0 !important;
+    color:#0f172a !important;
+}
+
+html.lucky-light .search input{
+    background:linear-gradient(180deg,#f1f5f9,#e8eef6) !important;
+    border:1px solid #d7e0ea !important;
+    color:#0f172a !important;
+    box-shadow:0 8px 22px rgba(15,23,42,.05),inset 0 1px 0 rgba(255,255,255,.8) !important;
+}
+
+html.lucky-light .search input:focus{
+    background:#fff !important;
+    border-color:rgba(59,130,246,.42) !important;
+    box-shadow:0 0 0 4px rgba(59,130,246,.08),0 12px 30px rgba(15,23,42,.08) !important;
+}
+
+html.lucky-light .chat-list{
+    scrollbar-color:#cbd5e1 transparent;
+}
+
+html.lucky-light .chat-list::-webkit-scrollbar-thumb{
+    background:#cbd5e1 !important;
+}
+
+html.lucky-light .chat-item{
+    background:rgba(255,255,255,.58) !important;
+    border-color:transparent !important;
+    box-shadow:0 2px 9px rgba(15,23,42,.025);
+}
+
+html.lucky-light .chat-item:hover{
+    background:rgba(255,255,255,.92) !important;
+    border-color:#dbe5ef !important;
+    box-shadow:0 8px 22px rgba(15,23,42,.06) !important;
+}
+
+html.lucky-light .chat-item.active{
+    background:linear-gradient(135deg,rgba(59,130,246,.13),rgba(59,130,246,.045)) !important;
+    border-color:rgba(59,130,246,.20) !important;
+    box-shadow:0 10px 28px rgba(37,99,235,.08) !important;
+}
+
+html.lucky-light .chat-item.is-pinned{
+    background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(255,255,255,.86)) !important;
+    border-color:rgba(59,130,246,.18) !important;
+}
+
+html.lucky-light .chat-name-row h4,
+html.lucky-light .chat-top h4{
+    color:#0f172a !important;
+}
+
+html.lucky-light .message-preview{
+    color:#64748b !important;
+}
+
+html.lucky-light .time{
+    color:#64748b !important;
+}
+
+html.lucky-light .status{
+    color:#64748b !important;
+}
+
+html.lucky-light .status.online{
+    color:#16a34a !important;
+}
+
+html.lucky-light .avatar{
+    background:#e8eef6 !important;
+    box-shadow:0 6px 18px rgba(37,99,235,.12) !important;
+}
+
+html.lucky-light .settings-btn{
+    background:linear-gradient(145deg,#f1f5f9,#e3ebf5) !important;
+    color:#1e3a5f !important;
+    border-color:#d3deea !important;
+    box-shadow:0 8px 22px rgba(15,23,42,.08) !important;
+}
+
+html.lucky-light .profile-btn{
+    background:#f8fafc !important;
+    border-color:#dbe5ef !important;
+    box-shadow:0 8px 22px rgba(15,23,42,.08) !important;
+}
+
+html.lucky-light .chat{
+    background:
+        radial-gradient(circle at 78% 0%,rgba(59,130,246,.055),transparent 30%),
+        linear-gradient(180deg,#f7faff,#eef3f8) !important;
+}
+
+html.lucky-light .chat-header{
+    background:rgba(255,255,255,.80) !important;
+    border-bottom:1px solid #dfe7ef !important;
+    box-shadow:0 8px 24px rgba(15,23,42,.04) !important;
+}
+
+html.lucky-light .header-info h3{
+    color:#0f172a !important;
+}
+
+html.lucky-light .header-info p{
+    color:#16a34a !important;
+}
+
+html.lucky-light .top-profile-img{
+    box-shadow:0 4px 12px rgba(15,23,42,.08);
+}
+
+html.lucky-light .chat-menu{
+    background:rgba(255,255,255,.98) !important;
+    border-color:#dbe5ef !important;
+    box-shadow:0 20px 50px rgba(15,23,42,.14) !important;
+    backdrop-filter:blur(18px);
+}
+
+html.lucky-light .chat-menu button{
+    color:#0f172a !important;
+}
+
+html.lucky-light .chat-menu button:active{
+    background:rgba(59,130,246,.10) !important;
+}
+
+html.lucky-light .status-section{
+    border-bottom-color:#e3eaf2 !important;
+    background:rgba(255,255,255,.22);
+}
+
+html.lucky-light .status-heading h3{
+    color:#0f172a !important;
+}
+
+html.lucky-light .status-heading p{
+    color:#64748b !important;
+}
+
+html.lucky-light .status-see-all{
+    background:rgba(59,130,246,.08) !important;
+    border-color:rgba(59,130,246,.18) !important;
+    color:#2563eb !important;
+}
+
+html.lucky-light .status-card{
+    color:#0f172a !important;
+}
+
+html.lucky-light .status-avatar-wrap{
+    background:#e8eef6 !important;
+    border-color:#cbd5e1 !important;
+}
+
+html.lucky-light .status-avatar-wrap.has-status{
+    border-color:#3b82f6 !important;
+    box-shadow:0 0 0 3px rgba(59,130,246,.08) !important;
+}
+
+</style>
+
+<style id="lucky-light-final-polish">
+
+/* =========================================================
+   LUCKY CHAT — LIGHT MODE FINAL POLISH
+   Contrast/spacing refinements for the mobile dashboard.
+   Existing functionality and dark mode remain unchanged.
+   ========================================================= */
+html.lucky-light .status-name{
+    color:#172033 !important;
+    font-size:11px !important;
+    font-weight:700 !important;
+}
+
+html.lucky-light .status-hint{
+    color:#64748b !important;
+    font-size:10px !important;
+}
+
+html.lucky-light .status-section{
+    padding-top:6px !important;
+    padding-bottom:10px !important;
+}
+
+html.lucky-light .status-heading{
+    margin-bottom:13px !important;
+}
+
+html.lucky-light .status-avatar-wrap{
+    box-shadow:
+        0 5px 16px rgba(15,23,42,.08),
+        inset 0 0 0 1px rgba(255,255,255,.75) !important;
+}
+
+html.lucky-light .status-add{
+    border-color:#f4f7fb !important;
+    box-shadow:0 4px 10px rgba(37,99,235,.18) !important;
+}
+
+html.lucky-light .chat-item{
+    background:rgba(255,255,255,.72) !important;
+}
+
+html.lucky-light .chat-item.is-pinned{
+    background:linear-gradient(
+        135deg,
+        rgba(59,130,246,.11),
+        rgba(255,255,255,.94)
+    ) !important;
+    box-shadow:0 10px 26px rgba(37,99,235,.07) !important;
+}
+
+html.lucky-light .chat-item.is-pinned::after{
+    opacity:.78 !important;
+}
+
+html.lucky-light .chat-name-row h4,
+html.lucky-light .chat-top h4{
+    font-weight:700 !important;
+}
+
+html.lucky-light .message-preview{
+    color:#5f6f82 !important;
+}
+
+html.lucky-light .status{
+    color:#6b7788 !important;
+}
+
+html.lucky-light .search input{
+    font-weight:500 !important;
+}
+
+html.lucky-light .settings-btn{
+    transition:
+        transform .18s ease,
+        box-shadow .18s ease,
+        background .18s ease !important;
+}
+
+html.lucky-light .settings-btn:active{
+    transform:scale(.94) rotate(-5deg) !important;
+}
+
+</style>
 </head>
 
 <body>
