@@ -147,6 +147,34 @@ def _ensure_read_receipt_settings_column():
 
 _ensure_read_receipt_settings_column()
 
+def _ensure_online_status_settings_column():
+    """Add the per-account Online Status preference to existing users."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("users"):
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("users")}
+        if "online_status_enabled" in columns:
+            return
+
+        with engine.begin() as connection:
+            connection.execute(
+                sqlalchemy_text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN online_status_enabled INTEGER DEFAULT 1"
+                )
+            )
+
+        print("SETTINGS SCHEMA: online_status_enabled column added")
+    except Exception as exc:
+        print("SETTINGS SCHEMA ERROR:", exc)
+        traceback.print_exc()
+
+
+_ensure_online_status_settings_column()
+
+
 
 
 
@@ -317,6 +345,10 @@ class PublicKeyUpload(BaseModel):
 
 
 class ReadReceiptsPayload(BaseModel):
+    enabled: bool
+
+
+class OnlineStatusPayload(BaseModel):
     enabled: bool
 
 
@@ -1789,32 +1821,54 @@ async def online_users():
     return list(manager.connections.keys())
 
 @app.get("/user-status/{friend}")
-async def user_status(friend: str):
+async def user_status(friend: str, request: Request):
     db = SessionLocal()
 
-    user = resolve_user_by_username(db, friend)
+    try:
+        current_username = request.session.get("username")
+        user = resolve_user_by_username(db, friend)
 
-    if not user:
-        db.close()
+        if not user:
+            return {
+                "online": False,
+                "last_seen": None
+            }
+
+        # Online Status is privacy-controlled per account.
+        enabled = True
+        row = db.execute(
+            sqlalchemy_text(
+                "SELECT online_status_enabled "
+                "FROM users WHERE id = :user_id"
+            ),
+            {"user_id": user.id}
+        ).first()
+
+        if row is not None and row[0] is not None:
+            enabled = bool(int(row[0]))
+
+        # Users can always see their own status locally.
+        if current_username != user.username and not enabled:
+            db.close()
+            return {
+                "online": False,
+                "last_seen": None,
+                "hidden": True
+            }
+
+        canonical_friend = user.username
+        is_online = canonical_friend in manager.connections
+
+        last_seen = None
+        if user.last_seen:
+            last_seen = user.last_seen.isoformat()
+
         return {
-            "online": False,
-            "last_seen": None
+            "online": is_online,
+            "last_seen": last_seen
         }
-
-    canonical_friend = user.username
-    is_online = canonical_friend in manager.connections
-
-    last_seen = None
-
-    if user.last_seen:
-        last_seen = user.last_seen.isoformat()
-
-    db.close()
-
-    return {
-        "online": is_online,
-        "last_seen": last_seen
-    }
+    finally:
+        db.close()
 
 
 
@@ -2038,6 +2092,71 @@ async def pwa_service_worker():
 @app.get("/offline.html")
 async def pwa_offline():
     return FileResponse("offline.html", media_type="text/html")
+
+
+@app.get("/settings/online-status")
+async def get_online_status_setting(request: Request):
+    """Return the signed-in account's server-side Online Status preference."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        enabled = True
+        row = db.execute(
+            sqlalchemy_text(
+                "SELECT online_status_enabled "
+                "FROM users WHERE id = :user_id"
+            ),
+            {"user_id": user.id}
+        ).first()
+        if row is not None and row[0] is not None:
+            enabled = bool(int(row[0]))
+
+        return {"success": True, "enabled": enabled}
+    finally:
+        db.close()
+
+
+@app.post("/settings/online-status")
+async def set_online_status_setting(
+    data: OnlineStatusPayload,
+    request: Request
+):
+    """Persist the signed-in account's Online Status preference."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        value = 1 if data.enabled else 0
+        db.execute(
+            sqlalchemy_text(
+                "UPDATE users "
+                "SET online_status_enabled = :value "
+                "WHERE id = :user_id"
+            ),
+            {"value": value, "user_id": user.id}
+        )
+        db.commit()
+        return {"success": True, "enabled": bool(value)}
+    except Exception as exc:
+        db.rollback()
+        print("ONLINE STATUS SETTING ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save Online Status setting"}
+    finally:
+        db.close()
 
 
 @app.get("/settings/read-receipts")

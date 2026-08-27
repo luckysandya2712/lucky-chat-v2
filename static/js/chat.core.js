@@ -1951,6 +1951,13 @@ function playNotificationSound() {
 }
 
 window.addEventListener("lucky-setting-changed", event => {
+    if (event?.detail?.key !== "onlineStatus") return;
+
+    // The server controls visibility, so refresh the displayed status.
+    void updateFriendStatus();
+});
+
+window.addEventListener("lucky-setting-changed", event => {
     if (event?.detail?.key !== "readReceipts") return;
 
     if (event.detail.value === false) {

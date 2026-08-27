@@ -316,7 +316,7 @@ body{
                 <span class="setting-desc">Allow others to see when you're online</span>
             </span>
             <label class="switch">
-                <input type="checkbox" data-setting-key="onlineStatus" checked onchange="savePreference('onlineStatus',this.checked)">
+                <input type="checkbox" data-setting-key="onlineStatus" checked onchange="savePreference('onlineStatus',this.checked,this)">
                 <span class="slider"></span>
             </label>
         </div>
@@ -367,12 +367,17 @@ function showComingSoon(name){
 async function savePreference(key,value,inputElement){
     localStorage.setItem("lucky_setting_" + key, value ? "1" : "0");
 
-    if(key !== "readReceipts"){
+    const endpoints = {
+        readReceipts: "/settings/read-receipts",
+        onlineStatus: "/settings/online-status"
+    };
+
+    if(!endpoints[key]){
         return;
     }
 
     try{
-        const response = await fetch("/settings/read-receipts", {
+        const response = await fetch(endpoints[key], {
             method: "POST",
             credentials: "same-origin",
             headers: {
@@ -386,13 +391,17 @@ async function savePreference(key,value,inputElement){
         const data = await response.json();
 
         if(!response.ok || !data.success){
-            throw new Error(data.error || "Could not save Read Receipts setting");
+            throw new Error(data.error || "Could not save setting");
         }
+
+        window.dispatchEvent(new CustomEvent("lucky-setting-changed", {
+            detail: { key, value: !!value }
+        }));
     }catch(error){
         // Keep the UI and local copy consistent when the server rejects/fails.
         const reverted = !value;
         localStorage.setItem(
-            "lucky_setting_readReceipts",
+            "lucky_setting_" + key,
             reverted ? "1" : "0"
         );
 
@@ -400,7 +409,7 @@ async function savePreference(key,value,inputElement){
             inputElement.checked = reverted;
         }
 
-        alert(error.message || "Could not save Read Receipts setting");
+        alert(error.message || "Could not save setting");
     }
 }
 
@@ -416,31 +425,42 @@ async function loadPreferences(){
         }
     });
 
-    const readReceiptsInput =
-        document.querySelector('input[data-setting-key="readReceipts"]');
+    const serverSettings = [
+        ["readReceipts", "/settings/read-receipts"],
+        ["onlineStatus", "/settings/online-status"]
+    ];
 
-    if(!readReceiptsInput){
-        return;
-    }
+    for(const [key, endpoint] of serverSettings){
+        const input = document.querySelector(
+            'input[data-setting-key="' + key + '"]'
+        );
 
-    try{
-        const response = await fetch("/settings/read-receipts", {
-            credentials: "same-origin",
-            cache: "no-store"
-        });
+        if(!input){
+            continue;
+        }
 
-        const data = await response.json();
+        try{
+            const response = await fetch(endpoint, {
+                credentials: "same-origin",
+                cache: "no-store"
+            });
 
-        if(response.ok && data.success){
-            readReceiptsInput.checked = !!data.enabled;
+            const data = await response.json();
 
-            localStorage.setItem(
-                "lucky_setting_readReceipts",
-                data.enabled ? "1" : "0"
+            if(response.ok && data.success){
+                input.checked = !!data.enabled;
+
+                localStorage.setItem(
+                    "lucky_setting_" + key,
+                    data.enabled ? "1" : "0"
+                );
+            }
+        }catch(error){
+            console.debug(
+                "Could not load server " + key + " setting:",
+                error
             );
         }
-    }catch(error){
-        console.debug("Could not load server Read Receipts setting:", error);
     }
 }
 
