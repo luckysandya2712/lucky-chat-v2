@@ -120,6 +120,34 @@ def _ensure_crypto_key_columns():
 
 _ensure_crypto_key_columns()
 
+def _ensure_read_receipt_settings_column():
+    """Add the per-account Read Receipts preference to existing users."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("users"):
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("users")}
+        if "read_receipts_enabled" in columns:
+            return
+
+        with engine.begin() as connection:
+            connection.execute(
+                sqlalchemy_text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN read_receipts_enabled INTEGER DEFAULT 1"
+                )
+            )
+
+        print("SETTINGS SCHEMA: read_receipts_enabled column added")
+    except Exception as exc:
+        print("SETTINGS SCHEMA ERROR:", exc)
+        traceback.print_exc()
+
+
+_ensure_read_receipt_settings_column()
+
+
 
 
 def resolve_user_by_username(db, username):
@@ -285,6 +313,11 @@ class PublicKeyUpload(BaseModel):
     public_key: str
 
 
+
+
+
+class ReadReceiptsPayload(BaseModel):
+    enabled: bool
 
 
 class CryptoBackupPayload(BaseModel):
@@ -917,20 +950,41 @@ async def websocket_endpoint(websocket: WebSocket):
             if data["type"] == "read":
                 db = SessionLocal()
 
-                msg = db.query(Message).filter(
-       	        Message.id == data["id"]
-              	).first()
+                try:
+                    msg = db.query(Message).filter(
+                        Message.id == data["id"]
+                    ).first()
 
-                if msg and msg.receiver == username:
-                    msg.read = 1
-                    db.commit()
+                    if msg and msg.receiver == username:
+                        # Enforce Read Receipts on the server so the preference
+                        # cannot be bypassed by another browser/device.
+                        read_receipts_enabled = True
+                        try:
+                            row = db.execute(
+                                sqlalchemy_text(
+                                    "SELECT read_receipts_enabled "
+                                    "FROM users WHERE username = :username"
+                                ),
+                                {"username": username}
+                            ).first()
+                            if row is not None and row[0] is not None:
+                                read_receipts_enabled = bool(int(row[0]))
+                        except Exception:
+                            # Preserve the existing behavior if an older
+                            # database has not yet added the setting column.
+                            read_receipts_enabled = True
 
-                    await manager.send(msg.sender, {
-                        "type": "read",
-                        "id": msg.id
-                    })
+                        if read_receipts_enabled:
+                            msg.read = 1
+                            db.commit()
 
-                db.close()
+                            await manager.send(msg.sender, {
+                                "type": "read",
+                                "id": msg.id
+                            })
+                finally:
+                    db.close()
+
                 continue
 
             if data["type"] == "reaction":
@@ -1984,6 +2038,85 @@ async def pwa_service_worker():
 @app.get("/offline.html")
 async def pwa_offline():
     return FileResponse("offline.html", media_type="text/html")
+
+
+@app.get("/settings/read-receipts")
+async def get_read_receipts_setting(request: Request):
+    """Return the signed-in account's server-side Read Receipts preference."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        enabled = True
+        try:
+            value = getattr(user, "read_receipts_enabled", None)
+            if value is not None:
+                enabled = bool(int(value))
+        except Exception:
+            pass
+
+        # For compatibility with deployments where the ORM model has not
+        # been regenerated yet, read the column directly when available.
+        try:
+            row = db.execute(
+                sqlalchemy_text(
+                    "SELECT read_receipts_enabled "
+                    "FROM users WHERE id = :user_id"
+                ),
+                {"user_id": user.id}
+            ).first()
+            if row is not None and row[0] is not None:
+                enabled = bool(int(row[0]))
+        except Exception:
+            pass
+
+        return {"success": True, "enabled": enabled}
+    finally:
+        db.close()
+
+
+@app.post("/settings/read-receipts")
+async def set_read_receipts_setting(
+    data: ReadReceiptsPayload,
+    request: Request
+):
+    """Persist the signed-in account's Read Receipts preference on the server."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        value = 1 if data.enabled else 0
+        db.execute(
+            sqlalchemy_text(
+                "UPDATE users "
+                "SET read_receipts_enabled = :value "
+                "WHERE id = :user_id"
+            ),
+            {"value": value, "user_id": user.id}
+        )
+        db.commit()
+
+        return {"success": True, "enabled": bool(value)}
+    except Exception as exc:
+        db.rollback()
+        print("READ RECEIPTS SETTING ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save Read Receipts setting"}
+    finally:
+        db.close()
+
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings(request: Request):

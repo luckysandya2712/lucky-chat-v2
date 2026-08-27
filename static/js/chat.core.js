@@ -46,6 +46,12 @@ let pendingDeliveredIds = new Set();
 // without showing the same outgoing message twice.
 let pendingOutgoingMessages = [];
 
+function isReadReceiptsEnabled() {
+    const saved = localStorage.getItem("lucky_setting_readReceipts");
+    return saved !== "0";
+}
+
+
 function formatAudioTime(totalSeconds) {
     const seconds = Math.max(0, Math.floor(totalSeconds || 0));
     const minutes = Math.floor(seconds / 60);
@@ -1033,7 +1039,10 @@ async function loadMessages() {
     data.forEach(msg => {
         if (msg.sender !== username && !deletedMessages[msg.id]) {
             pendingDeliveredIds.add(Number(msg.id));
-            pendingReadIds.add(Number(msg.id));
+
+            if (isReadReceiptsEnabled()) {
+                pendingReadIds.add(Number(msg.id));
+            }
         }
     });
 
@@ -1053,23 +1062,40 @@ function flushPendingReceiptAcknowledgements() {
         });
     });
 
-    pendingReadIds.forEach(id => {
-        sendSocket({
-            type: "read",
-            id
+    // Read receipts are privacy-controlled. Never flush queued read
+    // acknowledgements while the setting is disabled.
+    if (isReadReceiptsEnabled()) {
+        pendingReadIds.forEach(id => {
+            sendSocket({
+                type: "read",
+                id
+            });
         });
-    });
+    } else {
+        pendingReadIds.clear();
+    }
 
     pendingDeliveredIds.clear();
     pendingReadIds.clear();
 }
+
+window.addEventListener("storage", event => {
+    if (event.key !== "lucky_setting_readReceipts") return;
+
+    if (event.newValue === "0") {
+        pendingReadIds.clear();
+    }
+
+    flushPendingReceiptAcknowledgements();
+});
 
 function queueMessageReceipt(id) {
     if (id == null) return;
 
     const numericId = Number(id);
     pendingDeliveredIds.add(numericId);
-    if (friend) {
+
+    if (friend && isReadReceiptsEnabled()) {
         pendingReadIds.add(numericId);
     }
 
@@ -1923,6 +1949,27 @@ function playNotificationSound() {
         console.debug("Notification sound could not play:", error);
     }
 }
+
+window.addEventListener("lucky-setting-changed", event => {
+    if (event?.detail?.key !== "readReceipts") return;
+
+    if (event.detail.value === false) {
+        pendingReadIds.clear();
+    } else {
+        // Rebuild read acknowledgements for currently received messages.
+        document.querySelectorAll("[data-msg]").forEach(row => {
+            const id = Number(row.dataset.msg);
+            if (!Number.isNaN(id) && id > 0) {
+                const msg = messageMap[id];
+                if (msg && msg.sender !== username) {
+                    pendingReadIds.add(id);
+                }
+            }
+        });
+    }
+
+    flushPendingReceiptAcknowledgements();
+});
 
 window.addEventListener("lucky-setting-changed", event => {
     if (event?.detail?.key !== "notificationSound") return;
