@@ -527,6 +527,198 @@ button:active{
     }
 }
 
+
+
+/* =========================================================
+   LUCKY CHAT — PROFILE V3 POLISH
+   Interface-only upgrade. Existing endpoints/forms preserved.
+   ========================================================= */
+
+html{color-scheme:dark}
+
+body{
+    background:
+        radial-gradient(circle at 50% -12%,rgba(59,130,246,.18),transparent 34%),
+        radial-gradient(circle at 0% 45%,rgba(37,99,235,.06),transparent 28%),
+        #0b1220 !important;
+    color:#f8fafc;
+    font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif !important;
+    padding:12px 10px 30px !important;
+}
+.card{
+    max-width:560px !important;
+    margin:4px auto !important;
+    padding:0 !important;
+    overflow:hidden !important;
+    background:rgba(24,36,56,.96) !important;
+    border:1px solid rgba(148,163,184,.12) !important;
+    border-radius:25px !important;
+    box-shadow:0 28px 80px rgba(0,0,0,.36) !important;
+}
+.profile-nav{
+    height:64px !important;
+    padding:0 17px !important;
+    margin:0 !important;
+    background:rgba(15,23,42,.50) !important;
+    border-bottom:1px solid rgba(148,163,184,.12) !important;
+}
+.profile-nav span{font-size:16px !important;font-weight:800 !important}
+.back-btn{
+    width:40px !important;
+    height:40px !important;
+    margin:0 !important;
+    border-radius:13px !important;
+    background:#101a2b !important;
+    border:1px solid rgba(148,163,184,.14) !important;
+    color:#f8fafc !important;
+    box-shadow:none !important;
+}
+.profile-top{
+    position:relative !important;
+    padding:30px 22px 25px !important;
+    margin:0 !important;
+    background:
+        linear-gradient(180deg,rgba(37,99,235,.11),transparent 84%),
+        rgba(17,27,45,.42) !important;
+    border-bottom:1px solid rgba(148,163,184,.12) !important;
+}
+#preview{
+    width:116px !important;
+    height:116px !important;
+    margin:0 auto 17px !important;
+    padding:3px !important;
+    border:3px solid #3b82f6 !important;
+    background:#0f172a !important;
+    box-shadow:0 0 0 5px rgba(59,130,246,.08),0 14px 34px rgba(0,0,0,.30) !important;
+}
+.profile-title span{color:#60a5fa !important;font-size:10px !important;letter-spacing:3px !important}
+.profile-title h2{color:#f8fafc !important;font-family:Georgia,serif !important;font-size:25px !important}
+.profile-title p{color:#94a3b8 !important;font-size:13px !important}
+.card > form{padding:22px 22px 20px !important;gap:11px !important}
+label{color:#cbd5e1 !important;font-size:12px !important;font-weight:700 !important}
+input[type="text"],textarea{
+    width:100% !important;
+    background:#0d1728 !important;
+    color:#f8fafc !important;
+    border:1px solid rgba(148,163,184,.14) !important;
+    border-radius:13px !important;
+}
+input[type="text"]{height:48px !important}
+textarea{min-height:96px !important;height:96px !important}
+input[type="text"]:focus,textarea:focus{
+    background:#0f1b2e !important;
+    border-color:rgba(96,165,250,.58) !important;
+    box-shadow:0 0 0 4px rgba(59,130,246,.08) !important;
+}
+.card > form > button,.upload-section button{
+    min-height:48px !important;
+    border-radius:13px !important;
+    background:linear-gradient(135deg,#2563eb,#3b82f6) !important;
+    box-shadow:0 9px 23px rgba(37,99,235,.20) !important;
+    color:#fff !important;
+    font-weight:800 !important;
+}
+.upload-section{
+    margin:0 !important;
+    padding:22px !important;
+    background:rgba(13,23,40,.22) !important;
+    border-top:1px solid rgba(148,163,184,.12) !important;
+}
+.upload-heading h3{color:#f8fafc !important}
+.upload-heading p{color:#94a3b8 !important}
+.custom-file-btn{
+    height:50px !important;
+    border-radius:13px !important;
+    background:#101a2b !important;
+    border:1px dashed rgba(148,163,184,.22) !important;
+    color:#cbd5e1 !important;
+}
+#file-name{color:#94a3b8 !important}
+#profileUploadStatus{font-weight:650}
+.profile-helper{
+    margin:12px 0 0;
+    padding:10px 12px;
+    border:1px solid rgba(148,163,184,.10);
+    border-radius:12px;
+    background:rgba(15,23,42,.30);
+    color:#8fa2b8;
+    font-size:11px;
+    line-height:1.45;
+}
+.profile-limit{display:inline-block;margin-top:3px;color:#64748b;font-size:10px}
+.profile-save-loading{pointer-events:none;opacity:.78}
+.profile-save-loading::after{
+    content:"";
+    width:14px;height:14px;margin-left:8px;display:inline-block;vertical-align:-2px;
+    border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;
+    animation:profileSpin .7s linear infinite;
+}
+@keyframes profileSpin{to{transform:rotate(360deg)}}
+
+html.lucky-light{color-scheme:light}
+html.lucky-light body{
+    background:
+        radial-gradient(circle at 50% -12%,rgba(59,130,246,.12),transparent 34%),
+        #f3f7fb !important;
+    color:#0f172a !important;
+}
+html.lucky-light .card{
+    background:rgba(255,255,255,.95) !important;
+    border-color:#dce5ee !important;
+    box-shadow:0 28px 80px rgba(15,23,42,.10) !important;
+}
+html.lucky-light .profile-nav{
+    background:rgba(248,250,252,.86) !important;
+    border-bottom-color:#e2e8f0 !important;
+}
+html.lucky-light .profile-nav span{color:#0f172a !important}
+html.lucky-light .back-btn{
+    background:linear-gradient(145deg,#f2f6fa,#e4edf6) !important;
+    border-color:#d4dfeb !important;
+    color:#1e3a5f !important;
+}
+html.lucky-light .profile-top{
+    background:
+        linear-gradient(180deg,rgba(59,130,246,.08),transparent 84%),
+        rgba(248,250,252,.70) !important;
+    border-bottom-color:#e2e8f0 !important;
+}
+html.lucky-light #preview{
+    background:#eef3f8 !important;
+    box-shadow:0 0 0 5px rgba(59,130,246,.08),0 14px 34px rgba(15,23,42,.10) !important;
+}
+html.lucky-light .profile-title h2{color:#0f172a !important}
+html.lucky-light .profile-title p{color:#64748b !important}
+html.lucky-light label{color:#334155 !important}
+html.lucky-light input[type="text"],html.lucky-light textarea{
+    background:#f2f6fa !important;color:#0f172a !important;border-color:#d4dfeb !important;
+}
+html.lucky-light input[type="text"]:focus,html.lucky-light textarea:focus{background:#fff !important}
+html.lucky-light .upload-section{
+    background:rgba(241,245,249,.76) !important;
+    border-top-color:#e2e8f0 !important;
+}
+html.lucky-light .upload-heading h3{color:#0f172a !important}
+html.lucky-light .upload-heading p{color:#64748b !important}
+html.lucky-light .custom-file-btn{
+    background:linear-gradient(145deg,#f7fafc,#edf3f8) !important;
+    border-color:#d4dfeb !important;color:#334155 !important;
+}
+html.lucky-light #file-name{color:#64748b !important}
+html.lucky-light .profile-helper{
+    background:linear-gradient(145deg,#f7fafc,#edf3f8);
+    border-color:#dfe7ef;color:#64748b;
+}
+html.lucky-light .profile-limit{color:#7b8798}
+
+@media(max-width:480px){
+    body{padding:8px 7px 25px !important}
+    .card{border-radius:22px !important}
+    .profile-top{padding:27px 17px 23px !important}
+    #preview{width:108px !important;height:108px !important}
+    .card > form,.upload-section{padding-left:17px !important;padding-right:17px !important}
+}
+
 </style>
 
 </head>
@@ -569,6 +761,7 @@ button:active{
             name="bio"
             placeholder="Write something about yourself..."
             maxlength="150">{{ user.bio or '' }}</textarea>
+        <div id="bioCounter" class="profile-helper" style="margin-top:-2px;text-align:right;padding:7px 10px;">0 / 150</div>
 
         <button type="submit">Save Changes</button>
 
@@ -578,6 +771,10 @@ button:active{
         <div class="upload-heading">
             <h3>Profile Picture</h3>
             <p>Choose a new image for your profile</p>
+        <div class="profile-helper">
+            Images are shown immediately in the preview before upload.
+            <span class="profile-limit">Maximum file size: 5 MB</span>
+        </div>
         </div>
 
         <form id="profilePictureForm" action="/upload-profile" method="post" enctype="multipart/form-data">
@@ -712,6 +909,46 @@ function updateFileName(input) {
             submitButton.style.opacity = "";
         }
     });
+})();
+</script>
+
+
+
+<script id="lucky-profile-v3-js">
+(function(){
+    const THEME_KEY = "lucky_setting_darkMode";
+    function applyProfileTheme(){
+        const dark = localStorage.getItem(THEME_KEY) !== "0";
+        document.documentElement.classList.toggle("lucky-light", !dark);
+        document.documentElement.dataset.luckyTheme = dark ? "dark" : "light";
+    }
+    applyProfileTheme();
+    window.addEventListener("storage", e => {
+        if(e.key === THEME_KEY) applyProfileTheme();
+    });
+    window.addEventListener("lucky-setting-changed", e => {
+        if(e?.detail?.key === "darkMode") applyProfileTheme();
+    });
+
+    const bio = document.querySelector('textarea[name="bio"]');
+    const counter = document.getElementById("bioCounter");
+    function updateBioCount(){
+        if(bio && counter) counter.textContent = bio.value.length + " / 150";
+    }
+    if(bio){
+        bio.addEventListener("input", updateBioCount);
+        updateBioCount();
+    }
+
+    const profileForm = document.querySelector('form[action="/update-profile"]');
+    const save = profileForm?.querySelector('button[type="submit"]');
+    if(profileForm && save){
+        profileForm.addEventListener("submit", () => {
+            save.classList.add("profile-save-loading");
+            save.textContent = "Saving…";
+            save.disabled = true;
+        });
+    }
 })();
 </script>
 
