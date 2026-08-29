@@ -1,38 +1,30 @@
-from app.websocket import manager
-from app.models import Message, User, Status
-from app.database import SessionLocal, Base, engine
-from app import models
-from app.auth import hash_password
-from app.notification import add_subscription
-
-from fastapi import (
-    FastAPI,
-    Request,
-    WebSocket,
-    WebSocketDisconnect,
-    Form,
-    UploadFile,
-    File,
-)
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
-from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func
-
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from pathlib import Path
-
 import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import os
 import shutil
 import time
 import traceback
 
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Form, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.websocket import manager
+from app.models import Message, User, Status
+from app.database import SessionLocal, Base, engine
+from app import models
+from app.auth import hash_password, verify_password
+from app.notification import add_subscription
 
 Base.metadata.create_all(bind=engine)
 
@@ -352,7 +344,6 @@ async def register_user(
     finally:
         db.close()
 
-from pydantic import BaseModel
 
 class PublicKeyUpload(BaseModel):
     public_key: str
@@ -644,7 +635,6 @@ async def chat(friend: str, request: Request):
         }
     )
 
-from fastapi import Request
 
 @app.post("/login")
 async def login_user(
@@ -664,7 +654,6 @@ async def login_user(
             db.close()
             return {"message": "Invalid username or password"}
 
-        from app.auth import verify_password
 
         if not verify_password(password, user.password):
             db.close()
@@ -692,9 +681,6 @@ async def login_user(
     finally:
         db.close()
 
-from fastapi import WebSocket
-from app.websocket import manager
-import json
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -1788,7 +1774,6 @@ PINNED_CHATS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _load_pinned_chats():
-    import json
     try:
         if not PINNED_CHATS_FILE.exists():
             return {}
@@ -1801,7 +1786,6 @@ def _load_pinned_chats():
 
 
 def _save_pinned_chats(value):
-    import json
     tmp = PINNED_CHATS_FILE.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(value, f, ensure_ascii=False, indent=2)
@@ -2120,7 +2104,6 @@ async def delete_status(status_id: int, request: Request):
 
 
 # PWA root files
-from fastapi.responses import FileResponse
 
 @app.get("/manifest.json")
 async def pwa_manifest():
@@ -2228,7 +2211,6 @@ async def change_password(
         if not user:
             return {"success": False, "error": "User not found"}
 
-        from app.auth import verify_password
         if not verify_password(current_password, user.password):
             return {"success": False, "error": "Current password is incorrect"}
 
@@ -2513,4 +2495,3 @@ async def update_profile(
         )
     finally:
         db.close()
-
