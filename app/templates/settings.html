@@ -739,7 +739,7 @@ html.lucky-light .language-close{
                 <span class="setting-desc">Show notifications for new messages</span>
             </span>
             <label class="switch">
-                <input type="checkbox" data-setting-key="notifications" checked onchange="savePreference('notifications',this.checked)">
+                <input type="checkbox" data-setting-key="notifications" checked onchange="savePreference('notifications',this.checked); window.dispatchEvent(new CustomEvent('lucky-setting-changed', { detail: { key: 'notifications', value: this.checked } }))">
                 <span class="slider"></span>
             </label>
         </div>

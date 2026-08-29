@@ -1994,14 +1994,25 @@ window.addEventListener("lucky-setting-changed", event => {
 
 function setupPushNotifications() {
     async function requestNotify() {
-        if ("Notification" in window && Notification.permission === "default") {
-            try {
-                await Notification.requestPermission();
-            } catch (e) {}
-        }
+        if (localStorage.getItem("lucky_setting_notifications") === "0") return;
+        if (!("Notification" in window) || Notification.permission !== "default") return;
+
+        try {
+            await Notification.requestPermission();
+        } catch (e) {}
     }
 
     window.addEventListener("load", requestNotify);
+
+    // React immediately when the user enables/disables Message Notifications
+    // from Settings. No page reload is required.
+    window.addEventListener("lucky-setting-changed", event => {
+        if (event?.detail?.key !== "notifications") return;
+
+        if (event.detail.value === true) {
+            void requestNotify();
+        }
+    });
 
     window.luckyNotify = function (sender, message) {
         // Respect the Message Notifications setting.
