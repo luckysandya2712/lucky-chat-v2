@@ -209,9 +209,9 @@ def resolve_user_by_username(db, username):
 
 templates = Jinja2Templates(directory="app/templates")
 
-def get_authenticated_username(request: Request):
+def get_authenticated_username(scope):
     """Return the authenticated username from the signed session cookie."""
-    username = request.session.get("username")
+    username = scope.session.get("username")
     if not username:
         return None
     return str(username).strip()
@@ -693,9 +693,9 @@ import json
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
 
-    # Authenticate the WebSocket using the signed session cookie.
-    # Never trust a username supplied by the browser query string.
-    username = websocket.session.get("username")
+    # Authenticate the WebSocket using the same signed-session helper used
+    # by normal HTTP routes. Never trust a username supplied by the query string.
+    username = get_authenticated_username(websocket)
     if not username:
         await websocket.close(code=1008)
         return
@@ -1345,8 +1345,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.websocket("/dashboard_ws")
 async def dashboard_ws(websocket: WebSocket):
-    # Authenticate the dashboard WebSocket from the signed session.
-    username = websocket.session.get("username")
+    # Authenticate the dashboard WebSocket through the same signed-session
+    # helper used everywhere else.
+    username = get_authenticated_username(websocket)
     if not username:
         await websocket.close(code=1008)
         return
