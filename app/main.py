@@ -2372,8 +2372,8 @@ async def upload_profile(
             status_code=303
         )
 
-    # Read at most 5 MB + 1 byte
-    max_size = 5 * 1024 * 1024
+    # Read at most 10 MB + 1 byte
+    max_size = 10 * 1024 * 1024
     try:
         data = await file.read(max_size + 1)
     finally:

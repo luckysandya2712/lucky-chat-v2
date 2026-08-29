@@ -773,7 +773,7 @@ html.lucky-light .profile-limit{color:#7b8798}
             <p>Choose a new image for your profile</p>
         <div class="profile-helper">
             Images are shown immediately in the preview before upload.
-            <span class="profile-limit">Maximum file size: 5 MB</span>
+            <span class="profile-limit">Maximum file size: 10 MB</span>
         </div>
         </div>
 
@@ -842,8 +842,8 @@ function updateFileName(input) {
             return;
         }
 
-        if (file.size > 5 * 1024 * 1024) {
-            status.textContent = "Image is too large. Maximum size is 5 MB.";
+        if (file.size > 10 * 1024 * 1024) {
+            status.textContent = "Image is too large. Maximum size is 10 MB.";
             status.style.color = "#fca5a5";
             return;
         }
