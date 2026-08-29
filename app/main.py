@@ -328,27 +328,29 @@ async def register_user(
     password: str = Form(...)
 ):
     db = SessionLocal()
+    try:
 
-    existing = db.query(User).filter(
-        (User.username == username) |
-        (User.email == email)
-    ).first()
+        existing = db.query(User).filter(
+            (User.username == username) |
+            (User.email == email)
+        ).first()
 
-    if existing:
+        if existing:
+            db.close()
+            return {"message": "Username or email already exists"}
+
+        user = User(
+            username=username,
+            email=email,
+            password=hash_password(password)
+        )
+
+        db.add(user)
+        db.commit()
+        return RedirectResponse(url="/login", status_code=303)
+
+    finally:
         db.close()
-        return {"message": "Username or email already exists"}
-
-    user = User(
-        username=username,
-        email=email,
-        password=hash_password(password)
-    )
-
-    db.add(user)
-    db.commit()
-    db.close()
-
-    return RedirectResponse(url="/login", status_code=303)
 
 from pydantic import BaseModel
 
@@ -546,72 +548,74 @@ async def dashboard(request: Request):
     if not current_user:
         return RedirectResponse("/login", status_code=303)
     db = SessionLocal()
-    users = db.query(User).all()
-    chat_list = []
-    last_messages = {}
-    unread_counts = {}
+    try:
+        users = db.query(User).all()
+        chat_list = []
+        last_messages = {}
+        unread_counts = {}
 
-    for user in users:
+        for user in users:
 
-        current_user = get_authenticated_username(request)
+            current_user = get_authenticated_username(request)
 
-        count = db.query(Message).filter(
-        Message.sender == user.username,
-        Message.receiver == current_user,
-        Message.unread == 1
-        ).count()
+            count = db.query(Message).filter(
+            Message.sender == user.username,
+            Message.receiver == current_user,
+            Message.unread == 1
+            ).count()
 
-        unread_counts[user.username] = count
+            unread_counts[user.username] = count
 
-        msg = (
-        db.query(Message)
-        .filter(
-        (
-            (Message.sender == current_user) &
-            (Message.receiver == user.username)
-        ) |
-        (
-            (Message.sender == user.username) &
-            (Message.receiver == current_user)
-        )
-        )
-        .order_by(Message.id.desc())
-        .first()
-        )
+            msg = (
+            db.query(Message)
+            .filter(
+            (
+                (Message.sender == current_user) &
+                (Message.receiver == user.username)
+            ) |
+            (
+                (Message.sender == user.username) &
+                (Message.receiver == current_user)
+            )
+            )
+            .order_by(Message.id.desc())
+            .first()
+            )
 
-        print("USER:", user.username)
-        print("MSG :", msg.text if msg else "NO MESSAGE")
-        print("TIME:", msg.timestamp if msg else "NO TIME")
-        print("----------------")
+            print("USER:", user.username)
+            print("MSG :", msg.text if msg else "NO MESSAGE")
+            print("TIME:", msg.timestamp if msg else "NO TIME")
+            print("----------------")
 
-        last_messages[user.username] = msg
+            last_messages[user.username] = msg
 
-        chat_list.append({
-            "user": user,
-            "last_message": msg,
-            "time": msg.timestamp if msg else ""
-        })
+            chat_list.append({
+                "user": user,
+                "last_message": msg,
+                "time": msg.timestamp if msg else ""
+            })
 
-        chat_list.sort(
-        key=lambda x: x["last_message"].id if x["last_message"] else 0,
-        reverse=True
-        )
+            chat_list.sort(
+            key=lambda x: x["last_message"].id if x["last_message"] else 0,
+            reverse=True
+            )
 
-    db.close()
+        return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
 
-    return templates.TemplateResponse(
-    request=request,
-    name="dashboard.html",
+        context={
+            "request": request,
+            "chat_list": chat_list,
+            "username": current_user,
+            "last_messages": last_messages,
+            "unread_counts": unread_counts
+        }
 
-    context={
-        "request": request,
-        "chat_list": chat_list,
-        "username": current_user,
-        "last_messages": last_messages,
-        "unread_counts": unread_counts
-    }
+    )
 
-)
+    finally:
+        db.close()
 
 @app.get("/crypto-recovery", response_class=HTMLResponse)
 async def crypto_recovery(request: Request):
@@ -650,41 +654,43 @@ async def login_user(
 ):
 
     db = SessionLocal()
+    try:
 
-    user = db.query(User).filter(
-        User.username == username
-    ).first()
+        user = db.query(User).filter(
+            User.username == username
+        ).first()
 
-    if not user:
+        if not user:
+            db.close()
+            return {"message": "Invalid username or password"}
+
+        from app.auth import verify_password
+
+        if not verify_password(password, user.password):
+            db.close()
+            return {"message": "Invalid username or password"}
+
+        request.session["username"] = user.username
+
+        response = RedirectResponse(
+            url="/dashboard",
+            status_code=303
+        )
+
+        # Legacy compatibility cookie used by the existing client-side chat/crypto
+        # code. Server authorization still uses the signed session; this cookie is
+        # never trusted for authentication or authorization.
+        response.set_cookie(
+            "username",
+            user.username,
+            httponly=False,
+            samesite="lax",
+        )
+
+        return response
+
+    finally:
         db.close()
-        return {"message": "Invalid username or password"}
-
-    from app.auth import verify_password
-
-    if not verify_password(password, user.password):
-        db.close()
-        return {"message": "Invalid username or password"}
-
-    request.session["username"] = user.username
-
-    response = RedirectResponse(
-        url="/dashboard",
-        status_code=303
-    )
-
-    # Legacy compatibility cookie used by the existing client-side chat/crypto
-    # code. Server authorization still uses the signed session; this cookie is
-    # never trusted for authentication or authorization.
-    response.set_cookie(
-        "username",
-        user.username,
-        httponly=False,
-        samesite="lax",
-    )
-
-    db.close()
-
-    return response
 
 from fastapi import WebSocket
 from app.websocket import manager
@@ -2489,20 +2495,22 @@ async def update_profile(
     username = request.session.get("username")
 
     db = SessionLocal()
+    try:
 
-    user = db.query(User).filter(
-        User.username == username
-    ).first()
+        user = db.query(User).filter(
+            User.username == username
+        ).first()
 
-    if user:
-        user.display_name = display_name.strip()
-        user.bio = bio.strip()
+        if user:
+            user.display_name = display_name.strip()
+            user.bio = bio.strip()
 
-        db.commit()
+            db.commit()
 
-    db.close()
+        return RedirectResponse(
+            "/profile",
+            status_code=303
+        )
+    finally:
+        db.close()
 
-    return RedirectResponse(
-        "/profile",
-        status_code=303
-    )
