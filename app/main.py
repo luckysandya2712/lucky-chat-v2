@@ -1,32 +1,38 @@
 from app.websocket import manager
-from app.models import Message
-from app.database import engine
+from app.models import Message, User, Status
+from app.database import SessionLocal, Base, engine
 from app import models
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi import Form
-from fastapi.responses import RedirectResponse
-from app.database import SessionLocal
-from app.models import User, Status
 from app.auth import hash_password
-from app.database import Base, engine
+from app.notification import add_subscription
+
+from fastapi import (
+    FastAPI,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    Form,
+    UploadFile,
+    File,
+)
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func
-from fastapi.staticfiles import StaticFiles
-from fastapi import UploadFile, File
+
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-import shutil
-import os
-import asyncio
-import traceback
-import hmac
-import hashlib
-import base64
-import time
 from pathlib import Path
-from .notification import add_subscription
+
+import asyncio
+import base64
+import hashlib
+import hmac
+import os
+import shutil
+import time
+import traceback
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -582,7 +588,7 @@ async def dashboard(request: Request):
 
     return templates.TemplateResponse(
     request=request,
-    name="dashboard_backup.html",
+    name="dashboard.html",
 
     context={
         "request": request,
