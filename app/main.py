@@ -209,6 +209,15 @@ def resolve_user_by_username(db, username):
 
 templates = Jinja2Templates(directory="app/templates")
 
+def get_authenticated_username(request: Request):
+    """Return the authenticated username from the signed session cookie."""
+    username = request.session.get("username")
+    if not username:
+        return None
+    return str(username).strip()
+
+
+
 TURN_SERVER_URL = os.environ.get("TURN_SERVER_URL", "").strip()
 TURN_SHARED_SECRET = os.environ.get("TURN_SHARED_SECRET", "").strip()
 TURN_CREDENTIAL_TTL = max(
@@ -532,6 +541,10 @@ async def get_public_key(username: str):
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
+
+    current_user = get_authenticated_username(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=303)
     db = SessionLocal()
     users = db.query(User).all()
     chat_list = []
@@ -540,11 +553,11 @@ async def dashboard(request: Request):
 
     for user in users:
 
-        current_user = request.cookies.get("username")
+        current_user = get_authenticated_username(request)
 
         count = db.query(Message).filter(
         Message.sender == user.username,
-        Message.receiver == request.cookies.get("username"),
+        Message.receiver == current_user,
         Message.unread == 1
         ).count()
 
@@ -593,7 +606,7 @@ async def dashboard(request: Request):
     context={
         "request": request,
         "chat_list": chat_list,
-        "username": request.cookies.get("username"),
+        "username": current_user,
         "last_messages": last_messages,
         "unread_counts": unread_counts
     }
@@ -659,8 +672,15 @@ async def login_user(
         status_code=303
     )
 
-    response.set_cookie("username",
-    user.username)
+    # Legacy compatibility cookie used by the existing client-side chat/crypto
+    # code. Server authorization still uses the signed session; this cookie is
+    # never trusted for authentication or authorization.
+    response.set_cookie(
+        "username",
+        user.username,
+        httponly=False,
+        samesite="lax",
+    )
 
     db.close()
 
@@ -1353,7 +1373,9 @@ async def dashboard_ws(websocket: WebSocket):
 @app.get("/messages/{friend}")
 async def get_messages(friend: str, request: Request):
 
-    username = request.cookies.get("username")
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "error": "Not logged in", "messages": []}
 
     db = SessionLocal()
 
@@ -1464,9 +1486,11 @@ async def get_messages(friend: str, request: Request):
 @app.get("/dashboard-data")
 async def dashboard_data(request: Request):
 
-    db = SessionLocal()
+    current_user = get_authenticated_username(request)
+    if not current_user:
+        return {"success": False, "error": "Not logged in", "users": []}
 
-    current_user = request.cookies.get("username")
+    db = SessionLocal()
 
     users = db.query(User).all()
 
@@ -2309,7 +2333,10 @@ async def settings(request: Request):
 
 @app.get("/profile", response_class=HTMLResponse)
 async def profile(request: Request):
-    username = request.cookies.get("username")
+
+    username = get_authenticated_username(request)
+    if not username:
+        return RedirectResponse("/login", status_code=303)
 
     db = SessionLocal()
 
