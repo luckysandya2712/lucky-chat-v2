@@ -7,7 +7,7 @@
 
 <meta
 name="viewport"
-content="width=device-width, initial-scale=1.0">
+content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 <title>Lucky Chat</title>
 
@@ -26,6 +26,7 @@ content="width=device-width, initial-scale=1.0">
 
 <link rel="preconnect"
 href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
 <link
 href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
@@ -43,6 +44,7 @@ font-family:Poppins,sans-serif;
 body{
 background:#0f172a;
 height:100vh;
+height:100dvh;
 overflow:hidden;
 }
 
@@ -50,6 +52,7 @@ overflow:hidden;
 display:flex;
 width:100%;
 height:100vh;
+height:100dvh;
 }
 
 .sidebar{
@@ -728,6 +731,11 @@ body{
     opacity:1!important;
     position:relative!important;
     z-index:3!important;
+}
+.chat-list .chat-item.is-search-hidden{
+    display:none!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
 }
 @media(max-width:768px){
     .sidebar{
@@ -5180,15 +5188,6 @@ body{
   }
 }
 </style>
-
-
-
-
-
-
-
-<style id="status-viewer-header-v41">/* superseded by lucky-status-viewer-cinematic-v3 */</style>
-
 <style id="lucky-status-preview-live-v31">
 /* Live Create Status preview: caption, theme wash, and working options. */
 #statusCreateModal .st15-preview-frame{
@@ -5267,6 +5266,484 @@ body{
 }
 </style>
 
+
+
+<style id="lucky-final-ui-polish-v1">
+/* ============================================================
+   LUCKY CHAT — FINAL UI POLISH V1
+   Visual-only pass.
+   No DOM/ID/API/event-handler changes.
+   ============================================================ */
+
+:root{
+  --lc-surface:rgba(13,22,39,.82);
+  --lc-surface-strong:rgba(16,27,47,.92);
+  --lc-line:rgba(148,190,226,.14);
+  --lc-line-strong:rgba(100,191,255,.30);
+  --lc-text:#f4f8ff;
+  --lc-muted:#8195ad;
+  --lc-accent:#68c8ff;
+  --lc-violet:#9b83ff;
+}
+
+/* ---------- Dashboard shell ---------- */
+body{
+  background:
+    radial-gradient(760px 360px at -8% -12%,rgba(58,188,255,.13),transparent 58%),
+    radial-gradient(740px 390px at 108% 112%,rgba(137,87,255,.11),transparent 60%),
+    #070b15!important;
+}
+
+.sidebar{
+  background:
+    linear-gradient(180deg,rgba(10,18,33,.97),rgba(7,13,26,.985))!important;
+  border-right:1px solid rgba(148,190,226,.10)!important;
+  box-shadow:
+    16px 0 46px rgba(0,0,0,.18),
+    inset -1px 0 0 rgba(255,255,255,.02)!important;
+}
+
+.logo{
+  height:84px!important;
+  padding:0 18px 0 20px!important;
+  background:
+    linear-gradient(180deg,rgba(15,30,50,.72),rgba(8,16,29,.16))!important;
+  border-bottom:1px solid rgba(148,190,226,.09)!important;
+}
+
+.logo span{
+  gap:10px!important;
+  font-size:22px!important;
+  letter-spacing:-.04em!important;
+}
+
+.logo-mark{
+  width:38px!important;
+  height:38px!important;
+  border-radius:13px!important;
+  background:
+    radial-gradient(circle at 30% 25%,rgba(126,224,255,.34),transparent 45%),
+    linear-gradient(145deg,rgba(40,145,220,.26),rgba(102,82,211,.20))!important;
+  border:1px solid rgba(127,207,255,.30)!important;
+  box-shadow:
+    0 9px 24px rgba(20,125,207,.20),
+    inset 0 1px 0 rgba(255,255,255,.08)!important;
+}
+
+.settings-btn{
+  width:42px!important;
+  height:42px!important;
+  border-radius:13px!important;
+  background:rgba(24,37,58,.72)!important;
+  border:1px solid rgba(164,202,232,.15)!important;
+  box-shadow:
+    0 9px 22px rgba(0,0,0,.18),
+    inset 0 1px 0 rgba(255,255,255,.04)!important;
+}
+
+.settings-btn:hover{
+  background:rgba(35,53,79,.88)!important;
+  border-color:rgba(112,202,255,.32)!important;
+}
+
+.search{
+  padding:14px 16px 9px!important;
+}
+
+.search:before{
+  left:30px!important;
+  color:#82d5ff!important;
+  opacity:.90;
+}
+
+.search input{
+  height:52px!important;
+  padding:0 18px 0 45px!important;
+  border-radius:17px!important;
+  background:
+    linear-gradient(180deg,rgba(24,38,60,.92),rgba(15,24,41,.90))!important;
+  border:1px solid rgba(155,196,224,.10)!important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.035),
+    0 10px 24px rgba(0,0,0,.14)!important;
+}
+
+.search input:focus{
+  border-color:rgba(92,198,255,.44)!important;
+  box-shadow:
+    0 0 0 4px rgba(61,168,240,.10),
+    0 14px 32px rgba(0,0,0,.18)!important;
+}
+
+/* ---------- Status shelf ---------- */
+.status-section{
+  margin:3px 9px 7px!important;
+  padding:15px 13px 13px!important;
+  border:1px solid rgba(111,194,255,.13)!important;
+  border-radius:21px!important;
+  background:
+    radial-gradient(260px 150px at 0% 0%,rgba(58,190,255,.13),transparent 72%),
+    radial-gradient(250px 150px at 100% 100%,rgba(165,94,255,.10),transparent 72%),
+    linear-gradient(180deg,rgba(11,24,42,.91),rgba(7,14,26,.96))!important;
+  box-shadow:
+    0 18px 40px rgba(0,0,0,.15),
+    inset 0 1px 0 rgba(255,255,255,.035)!important;
+}
+
+.status-heading{
+  margin-bottom:13px!important;
+}
+
+.status-heading h3{
+  font-size:24px!important;
+  letter-spacing:-.055em!important;
+}
+
+.status-heading>div:first-child:before{
+  font-size:7px!important;
+  letter-spacing:.20em!important;
+  color:#7bd1ff!important;
+}
+
+.status-heading p{
+  font-size:8px!important;
+  color:#7f94aa!important;
+}
+
+.status-see-all{
+  min-width:93px!important;
+  height:39px!important;
+  padding:0 12px!important;
+  border-radius:13px!important;
+  background:
+    linear-gradient(180deg,rgba(54,138,236,.24),rgba(27,53,96,.15))!important;
+  border-color:rgba(112,198,255,.30)!important;
+  box-shadow:
+    0 10px 24px rgba(0,0,0,.16),
+    inset 0 1px 0 rgba(255,255,255,.05)!important;
+}
+
+.status-row{
+  gap:16px!important;
+  padding-bottom:4px!important;
+}
+
+.status-card.story-card{
+  flex-basis:92px!important;
+  width:92px!important;
+  height:124px!important;
+}
+
+.story-card-top{
+  width:90px!important;
+  height:90px!important;
+}
+
+.story-avatar-wrap{
+  width:90px!important;
+  height:90px!important;
+  padding:3px!important;
+  box-shadow:
+    0 0 0 2px #020913,
+    0 0 0 5px rgba(94,175,255,.07),
+    0 14px 30px rgba(25,105,190,.24)!important;
+}
+
+.story-card-bottom .status-name{
+  font-size:8.8px!important;
+}
+
+.story-card-bottom .status-hint{
+  margin-top:4px!important;
+  font-size:7.4px!important;
+}
+
+/* ---------- Chat list ---------- */
+.chat-list{
+  padding:5px 12px 24px!important;
+}
+
+.chat-item{
+  min-height:81px!important;
+  margin:6px 0!important;
+  padding:12px 11px!important;
+  gap:14px!important;
+  border-radius:18px!important;
+  background:
+    linear-gradient(180deg,rgba(18,29,48,.30),rgba(10,18,31,.20))!important;
+  border-color:rgba(148,184,214,.045)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.015)!important;
+}
+
+.chat-item:hover{
+  background:
+    linear-gradient(135deg,rgba(37,120,188,.10),rgba(24,35,55,.34))!important;
+  border-color:rgba(98,188,243,.17)!important;
+}
+
+.chat-item.active{
+  background:
+    linear-gradient(135deg,rgba(46,140,222,.15),rgba(46,72,117,.20))!important;
+  border-color:rgba(105,194,255,.20)!important;
+}
+
+.chat-item.active::before{
+  width:3px!important;
+  top:15px!important;
+  bottom:15px!important;
+  background:linear-gradient(180deg,#58d7ff,#7698ff)!important;
+  box-shadow:0 0 13px rgba(83,200,255,.35)!important;
+}
+
+.avatar{
+  width:55px!important;
+  height:55px!important;
+  min-width:55px!important;
+  border:2px solid rgba(78,182,255,.70)!important;
+  box-shadow:
+    0 0 0 3px rgba(61,163,231,.08),
+    0 8px 20px rgba(11,101,165,.15)!important;
+}
+
+.chat-name-row h4,
+.chat-top h4{
+  font-size:16px!important;
+  font-weight:680!important;
+}
+
+.message-preview{
+  color:#98a9bd!important;
+  font-size:12.5px!important;
+  margin-top:5px!important;
+}
+
+.status{
+  font-size:11.5px!important;
+}
+
+.time{
+  color:#71869c!important;
+  font-size:10.5px!important;
+}
+
+.badge{
+  min-width:25px!important;
+  height:25px!important;
+  padding:0 7px!important;
+  background:linear-gradient(145deg,#3bdc9e,#17a972)!important;
+  box-shadow:0 6px 15px rgba(16,185,129,.20)!important;
+}
+
+/* ---------- Desktop chat panel ---------- */
+.chat{
+  background:
+    radial-gradient(620px 360px at 85% 0%,rgba(54,120,235,.055),transparent 72%),
+    #090f1b!important;
+}
+
+.chat-header{
+  height:78px!important;
+  padding:0 24px!important;
+  background:
+    linear-gradient(180deg,rgba(17,29,48,.88),rgba(10,18,31,.78))!important;
+  border-bottom:1px solid rgba(148,190,226,.08)!important;
+  backdrop-filter:blur(18px)!important;
+}
+
+.header-avatar{
+  width:49px!important;
+  height:49px!important;
+  border-color:rgba(79,184,255,.72)!important;
+  box-shadow:0 7px 20px rgba(23,111,184,.16)!important;
+}
+
+.header-info h3{
+  font-size:18px!important;
+  letter-spacing:-.03em!important;
+}
+
+.header-info p{
+  margin-top:3px!important;
+  font-size:11px!important;
+}
+
+/* ---------- Status Viewer: final consistency pass ---------- */
+#statusViewerModal.status-viewer-modal-30{
+  background:
+    radial-gradient(900px 480px at 12% -16%,rgba(54,194,255,.19),transparent 50%),
+    radial-gradient(820px 470px at 106% 115%,rgba(165,83,255,.16),transparent 52%),
+    #02050b!important;
+  padding:12px!important;
+}
+
+.status-viewer-30{
+  width:min(392px,calc(100vw - 24px))!important;
+  height:min(852px,calc(100dvh - 24px))!important;
+  border-radius:34px!important;
+  box-shadow:
+    0 0 0 1px rgba(109,201,255,.30),
+    0 0 0 3px rgba(108,120,255,.08),
+    0 0 46px rgba(73,170,255,.18),
+    0 34px 90px rgba(0,0,0,.62)!important;
+}
+
+.status-viewer-30 .status-progress-track{
+  left:18px!important;
+  right:18px!important;
+  top:15px!important;
+  height:3px!important;
+}
+
+.status-viewer-30 .status-viewer-head-30{
+  top:28px!important;
+  padding:0 15px!important;
+}
+
+.status-viewer-30 .status-viewer-person strong{
+  font-size:15.5px!important;
+  font-weight:720!important;
+}
+
+.status-viewer-30 .status-viewer-person span{
+  font-size:10.5px!important;
+  color:rgba(255,255,255,.72)!important;
+}
+
+.status-viewer-30 .status-viewer-avatar-ring{
+  width:42px!important;
+  height:42px!important;
+  flex-basis:42px!important;
+}
+
+.status-viewer-30 .status-more-btn,
+.status-viewer-30 .status-viewer-icon-btn{
+  width:40px!important;
+  min-width:40px!important;
+  height:40px!important;
+  min-height:40px!important;
+  border-radius:13px!important;
+  background:rgba(7,12,21,.45)!important;
+  border-color:rgba(255,255,255,.16)!important;
+}
+
+.status-viewer-30 .status-stage-30{
+  background:#000!important;
+}
+
+.status-viewer-30 .status-viewer-bottom-30{
+  left:10px!important;
+  right:10px!important;
+  bottom:max(10px,env(safe-area-inset-bottom,0px))!important;
+  padding:7px!important;
+  border-radius:18px!important;
+  background:
+    linear-gradient(180deg,rgba(12,20,34,.83),rgba(5,10,18,.94))!important;
+  border-color:rgba(182,215,241,.14)!important;
+  box-shadow:
+    0 22px 56px rgba(0,0,0,.46),
+    inset 0 1px 0 rgba(255,255,255,.04)!important;
+  backdrop-filter:blur(22px)!important;
+}
+
+.status-viewer-30 .status-reply-input{
+  height:41px!important;
+  border-radius:13px!important;
+  background:rgba(1,7,13,.70)!important;
+  border-color:rgba(164,201,229,.13)!important;
+}
+
+.status-viewer-30 .status-heart-btn{
+  width:41px!important;
+  height:41px!important;
+  flex-basis:41px!important;
+  border-radius:13px!important;
+}
+
+/* Preserve and strengthen the currently-working liked state. */
+.status-viewer-30 .status-heart-btn.liked{
+  color:#ff5b96!important;
+  border-color:rgba(255,91,150,.42)!important;
+  background:rgba(255,91,150,.14)!important;
+}
+
+.status-viewer-30 .status-heart-btn.liked svg{
+  fill:#ff5b96!important;
+  stroke:#ff5b96!important;
+}
+
+.status-viewer-30 .status-tool-btn-30{
+  height:42px!important;
+  border-radius:13px!important;
+  font-size:7.8px!important;
+  background:
+    linear-gradient(145deg,rgba(11,25,41,.94),rgba(5,12,20,.94))!important;
+}
+
+.status-viewer-30 .status-action-menu{
+  border-radius:24px!important;
+  background:
+    linear-gradient(180deg,rgba(13,20,35,.975),rgba(6,11,21,.985))!important;
+  border-color:rgba(169,203,232,.17)!important;
+}
+
+/* ---------- Narrow phones ---------- */
+@media(max-width:390px){
+  .logo{height:91px!important;}
+  .search{padding-left:13px!important;padding-right:13px!important;}
+  .status-section{margin-left:7px!important;margin-right:7px!important;}
+  .chat-list{padding-left:9px!important;padding-right:9px!important;}
+  .chat-item{min-height:78px!important;border-radius:17px!important;}
+  .avatar{width:52px!important;height:52px!important;min-width:52px!important;}
+
+  #statusViewerModal.status-viewer-modal-30{
+    padding:8px!important;
+  }
+
+  .status-viewer-30{
+    width:100%!important;
+    height:100%!important;
+    border-radius:28px!important;
+  }
+
+  .status-viewer-30 .status-viewer-head-30{
+    top:26px!important;
+    padding:0 12px!important;
+  }
+
+  .status-viewer-30 .status-viewer-person strong{
+    font-size:14.5px!important;
+  }
+
+  .status-viewer-30 .status-viewer-person span{
+    font-size:9.5px!important;
+  }
+
+  .status-viewer-30 .status-viewer-counter{
+    width:48px!important;
+    min-width:48px!important;
+  }
+
+  .status-viewer-30 .status-more-btn,
+  .status-viewer-30 .status-viewer-icon-btn{
+    width:38px!important;
+    min-width:38px!important;
+    height:38px!important;
+    min-height:38px!important;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .chat-item,
+  .status-card.story-card,
+  .settings-btn,
+  .status-see-all,
+  .status-viewer-30 *{
+    transition:none!important;
+    animation:none!important;
+  }
+}
+</style>
+
 </head>
 
 <body>
@@ -5287,10 +5764,17 @@ body{
 
 <div class="search">
     <input
-        type="text"
+        type="search"
         id="chatSearch"
         placeholder="Search chats"
-        oninput="searchChats()">
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        enterkeyhint="search"
+        aria-label="Search chats"
+        oninput="searchChats()"
+        onkeyup="searchChats()"
+        onsearch="searchChats()">
 </div>
 
 
@@ -7138,6 +7622,7 @@ body.status-block-shots #statusViewerImage{
 {% if user.username != username %}
 
 <div class="chat-item"
+     data-username="{{ user.username }}"
      onclick="openChat('{{ user.username }}')"
      oncontextmenu="showChatMenu(event, '{{ user.username }}')">
 
@@ -7219,41 +7704,89 @@ body.status-block-shots #statusViewerImage{
 
 </div>
 
-<script src="/static/js/crypto.core.js?v=20260826-recovery-v2"></script>
+<script src="/static/js/crypto.core.js?v=20260826-recovery-v2" onerror="console.error('Lucky Chat crypto failed to load')"></script>
 <script>
 
-async function updateOnlineUsers(){
+let dashboardSocket = null;
+let reconnectTimer = null;
+let dashboardPageUnloading = false;
+let dashboardSessionExpired = false;
+let dashboardWsBackoffMs = 1000;
+let onlineUsersTimer = null;
+let dashboardPingTimer = null;
+let dashboardRefreshTimer = null;
+let statusShelfTimer = null;
+const DASHBOARD_WS_MAX_BACKOFF_MS = 15000;
+const DASHBOARD_ONLINE_POLL_MS = 15000;
 
-    const res = await fetch("/online");
-
-    const users = await res.json();
-
-    document.querySelectorAll("[id^='status-']").forEach(el=>{
-        el.innerHTML="⚪ Offline";
-    });
-
-    users.forEach(user=>{
-
-        const el=document.getElementById("status-"+user);
-
-        if(el){
-            el.innerHTML="🟢 Online";
-        }
-
-    });
-
+function isDashboardAuthFailure(status){
+    return status === 401 || status === 403;
 }
 
-setInterval(updateOnlineUsers,1000);
+function stopDashboardRealtime(){
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    clearInterval(onlineUsersTimer);
+    clearInterval(dashboardPingTimer);
+    clearInterval(dashboardRefreshTimer);
+    clearInterval(statusShelfTimer);
+    onlineUsersTimer = null;
+    dashboardPingTimer = null;
+    dashboardRefreshTimer = null;
+    statusShelfTimer = null;
+    if (dashboardSocket) {
+        try { dashboardSocket.close(); } catch (_error) {}
+    }
+}
 
-updateOnlineUsers();
+function handleDashboardAuthFailure(status){
+    if (!isDashboardAuthFailure(status)) return false;
+    if (dashboardSessionExpired) return true;
+    dashboardSessionExpired = true;
+    dashboardPageUnloading = true;
+    stopDashboardRealtime();
+    console.warn("Lucky Chat session expired (HTTP " + status + "). Background refresh stopped.");
+    return true;
+}
+
+async function updateOnlineUsers(){
+    if (dashboardSessionExpired || document.hidden) return;
+
+    try {
+        const res = await fetch("/online", {
+            credentials: "same-origin",
+            cache: "no-store"
+        });
+
+        if (handleDashboardAuthFailure(res.status)) return;
+        if (!res.ok) return;
+
+        const users = await res.json().catch(() => null);
+        const list = Array.isArray(users)
+            ? users
+            : (Array.isArray(users?.users) ? users.users : null);
+        if (!list) return;
+
+        document.querySelectorAll("[id^='status-']").forEach(el => {
+            el.innerHTML = "⚪ Offline";
+        });
+
+        list.forEach(user => {
+            const name = typeof user === "string" ? user : (user?.username || user?.user || "");
+            if (!name) return;
+            const el = document.getElementById("status-" + name);
+            if (el) el.innerHTML = "🟢 Online";
+        });
+    } catch (error) {
+        console.debug("Online users refresh failed:", error);
+    }
+}
+
+void updateOnlineUsers();
 
 function openChat(friend){
     window.location.href="/chat/"+encodeURIComponent(friend);
 }
-
-let dashboardSocket = null;
-let reconnectTimer = null;
 
 function openSettings(){
     window.location.href="/settings";
@@ -7334,6 +7867,8 @@ window.addEventListener("resize", () => {
 
 function createStatus(){
     const modal = document.getElementById("statusCreateModal");
+    if (!modal) return;
+
     const fileInput = document.getElementById("statusFile");
     const textInput = document.getElementById("statusText");
     const message = document.getElementById("statusFormMessage");
@@ -7341,18 +7876,18 @@ function createStatus(){
     const preview = document.getElementById("statusPreview");
     const label = document.getElementById("statusFileLabel");
 
-    fileInput.value = "";
-    textInput.value = "";
+    if (fileInput) fileInput.value = "";
+    if (textInput) textInput.value = "";
     updateStatusCaptionCount();
     resetStatusComposerTheme();
-    message.textContent = "";
-    previewWrap.classList.remove("show","has-image");
-    preview.removeAttribute("src");
+    if (message) message.textContent = "";
+    previewWrap?.classList.remove("show","has-image");
+    preview?.removeAttribute("src");
     const fallback = document.getElementById("st15PreviewFallback");
     if (fallback) fallback.style.display = "grid";
     const state = document.getElementById("st15PreviewState");
     if (state) state.textContent = "Waiting for photo";
-    label.textContent = "Choose photo";
+    if (label) label.textContent = "Choose photo";
 
     statusPreviewUrl = null;
     resetStatusPreviewSizing();
@@ -7367,6 +7902,7 @@ function createStatus(){
 
 function closeStatusCreate(){
     const modal = document.getElementById("statusCreateModal");
+    if (!modal) return;
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
     document.getElementById("statusDraftStrip")?.classList.remove("show");
@@ -9089,8 +9625,13 @@ async function uploadStatus(){
         const res = await fetch("/upload-status", {
             method: "POST",
             credentials: "same-origin",
+            cache: "no-store",
             body: formData
         });
+
+        if (handleDashboardAuthFailure(res.status)) {
+            throw new Error("Please sign in again to post a status.");
+        }
 
         const data = await res.json();
 
@@ -9146,6 +9687,7 @@ async function loadStatuses(){
             credentials:"same-origin",
             cache:"no-store"
         });
+        if (handleDashboardAuthFailure(res.status)) return;
         const data = await res.json();
 
         if (!res.ok || !data.success) {
@@ -9156,10 +9698,7 @@ async function loadStatuses(){
         statusViewerStatuses = buildStatusViewerList(loadedStatuses);
         renderStatuses();
     } catch (error) {
-        console.debug("Status list unavailable:", error);
-        loadedStatuses = [];
-        statusViewerStatuses = [];
-        renderStatuses();
+        console.debug("Status list unavailable; keeping current shelf:", error);
     }
 }
 
@@ -9791,7 +10330,24 @@ async function deleteCurrentStatus(){
 
 
 
+function scheduleDashboardReconnect() {
+    if (dashboardPageUnloading || dashboardSessionExpired) return;
+    if (document.hidden || (typeof navigator !== "undefined" && navigator.onLine === false)) return;
+
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+        connectDashboardSocket();
+    }, dashboardWsBackoffMs);
+    dashboardWsBackoffMs = Math.min(
+        DASHBOARD_WS_MAX_BACKOFF_MS,
+        Math.max(1000, Math.floor(dashboardWsBackoffMs * 1.8))
+    );
+}
+
 function connectDashboardSocket() {
+
+    if (dashboardPageUnloading || dashboardSessionExpired) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
     if (
         dashboardSocket &&
@@ -9810,6 +10366,7 @@ function connectDashboardSocket() {
 );
 
     dashboardSocket.onopen = () => {
+        dashboardWsBackoffMs = 1000;
         console.log("Dashboard WebSocket connected");
     };
 
@@ -9882,41 +10439,73 @@ function connectDashboardSocket() {
     };
 
     dashboardSocket.onclose = () => {
-
+        if (dashboardPageUnloading || dashboardSessionExpired) return;
         console.log("Dashboard WebSocket closed. Reconnecting...");
-
-        clearTimeout(reconnectTimer);
-
-        reconnectTimer = setTimeout(() => {
-            connectDashboardSocket();
-        }, 3000);
+        scheduleDashboardReconnect();
     };
 }
 
+function startDashboardTimers() {
+    if (!onlineUsersTimer) {
+        onlineUsersTimer = setInterval(updateOnlineUsers, DASHBOARD_ONLINE_POLL_MS);
+    }
+    if (!dashboardPingTimer) {
+        dashboardPingTimer = setInterval(() => {
+            if (document.hidden || dashboardSessionExpired) return;
+            if (dashboardSocket && dashboardSocket.readyState === WebSocket.OPEN) {
+                dashboardSocket.send("ping");
+            }
+        }, 15000);
+    }
+    if (!dashboardRefreshTimer) {
+        dashboardRefreshTimer = setInterval(() => {
+            if (document.hidden || dashboardSessionExpired) return;
+            refreshDashboard();
+        }, 10000);
+    }
+    if (!statusShelfTimer) {
+        statusShelfTimer = setInterval(() => {
+            if (document.hidden || dashboardSessionExpired) return;
+            if (document.getElementById("statusRow")) renderStatuses();
+            if (currentStatus) refreshStatusAges();
+        }, 8000);
+    }
+}
+
+function resumeDashboardNetwork() {
+    if (dashboardSessionExpired || dashboardPageUnloading) return;
+    connectDashboardSocket();
+    void updateOnlineUsers();
+    void refreshDashboard();
+    void loadStatuses();
+}
+
+window.addEventListener("pagehide", (event) => {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    dashboardPageUnloading = !event.persisted;
+    try { dashboardSocket?.close(); } catch (_error) {}
+});
+
+window.addEventListener("pageshow", (event) => {
+    if (dashboardSessionExpired) return;
+    dashboardPageUnloading = false;
+    if (event.persisted) resumeDashboardNetwork();
+});
+
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden || dashboardSessionExpired) return;
+    connectDashboardSocket();
+    void updateOnlineUsers();
+});
+
+window.addEventListener("online", resumeDashboardNetwork);
+
 connectDashboardSocket();
+startDashboardTimers();
 
 void loadServerPinnedChats();
 void refreshDashboard();
-
-setInterval(() => {
-
-    if (
-        dashboardSocket &&
-        dashboardSocket.readyState === WebSocket.OPEN
-    ) {
-        dashboardSocket.send("ping");
-    }
-
-}, 15000);
-
-setInterval(() => {
-    refreshDashboard();
-}, 10000);
-
-setInterval(() => {
-    if (document.getElementById("statusRow")) renderStatuses();
-    if (currentStatus) refreshStatusAges();
-}, 8000);
 
 function getChatTimestamp(value) {
     if (!value) return 0;
@@ -9992,7 +10581,8 @@ function savePinnedChats(list){
 
 async function loadServerPinnedChats(){
     try{
-        const res = await fetch("/pinned-chats", { credentials:"same-origin" });
+        const res = await fetch("/pinned-chats", { credentials:"same-origin", cache:"no-store" });
+        if (handleDashboardAuthFailure(res.status)) return;
         if(!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
         if(data.success && Array.isArray(data.pinned)){
@@ -10027,10 +10617,12 @@ async function togglePinnedChat(username){
         const res = await fetch("/pinned-chats", {
             method:"POST",
             credentials:"same-origin",
+            cache:"no-store",
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify({friend:username, pinned:!alreadyPinned})
         });
 
+        if (handleDashboardAuthFailure(res.status)) return;
         if(!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
 
@@ -10243,6 +10835,8 @@ async function refreshDashboard(){
             credentials: "same-origin"
         });
 
+        if (handleDashboardAuthFailure(res.status)) return;
+
         if (!res.ok) {
             throw new Error("Dashboard data request failed (HTTP " + res.status + ")");
         }
@@ -10349,6 +10943,7 @@ async function refreshDashboard(){
 
                 renderedChatList += `
     <div class="chat-item${activeClass}${pinnedClass}"
+         data-username="${escapedUsername}"
          onclick="openChat('${safeUsername}')"
          oncontextmenu="showChatMenu(event, '${safeUsername}')">
 
@@ -10415,44 +11010,47 @@ function animateTopChat() {
     first.classList.add("chat-just-moved");
 }
 
+function getChatSearchText(chat){
+    if (!chat) return "";
+
+    const name = chat.querySelector(".chat-info h4, .chat-top h4, h4")?.textContent || "";
+    const preview = chat.querySelector(".message-preview")?.textContent || "";
+    const dataUser = chat.getAttribute("data-username") || "";
+    const statusId = chat.querySelector(".status")?.id || "";
+    const usernameFromStatus = statusId.startsWith("status-") ? statusId.slice("status-".length) : "";
+    const onclick = chat.getAttribute("onclick") || "";
+    const fromClick = (onclick.match(/openChat\('([^']+)'\)/) || [])[1] || "";
+
+    return [name, preview, dataUser, usernameFromStatus, fromClick]
+        .join(" ")
+        .replace(/📌/g, " ")
+        .toLowerCase();
+}
+
 function searchChats() {
     const input = document.getElementById("chatSearch");
-
-    if (!input) return;
+    const list = document.querySelector(".chat-list");
+    if (!input || !list) return;
 
     const filter = input.value.trim().toLowerCase();
-    const items = document.querySelectorAll(".chat-item");
+    const items = list.querySelectorAll(".chat-item");
     let visible = 0;
 
     items.forEach(chat => {
-        const nameElement = chat.querySelector(".chat-info h4");
-        const previewElement = chat.querySelector(".message-preview");
-
-        if (!nameElement) return;
-
-        const name = nameElement.textContent.toLowerCase();
-        const preview = previewElement
-            ? previewElement.textContent.toLowerCase()
-            : "";
-
-        const matches =
-            !filter ||
-            name.includes(filter) ||
-            preview.includes(filter);
-
-        chat.style.display = matches ? "flex" : "none";
-
+        const matches = !filter || getChatSearchText(chat).includes(filter);
+        chat.classList.toggle("is-search-hidden", !matches);
+        chat.style.removeProperty("display");
         if (matches) visible++;
     });
 
-    let empty = document.querySelector(".chat-list-empty");
+    let empty = list.querySelector(".chat-list-empty");
 
     if (filter && visible === 0) {
         if (!empty) {
             empty = document.createElement("div");
             empty.className = "chat-list-empty";
             empty.textContent = "No chats found";
-            document.querySelector(".chat-list")?.appendChild(empty);
+            list.appendChild(empty);
         }
     } else if (empty) {
         empty.remove();
@@ -10471,7 +11069,26 @@ document.addEventListener("click", (event) => {
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
         navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
-            .then(reg => console.log("Lucky Chat PWA service worker ready:", reg.scope))
+            .then(reg => {
+                console.log("Lucky Chat PWA service worker ready:", reg.scope);
+                if (typeof reg.update === "function") {
+                    reg.update().catch(() => {});
+                }
+                reg.addEventListener("updatefound", () => {
+                    const worker = reg.installing;
+                    if (!worker) return;
+                    worker.addEventListener("statechange", () => {
+                        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+                            try { worker.postMessage({ type: "SKIP_WAITING" }); } catch (_error) {}
+                        }
+                    });
+                });
+                navigator.serviceWorker.addEventListener("controllerchange", () => {
+                    if (window.__luckySwReloaded) return;
+                    window.__luckySwReloaded = true;
+                    location.reload();
+                });
+            })
             .catch(err => console.error("Lucky Chat PWA service worker failed:", err));
     });
 }
