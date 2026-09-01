@@ -7919,14 +7919,26 @@ function closeStatusViewer(){
     closeStatusMenu();
     closeStatusSheets();
     stopStatusProgress();
+
+    // The age-refresh timer belongs to the viewer lifecycle. Stop it as
+    // soon as the viewer closes so it cannot run forever in the background.
+    if (statusAgeRefreshTimer) {
+        clearInterval(statusAgeRefreshTimer);
+        statusAgeRefreshTimer = null;
+    }
+
     const modal = document.getElementById("statusViewerModal");
-    modal.classList.remove("open");
-    modal.setAttribute("aria-hidden", "true");
+    if (modal) {
+        modal.classList.remove("open");
+        modal.setAttribute("aria-hidden", "true");
+    }
+
     currentStatus = null;
     currentStatusIndex = -1;
     statusPaused = false;
     statusProgressElapsed = 0;
     document.getElementById("statusViewerCard")?.classList.remove("status-holding");
+
     const stage = document.getElementById("statusStage30");
     if (stage) stage.style.removeProperty("--status-stage-image");
 }
@@ -10154,7 +10166,9 @@ function openCurrentStatusViewer(){
     updateStatusProgress();
 
     if (!statusAgeRefreshTimer) {
-        statusAgeRefreshTimer = setInterval(refreshStatusAges, 4000);
+        statusAgeRefreshTimer = setInterval(() => {
+            if (!document.hidden && currentStatus) refreshStatusAges();
+        }, 4000);
     }
 }
 

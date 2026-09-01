@@ -43,9 +43,19 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 STATUS_UPLOAD_DIR = Path("static/uploads/status")
 STATUS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Session signing must come from deployment configuration, never from a
+# source-controlled hardcoded secret. Set SESSION_SECRET_KEY in Railway/local
+# environment variables before starting the application.
+SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "").strip()
+if not SESSION_SECRET_KEY:
+    raise RuntimeError(
+        "SESSION_SECRET_KEY is not configured. "
+        "Set a long random secret in the deployment environment before startup."
+    )
+
 app.add_middleware(
     SessionMiddleware,
-    secret_key="my_super_secret_key"
+    secret_key=SESSION_SECRET_KEY
 )
 
 models.Base.metadata.create_all(bind=engine)
@@ -1901,8 +1911,18 @@ async def user_status(friend: str, request: Request):
 # LUCKY CHAT STATUS / STORIES
 # ---------------------------------------------------------
 
-STATUS_MAX_SIZE = 10 * 1024 * 1024
+STATUS_MAX_SIZE = 25 * 1024 * 1024
 STATUS_LIFETIME = timedelta(hours=24)
+
+
+
+def status_timestamp_iso(value):
+    """Serialize stored status timestamps as explicit UTC ISO-8601 strings."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.isoformat(timespec="milliseconds") + "Z"
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 STATUS_ALLOWED_TYPES = {
     "image/png": ".png",
@@ -1933,7 +1953,7 @@ async def upload_status(
     if len(data) > STATUS_MAX_SIZE:
         return {
             "success": False,
-            "error": "Status image is too large. Maximum size is 10 MB"
+            "error": "Status image is too large. Maximum size is 25 MB"
         }
 
     if not data:
@@ -1996,8 +2016,8 @@ async def upload_status(
                 "text": status.text or "",
                 "media_url": status.media_url,
                 "media_type": status.media_type,
-                "created_at": status.created_at.isoformat(),
-                "expires_at": status.expires_at.isoformat(),
+                "created_at": status_timestamp_iso(status.created_at),
+                "expires_at": status_timestamp_iso(status.expires_at),
             }
         }
 
@@ -2049,8 +2069,8 @@ async def get_statuses(request: Request):
                 "text": status.text or "",
                 "media_url": status.media_url,
                 "media_type": status.media_type,
-                "created_at": status.created_at.isoformat(),
-                "expires_at": status.expires_at.isoformat(),
+                "created_at": status_timestamp_iso(status.created_at),
+                "expires_at": status_timestamp_iso(status.expires_at),
                 "is_mine": status.username == username,
             })
 
