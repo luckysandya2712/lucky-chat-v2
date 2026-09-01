@@ -136,10 +136,22 @@
                 return true;
 
             } catch (error) {
-                console.debug(
+                const message = error && error.message
+                    ? error.message
+                    : String(error || "Unknown error");
+
+                console.error(
                     "Lucky Chat push notification setup unavailable:",
                     error
                 );
+
+                try {
+                    window.alert(
+                        "Lucky Chat notification setup failed:\n\n" +
+                        message
+                    );
+                } catch (_) {}
+
                 return false;
             } finally {
                 syncPromise = null;
