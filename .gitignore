@@ -67,3 +67,6 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+# VAPID private keys
+vapid_private.pem
+vapid_*.pem

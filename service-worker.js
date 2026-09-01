@@ -145,34 +145,118 @@ self.addEventListener("fetch", event => {
     }
 });
 
+async function getNotificationTarget(data) {
+    const sender = String(data?.sender || "").trim();
+
+    if (data?.url) {
+        return new URL(data.url, self.location.origin).href;
+    }
+
+    if (sender) {
+        return new URL(
+            "/chat/" + encodeURIComponent(sender),
+            self.location.origin
+        ).href;
+    }
+
+    return new URL("/", self.location.origin).href;
+}
+
+async function hasVisibleChatClientFor(username) {
+    if (!username) return false;
+
+    const targetPath =
+        "/chat/" + encodeURIComponent(String(username));
+
+    const allClients = await clients.matchAll({
+        type: "window",
+        includeUncontrolled: true
+    });
+
+    return allClients.some(client => {
+        if (client.visibilityState !== "visible") return false;
+
+        try {
+            const url = new URL(client.url);
+            return (
+                url.origin === self.location.origin &&
+                url.pathname === targetPath
+            );
+        } catch (_error) {
+            return false;
+        }
+    });
+}
+
 self.addEventListener("push", event => {
     event.waitUntil((async () => {
         let data = {
+            type: "message",
             title: "Lucky Chat",
             body: "You received a new message.",
-            icon: "/static/pwa/icon-192.png"
+            icon: "/static/pwa/icon-192.png",
+            sender: ""
         };
 
         try {
             if (event.data) {
                 const parsed = event.data.json();
+
                 if (parsed && typeof parsed === "object") {
-                    data = { ...data, ...parsed };
+                    data = {...data, ...parsed};
                 }
             }
         } catch (_error) {
             try {
-                const text = event.data && event.data.text();
-                if (text) data.body = text;
+                const text = event.data?.text();
+
+                if (text) {
+                    data.body = text;
+                }
             } catch (_textError) {}
         }
 
-        await self.registration.showNotification(data.title || "Lucky Chat", {
-            body: data.body || "You received a new message.",
-            icon: data.icon || "/static/pwa/icon-192.png",
-            badge: "/static/pwa/icon-192.png",
-            vibrate: [200, 100, 200]
-        });
+        // Avoid a duplicate system notification while that exact chat
+        // is already visible on this device.
+        if (
+            data.type === "message" &&
+            await hasVisibleChatClientFor(data.sender)
+        ) {
+            return;
+        }
+
+        const isCall = data.type === "call";
+        const targetUrl = await getNotificationTarget(data);
+
+        await self.registration.showNotification(
+            data.title ||
+                (
+                    isCall
+                        ? `Incoming call from ${data.sender || "Lucky Chat"}`
+                        : (data.sender || "Lucky Chat")
+                ),
+            {
+                body:
+                    data.body ||
+                    (
+                        isCall
+                            ? "You have an incoming voice call."
+                            : "You received a new message."
+                    ),
+                icon: data.icon || "/static/pwa/icon-192.png",
+                badge: "/static/pwa/icon-192.png",
+                tag:
+                    (isCall ? "lucky-call-" : "lucky-message-") +
+                    (data.sender || "unknown"),
+                renotify: true,
+                vibrate: isCall
+                    ? [300, 120, 300, 120, 300]
+                    : [200, 100, 200],
+                data: {
+                    url: targetUrl
+                }
+            }
+        );
     })());
 });
 
@@ -180,15 +264,38 @@ self.addEventListener("notificationclick", event => {
     event.notification.close();
 
     event.waitUntil((async () => {
+        const target =
+            event.notification?.data?.url || "/";
+
+        const absoluteTarget =
+            new URL(target, self.location.origin).href;
+
         const allClients = await clients.matchAll({
             type: "window",
             includeUncontrolled: true
         });
-        const existing = allClients.find(client => client.url && "focus" in client);
-        if (existing) {
-            await existing.focus();
+
+        const sameOriginClient = allClients.find(client => {
+            try {
+                return (
+                    new URL(client.url).origin === self.location.origin &&
+                    "focus" in client
+                );
+            } catch (_error) {
+                return false;
+            }
+        });
+
+        if (sameOriginClient) {
+            await sameOriginClient.focus();
+
+            if ("navigate" in sameOriginClient) {
+                await sameOriginClient.navigate(absoluteTarget);
+            }
+
             return;
         }
-        await clients.openWindow("/");
+
+        await clients.openWindow(absoluteTarget);
     })());
 });

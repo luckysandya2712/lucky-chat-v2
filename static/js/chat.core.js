@@ -1838,7 +1838,6 @@ async function initChatCore() {
 
     updateFriendStatus();
     bindImageAndSendControls();
-    setupPushNotifications();
 }
 
 function bindImageAndSendControls() {
@@ -1991,50 +1990,6 @@ window.addEventListener("lucky-setting-changed", event => {
         } catch (_) {}
     }
 });
-
-function setupPushNotifications() {
-    async function requestNotify() {
-        if (localStorage.getItem("lucky_setting_notifications") === "0") return;
-        if (!("Notification" in window) || Notification.permission !== "default") return;
-
-        try {
-            await Notification.requestPermission();
-        } catch (e) {}
-    }
-
-    window.addEventListener("load", requestNotify);
-
-    // React immediately when the user enables/disables Message Notifications
-    // from Settings. No page reload is required.
-    window.addEventListener("lucky-setting-changed", event => {
-        if (event?.detail?.key !== "notifications") return;
-
-        if (event.detail.value === true) {
-            void requestNotify();
-        }
-    });
-
-    window.luckyNotify = function (sender, message) {
-        // Respect the Message Notifications setting.
-        if (localStorage.getItem("lucky_setting_notifications") === "0") {
-            return;
-        }
-
-        if (!("Notification" in window)) return;
-        if (document.visibilityState === "visible") return;
-        if (Notification.permission !== "granted") return;
-
-        const body = message || "New message";
-        const n = new Notification(sender || "Lucky Chat", {
-            body,
-            icon: "favicon.png"
-        });
-        n.onclick = () => {
-            window.focus();
-            n.close();
-        };
-    };
-}
 
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initChatCore);

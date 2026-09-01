@@ -70,3 +70,14 @@ class Status(Base):
     media_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, index=True)
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, index=True, nullable=False)
+    endpoint = Column(Text, unique=True, index=True, nullable=False)
+    p256dh = Column(Text, nullable=False)
+    auth = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)

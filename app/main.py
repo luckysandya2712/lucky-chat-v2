@@ -24,7 +24,13 @@ from app.models import Message, User, Status
 from app.database import SessionLocal, Base, engine
 from app import models
 from app.auth import hash_password, verify_password
-from app.notification import add_subscription
+from app.notification import (
+    VAPID_PUBLIC_KEY,
+    add_subscription,
+    push_configured,
+    remove_subscription,
+    send_push_to_user,
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -290,8 +296,27 @@ async def login(request: Request):
         name="login.html"
     )
 
+@app.get("/push/config")
+async def get_push_config(request: Request):
+    username = request.session.get("username")
+
+    if not username:
+        return {
+            "success": False,
+            "enabled": False,
+            "error": "Not logged in"
+        }
+
+    return {
+        "success": True,
+        "enabled": push_configured(),
+        "public_key": VAPID_PUBLIC_KEY if push_configured() else ""
+    }
+
+
 @app.post("/subscribe")
 async def subscribe(request: Request):
+    """Legacy-compatible push subscription endpoint."""
     username = request.session.get("username")
 
     if not username:
@@ -301,7 +326,6 @@ async def subscribe(request: Request):
         }
 
     body = await request.json()
-
     subscription = body.get("subscription")
 
     if not subscription:
@@ -310,7 +334,35 @@ async def subscribe(request: Request):
             "error": "Missing subscription"
         }
 
-    add_subscription(username, subscription)
+    try:
+        saved = add_subscription(username, subscription)
+    except ValueError as exc:
+        return {
+            "success": False,
+            "error": str(exc)
+        }
+
+    return {
+        "success": bool(saved)
+    }
+
+
+@app.delete("/subscribe")
+async def unsubscribe(request: Request):
+    username = request.session.get("username")
+
+    if not username:
+        return {
+            "success": False,
+            "error": "Not logged in"
+        }
+
+    try:
+        subscription = await request.json()
+    except Exception:
+        subscription = {}
+
+    remove_subscription(username, subscription)
 
     return {
         "success": True
@@ -952,6 +1004,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
 
                 payload={"type":signal_type,"call_id":call_id,"sender":username}
+                if signal_type == "call_offer":
+                    asyncio.create_task(
+                        send_push_to_user(
+                            target_user.username,
+                            {
+                                "type": "call",
+                                "sender": username,
+                            },
+                        )
+                    )
                 if signal_type in {"call_offer","call_answer"}: payload["sdp"]=data.get("sdp")
                 elif signal_type=="call_ice": payload["candidate"]=data.get("candidate")
                 delivered = await manager.send(target, payload)
@@ -1222,6 +1284,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if target != username:
                     await manager.send(target, payload)
+                    asyncio.create_task(
+                        send_push_to_user(
+                            target,
+                            {
+                                "type": "message",
+                                "sender": username,
+                            },
+                        )
+                    )
 
                 continue
 
@@ -1314,6 +1385,18 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     if friend != username:
                         await manager.send(friend, payload)
+
+                        # Push payload intentionally contains NO message text.
+                        # The chat content is end-to-end encrypted.
+                        asyncio.create_task(
+                            send_push_to_user(
+                                friend,
+                                {
+                                    "type": "message",
+                                    "sender": username,
+                                },
+                            )
+                        )
 
                     # Dashboard updates are secondary.
                     await manager.send_dashboard(
