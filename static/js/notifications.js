@@ -93,18 +93,42 @@
     }
 
     async function sync({requestPermission = false} = {}) {
+        const fail = message => {
+            console.error("[Lucky Push Diagnostic]", message);
+            try {
+                window.alert("Lucky Chat push diagnostic:\n\n" + message);
+            } catch (_) {}
+            return false;
+        };
+
         if (syncPromise) return syncPromise;
-        if (!notificationsEnabled()) return false;
-        if (!("Notification" in window)) return false;
-        if (!("PushManager" in window)) return false;
-        if (!("serviceWorker" in navigator)) return false;
+
+        if (!notificationsEnabled()) {
+            return fail("Notifications setting is OFF.");
+        }
+
+        if (!("Notification" in window)) {
+            return fail("Notification API is not available in this browser.");
+        }
+
+        if (!("PushManager" in window)) {
+            return fail("PushManager is not available in this browser.");
+        }
+
+        if (!("serviceWorker" in navigator)) {
+            return fail("Service Worker API is not available in this browser.");
+        }
 
         syncPromise = (async () => {
             try {
                 const config = await getPushConfig();
 
-                if (!config.enabled || !config.public_key) {
-                    return false;
+                if (!config.enabled) {
+                    return fail("/push/config says enabled=false.");
+                }
+
+                if (!config.public_key) {
+                    return fail("/push/config returned no VAPID public key.");
                 }
 
                 let permission = Notification.permission;
@@ -115,24 +139,33 @@
                 }
 
                 if (permission !== "granted") {
-                    return false;
+                    return fail(
+                        "Notification.permission is " + JSON.stringify(permission) + "."
+                    );
                 }
 
                 const registration = await getRegistration();
-                if (!registration) return false;
+                if (!registration) {
+                    return fail("Service worker registration is unavailable.");
+                }
 
                 let subscription =
                     await registration.pushManager.getSubscription();
 
-                if (!subscription) {
+                if (subscription) {
+                    console.info("[Lucky Push Diagnostic] Existing subscription found.");
+                } else {
+                    console.info("[Lucky Push Diagnostic] No subscription; creating one.");
                     subscription = await registration.pushManager.subscribe({
                         userVisibleOnly: true,
                         applicationServerKey:
                             urlBase64ToUint8Array(config.public_key)
                     });
+                    console.info("[Lucky Push Diagnostic] PushSubscription created.");
                 }
 
                 await saveSubscription(subscription);
+                console.info("[Lucky Push Diagnostic] POST /subscribe succeeded.");
                 return true;
 
             } catch (error) {
@@ -147,7 +180,7 @@
 
                 try {
                     window.alert(
-                        "Lucky Chat notification setup failed:\n\n" +
+                        "Lucky Chat push diagnostic failed:\n\n" +
                         message
                     );
                 } catch (_) {}
@@ -242,7 +275,8 @@
     window.LuckyNotifications = {
         sync,
         unsubscribe,
-        getRegistration
+        getRegistration,
+        diagnosticVersion: "v3"
     };
 
     // Keep the existing chat-core call site working without exposing
