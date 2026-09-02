@@ -1290,6 +1290,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             {
                                 "type": "message",
                                 "sender": username,
+                                "title": username,
+                                "body": "You have a new message.",
                             },
                         )
                     )
@@ -1394,6 +1396,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 {
                                     "type": "message",
                                     "sender": username,
+                                    "title": username,
+                                    "body": "You have a new message.",
                                 },
                             )
                         )
