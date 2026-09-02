@@ -7444,6 +7444,173 @@ body.status-block-shots #statusViewerImage{
         </div>
     </div>
     <div id="statusToastHost" aria-live="polite"></div>
+    <div id="statusDeleteConfirmOverlay"
+         class="status-delete-confirm-overlay"
+         hidden
+         aria-hidden="true">
+        <div class="status-delete-confirm-card"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="statusDeleteConfirmTitle"
+             aria-describedby="statusDeleteConfirmMessage">
+            <div class="status-delete-confirm-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6l-1 14H6L5 6"></path>
+                    <path d="M10 11v6M14 11v6"></path>
+                    <path d="M9 6V4h6v2"></path>
+                </svg>
+            </div>
+            <div class="status-delete-confirm-copy">
+                <span class="status-delete-confirm-kicker">STATUS ACTION</span>
+                <h3 id="statusDeleteConfirmTitle">Delete this status?</h3>
+                <p id="statusDeleteConfirmMessage">This status will be permanently removed. You won't be able to restore it.</p>
+            </div>
+            <div class="status-delete-confirm-actions">
+                <button id="statusDeleteConfirmCancel"
+                        class="status-delete-confirm-cancel"
+                        type="button">Cancel</button>
+                <button id="statusDeleteConfirmDelete"
+                        class="status-delete-confirm-delete"
+                        type="button">Delete status</button>
+            </div>
+        </div>
+    </div>
+
+<style id="lucky-status-delete-confirm-v1">
+.status-delete-confirm-overlay{
+    position:fixed;
+    inset:0;
+    z-index:12050;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+    background:
+        radial-gradient(420px 260px at 12% 8%,rgba(74,170,255,.12),transparent 68%),
+        radial-gradient(420px 260px at 88% 92%,rgba(192,77,255,.10),transparent 68%),
+        rgba(2,6,14,.78);
+    backdrop-filter:blur(22px) saturate(1.12);
+    -webkit-backdrop-filter:blur(22px) saturate(1.12);
+    animation:luckyStatusDeleteFade .16s ease both;
+}
+.status-delete-confirm-overlay[hidden]{display:none!important}
+@keyframes luckyStatusDeleteFade{
+    from{opacity:0}
+    to{opacity:1}
+}
+.status-delete-confirm-card{
+    width:min(420px,100%);
+    padding:22px 21px 18px;
+    border:1px solid rgba(148,188,228,.20);
+    border-radius:26px;
+    background:
+        radial-gradient(260px 150px at 50% 0,rgba(255,255,255,.045),transparent 75%),
+        linear-gradient(160deg,rgba(17,29,48,.98),rgba(5,11,21,.99));
+    box-shadow:
+        0 30px 90px rgba(0,0,0,.52),
+        0 8px 26px rgba(0,0,0,.22),
+        inset 0 1px 0 rgba(255,255,255,.045);
+    color:#f5f9ff;
+    transform:translateY(8px) scale(.985);
+    animation:luckyStatusDeleteCard .20s cubic-bezier(.2,.75,.3,1) both;
+}
+@keyframes luckyStatusDeleteCard{
+    to{transform:translateY(0) scale(1)}
+}
+.status-delete-confirm-icon{
+    width:52px;
+    height:52px;
+    display:grid;
+    place-items:center;
+    margin:0 0 14px;
+    border:1px solid rgba(248,113,113,.24);
+    border-radius:16px;
+    background:linear-gradient(145deg,rgba(248,113,113,.18),rgba(190,43,82,.10));
+    color:#ff8fa8;
+    box-shadow:0 12px 28px rgba(184,48,78,.14);
+}
+.status-delete-confirm-icon svg{
+    width:24px;
+    height:24px;
+}
+.status-delete-confirm-copy{min-width:0}
+.status-delete-confirm-kicker{
+    display:block;
+    margin-bottom:6px;
+    color:#7cc7ff;
+    font:800 8px/1 Poppins,sans-serif;
+    letter-spacing:.16em;
+}
+.status-delete-confirm-copy h3{
+    margin:0;
+    color:#f8fbff;
+    font:850 22px/1.15 Poppins,sans-serif;
+    letter-spacing:-.035em;
+}
+.status-delete-confirm-copy p{
+    margin:8px 0 0;
+    color:#8ea0b6;
+    font:500 12px/1.55 Poppins,sans-serif;
+}
+.status-delete-confirm-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:9px;
+    margin-top:20px;
+}
+.status-delete-confirm-actions button{
+    min-height:48px;
+    padding:0 14px;
+    border-radius:14px;
+    font:750 12px Poppins,sans-serif;
+    cursor:pointer;
+    transition:transform .15s ease,background .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.status-delete-confirm-actions button:active{transform:scale(.97)}
+.status-delete-confirm-cancel{
+    border:1px solid rgba(148,163,184,.16);
+    background:rgba(148,163,184,.08);
+    color:#d7e2ef;
+}
+.status-delete-confirm-cancel:hover{
+    background:rgba(148,163,184,.13);
+    border-color:rgba(148,163,184,.25);
+}
+.status-delete-confirm-delete{
+    border:1px solid rgba(248,113,113,.24);
+    background:linear-gradient(145deg,#ef5b76,#d83d61);
+    color:#fff;
+    box-shadow:0 10px 24px rgba(217,61,97,.24),inset 0 1px 0 rgba(255,255,255,.10);
+}
+.status-delete-confirm-delete:hover{
+    background:linear-gradient(145deg,#f16a82,#e04869);
+    box-shadow:0 12px 28px rgba(217,61,97,.28),inset 0 1px 0 rgba(255,255,255,.12);
+}
+.status-delete-confirm-delete:focus-visible,
+.status-delete-confirm-cancel:focus-visible{
+    outline:2px solid rgba(103,186,255,.72);
+    outline-offset:2px;
+}
+@media(max-width:480px){
+    .status-delete-confirm-overlay{padding:14px}
+    .status-delete-confirm-card{
+        width:100%;
+        padding:20px 18px 16px;
+        border-radius:23px;
+    }
+    .status-delete-confirm-copy h3{font-size:20px}
+    .status-delete-confirm-copy p{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){
+    .status-delete-confirm-overlay,
+    .status-delete-confirm-card,
+    .status-delete-confirm-actions button{
+        animation:none!important;
+        transition:none!important;
+    }
+}
+</style>
 
 <style id="lucky-status-viewers-fix">
 .status-engage-stats{
@@ -10284,10 +10451,81 @@ async function shareCurrentStatus(){
     showStatusToast("Use Forward to send this status");
 }
 
+let statusDeleteConfirmResolver = null;
+
+function closeStatusDeleteConfirm(result = false){
+    const overlay = document.getElementById("statusDeleteConfirmOverlay");
+    if (!overlay) {
+        const resolver = statusDeleteConfirmResolver;
+        statusDeleteConfirmResolver = null;
+        if (resolver) resolver(result);
+        return;
+    }
+
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+
+    const resolver = statusDeleteConfirmResolver;
+    statusDeleteConfirmResolver = null;
+
+    if (resolver) resolver(result);
+}
+
+function showStatusDeleteConfirm(){
+    const overlay = document.getElementById("statusDeleteConfirmOverlay");
+    const cancelButton = document.getElementById("statusDeleteConfirmCancel");
+    const deleteButton = document.getElementById("statusDeleteConfirmDelete");
+
+    if (!overlay || !cancelButton || !deleteButton) {
+        return Promise.resolve(false);
+    }
+
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+
+    return new Promise(resolve => {
+        statusDeleteConfirmResolver = resolve;
+
+        const onKeydown = event => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            finish(false);
+        };
+
+        const cleanup = () => {
+            document.removeEventListener("keydown", onKeydown);
+        };
+
+        const finish = value => {
+            if (statusDeleteConfirmResolver !== resolve) return;
+            cleanup();
+            cancelButton.onclick = null;
+            deleteButton.onclick = null;
+            overlay.onclick = null;
+            closeStatusDeleteConfirm(value);
+        };
+
+        cancelButton.onclick = () => finish(false);
+        deleteButton.onclick = () => finish(true);
+
+        overlay.onclick = event => {
+            if (event.target === overlay) finish(false);
+        };
+
+        document.addEventListener("keydown", onKeydown);
+
+        requestAnimationFrame(() => {
+            if (!overlay.hidden) cancelButton.focus();
+        });
+    });
+}
+
 async function deleteCurrentStatus(){
     closeStatusMenu();
     if (!currentStatus || !currentStatus.is_mine) return;
-    if (!confirm("Delete this status?")) return;
+
+    const confirmed = await showStatusDeleteConfirm();
+    if (!confirmed) return;
 
     const statusId = currentStatus.id;
     const button = document.getElementById("statusDeleteBtn");
