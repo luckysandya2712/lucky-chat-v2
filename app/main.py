@@ -1633,14 +1633,35 @@ async def dashboard_data(request: Request):
     return result
 
 @app.get("/users")
-async def get_users():
+async def get_users(request: Request):
+    # This endpoint is used by the client-side forward-message picker.
+    # Require an authenticated session and return only the public fields
+    # that the picker actually needs. Never serialize the full User model,
+    # which contains password hashes and private crypto/backup material.
+    current_username = get_authenticated_username(request.scope)
+    if not current_username:
+        return {"success": False, "error": "Not logged in"}
+
     db = SessionLocal()
 
-    users = db.query(User).all()
+    try:
+        users = (
+            db.query(User)
+            .order_by(User.username.asc())
+            .all()
+        )
 
-    db.close()
-
-    return users
+        return [
+            {
+                "username": user.username,
+                "display_name": user.display_name or user.username,
+                "profile_picture": user.profile_picture
+                    or "/static/profile/default.png",
+            }
+            for user in users
+        ]
+    finally:
+        db.close()
 
 @app.post("/upload-chat-image")
 async def upload_chat_image(

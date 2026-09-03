@@ -1,4 +1,5 @@
-const CACHE_NAME = "lucky-chat-pwa-v3";
+// Cache v4: invalidate older static assets after the notification.js migration.
+const CACHE_NAME = "lucky-chat-pwa-v4";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [
