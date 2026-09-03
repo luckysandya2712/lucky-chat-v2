@@ -1303,6 +1303,23 @@ html.lucky-light .messages .message-row:not(.call-history-row):not(:has(.message
 }
 
 </style>
+
+<style id="lucky-mobile-message-menu-fix-v3">
+.message[data-msg]{
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    user-select:none;
+    touch-action:pan-y;
+}
+.message-menu{
+    position:fixed !important;
+    z-index:2147483000 !important;
+    pointer-events:auto !important;
+    max-width:calc(100vw - 20px);
+    max-height:calc(100dvh - 20px);
+    overflow:auto;
+}
+</style>
 </head>
 
 <body data-chat-friend="{{ friend }}">
@@ -2801,7 +2818,7 @@ Welcome to Lucky Chat 🚀
 </style>
 
 <script src="/static/js/crypto.core.js?v=20260826-recovery-v2"></script>
-<script src="/static/js/notifications.js?v=20260902-diagnostic-v3"></script>
+<script src="/static/js/notification.js?v=20260904-stable-v3"></script>
 <script src="/static/js/chat.core.js?v=20260825-turn-support-v9"></script>
 
 <style>

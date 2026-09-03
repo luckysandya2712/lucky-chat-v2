@@ -2602,10 +2602,6 @@ function addMessage(msg){
         row.innerHTML = `
             <div class="message message-own"
                  data-msg="${msg.id}"
-                 onpointerdown="startPress(event, ${msg.id})"
-                 onpointerup="cancelPress()"
-                 onpointercancel="cancelPress()"
-                 onpointermove="cancelPress()"
                  oncontextmenu="return false;">
 
                  ${replyHtml}
@@ -2634,10 +2630,6 @@ function addMessage(msg){
 
             <div class="message message-other"
                  data-msg="${msg.id}"
-                 onpointerdown="startPress(event, ${msg.id})"
-                 onpointerup="cancelPress()"
-                 onpointercancel="cancelPress()"
-                 onpointermove="cancelPress()"
                  oncontextmenu="return false;">
 
                 ${replyHtml}
@@ -2691,11 +2683,21 @@ function addMessage(msg){
 }
 
 
-function startPress(e, id) {
-    if (e.isPrimary === false) return;
+let pressStartX = 0;
+let pressStartY = 0;
+let activePressPointerId = null;
+const LONG_PRESS_DELAY = 500;
+const LONG_PRESS_MOVE_TOLERANCE = 18;
 
-    longPressTriggered = false;
+function startPress(e, id) {
+    if (e.isPrimary === false || !messages) return;
+
     clearTimeout(pressTimer);
+    longPressTriggered = false;
+
+    activePressPointerId = e.pointerId ?? null;
+    pressStartX = Number(e.clientX || 0);
+    pressStartY = Number(e.clientY || 0);
 
     pressTimer = setTimeout(() => {
         longPressTriggered = true;
@@ -2703,11 +2705,54 @@ function startPress(e, id) {
         if (e.cancelable) e.preventDefault();
 
         showMessageMenu(e, id);
-    }, 500);
+    }, LONG_PRESS_DELAY);
 }
 
-function cancelPress() {
+function cancelPress(e) {
+    if (!e) {
+        clearTimeout(pressTimer);
+        activePressPointerId = null;
+        return;
+    }
+
+    if (
+        activePressPointerId !== null &&
+        e.pointerId !== undefined &&
+        e.pointerId !== activePressPointerId
+    ) {
+        return;
+    }
+
+    const dx = Number(e.clientX || 0) - pressStartX;
+    const dy = Number(e.clientY || 0) - pressStartY;
+
+    // Ignore small Android touch jitter while the finger is resting.
+    if ((dx * dx + dy * dy) <= LONG_PRESS_MOVE_TOLERANCE ** 2) {
+        return;
+    }
+
     clearTimeout(pressTimer);
+    activePressPointerId = null;
+}
+
+function finishPress(e) {
+    if (
+        activePressPointerId !== null &&
+        e?.pointerId !== undefined &&
+        e.pointerId !== activePressPointerId
+    ) {
+        return;
+    }
+
+    // Keep the custom menu open after a successful long press.
+    if (longPressTriggered) {
+        clearTimeout(pressTimer);
+        activePressPointerId = null;
+        return;
+    }
+
+    clearTimeout(pressTimer);
+    activePressPointerId = null;
 }
 
 function showMessageMenu(e, id) {
@@ -2783,6 +2828,57 @@ function hideMessageMenu() {
     selectedMessageId = null;
     clearTimeout(pressTimer);
     longPressTriggered = false;
+}
+
+
+/*
+ * Delegated long-press handling for dynamically-created message bubbles.
+ * This is more reliable on Android than inline pointer handlers because it
+ * tolerates touch jitter and survives message re-rendering.
+ */
+if (messages && !messages.dataset.longPressBound) {
+    messages.dataset.longPressBound = "1";
+
+    messages.addEventListener("pointerdown", event => {
+        const message = event.target?.closest?.(".message[data-msg]");
+        if (!message || event.isPrimary === false) return;
+
+        // Do not interfere with controls that have their own gestures.
+        if (event.target?.closest?.(".voice-play-btn, button, a, input, textarea, select")) {
+            return;
+        }
+
+        const id = Number(message.dataset.msg);
+        if (!Number.isFinite(id)) return;
+
+        startPress(event, id);
+    });
+
+    messages.addEventListener("pointermove", event => {
+        if (activePressPointerId !== null) {
+            cancelPress(event);
+        }
+    }, { passive: true });
+
+    messages.addEventListener("pointerup", event => {
+        finishPress(event);
+    });
+
+    messages.addEventListener("pointercancel", event => {
+        if (
+            activePressPointerId === null ||
+            event.pointerId === activePressPointerId
+        ) {
+            clearTimeout(pressTimer);
+            activePressPointerId = null;
+            longPressTriggered = false;
+        }
+    });
+
+    messages.addEventListener("contextmenu", event => {
+        const message = event.target?.closest?.(".message[data-msg]");
+        if (message) event.preventDefault();
+    });
 }
 
 let pendingDeleteId = null;
