@@ -59,6 +59,8 @@ class Message(Base):
 
     reactions = Column(String, default="{}")
 
+    forwarded = Column(Integer, default=0)
+
 
 class Status(Base):
     __tablename__ = "statuses"

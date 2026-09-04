@@ -1320,6 +1320,47 @@ html.lucky-light .messages .message-row:not(.call-history-row):not(:has(.message
     overflow:auto;
 }
 </style>
+
+<style id="lucky-forwarded-message-label">
+/* Forwarded-message indicator. Kept separate from message text so the
+   encrypted content itself is never modified. */
+.forwarded-label{
+    display:flex;
+    align-items:center;
+    gap:5px;
+    margin:0 0 5px;
+    font-size:11px;
+    line-height:1.2;
+    font-weight:700;
+    font-style:italic;
+    letter-spacing:.01em;
+    opacity:.78;
+}
+
+.message-own .forwarded-label{
+    color:rgba(255,255,255,.90) !important;
+}
+
+.message-other .forwarded-label{
+    color:#64748b !important;
+}
+
+html.lucky-light .message-own .forwarded-label{
+    color:rgba(255,255,255,.92) !important;
+}
+
+html.lucky-light .message-other .forwarded-label{
+    color:#5b6f84 !important;
+}
+
+@media(max-width:480px){
+    .forwarded-label{
+        font-size:10.5px;
+        margin-bottom:4px;
+    }
+}
+</style>
+
 </head>
 
 <body data-chat-friend="{{ friend }}">
@@ -2819,7 +2860,7 @@ Welcome to Lucky Chat 🚀
 
 <script src="/static/js/crypto.core.js?v=20260826-recovery-v2"></script>
 <script src="/static/js/notification.js?v=20260904-stable-v3"></script>
-<script src="/static/js/chat.core.js?v=20260825-turn-support-v9"></script>
+<script src="/static/js/chat.core.js?v=20260904-forwarded-label-v2"></script>
 
 <style>
 

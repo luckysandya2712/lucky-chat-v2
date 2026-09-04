@@ -101,6 +101,34 @@ def _ensure_message_media_columns():
 _ensure_message_media_columns()
 
 
+def _ensure_message_forwarded_column():
+    """Add the persistent forwarded flag to existing message tables."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("messages"):
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("messages")}
+        if "forwarded" in columns:
+            return
+
+        with engine.begin() as connection:
+            connection.execute(
+                sqlalchemy_text(
+                    "ALTER TABLE messages "
+                    "ADD COLUMN forwarded INTEGER DEFAULT 0"
+                )
+            )
+
+        print("MESSAGE SCHEMA: forwarded column added")
+    except Exception as exc:
+        print("MESSAGE SCHEMA ERROR (forwarded):", exc)
+        traceback.print_exc()
+
+
+_ensure_message_forwarded_column()
+
+
 def _ensure_crypto_key_columns():
     """Add encrypted-key-recovery columns to existing users tables."""
     try:
@@ -1306,6 +1334,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         timestamp=utc_now_iso(),
                         unread=1,
                         seen_in_chat=0,
+                        forwarded=1,
                         reply_to=None,
                         media_url=data.get("media_url"),
                         media_type=data.get("media_type"),
@@ -1494,6 +1523,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         timestamp=utc_now_iso(),
                         unread=1,
                         seen_in_chat=0,
+                        forwarded=1 if is_forward else 0,
                         reply_to=None if is_forward else data.get("reply_to"),
                         media_url=media_url,
                         media_type=media_type,
@@ -1715,6 +1745,7 @@ async def get_messages(friend: str, request: Request):
             "media_waveform": getattr(m, "media_waveform", None),
             "edited": m.edited,
             "reaction": getattr(m, "reaction", ""),
+            "forwarded": bool(int(getattr(m, "forwarded", 0) or 0)),
         })
 
     unread_candidates = db.query(Message).filter(

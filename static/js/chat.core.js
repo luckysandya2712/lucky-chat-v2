@@ -2167,8 +2167,13 @@ function reconcileOutgoingMessage(msg) {
         optimistic.timestamp = msg.timestamp || optimistic.timestamp;
         optimistic.delivered = msg.delivered || 0;
         optimistic.read = msg.read || 0;
+        optimistic.forwarded = isForwardedMessage(msg) || isForwardedMessage(optimistic);
         optimistic._optimistic = false;
         messageMap[msg.id] = optimistic;
+
+        if (bubble) {
+            ensureForwardedLabel(bubble, optimistic);
+        }
 
         // If a history refresh/reconnect removed the optimistic bubble before
         // the server echo arrived, put the reconciled message back immediately.
@@ -2417,10 +2422,43 @@ function renderCallHistoryMessage(msg){
 }
 
 
+function isForwardedMessage(msg){
+    if (!msg) return false;
+
+    const value = msg.forwarded;
+    if (value === true || value === 1) return true;
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized === "1" || normalized === "true" || normalized === "yes";
+    }
+    return Boolean(value);
+}
+
+function forwardedLabelHtml(msg){
+    return isForwardedMessage(msg)
+        ? `<div class="forwarded-label" aria-label="Forwarded message">↪ Forwarded</div>`
+        : "";
+}
+
+function ensureForwardedLabel(bubble, msg){
+    if (!bubble || !isForwardedMessage(msg)) return;
+    if (bubble.querySelector(".forwarded-label")) return;
+
+    const label = document.createElement("div");
+    label.className = "forwarded-label";
+    label.setAttribute("aria-label", "Forwarded message");
+    label.textContent = "↪ Forwarded";
+    bubble.insertBefore(label, bubble.firstChild);
+}
+
 function addMessage(msg){
 
     if (deletedMessages[msg.id]) {
         return;
+    }
+
+    if (msg) {
+        msg.forwarded = isForwardedMessage(msg);
     }
 
     if (msg.media_type === "call") {
@@ -2446,6 +2484,7 @@ function addMessage(msg){
             existingTime.textContent = formatMessageTimestamp(msg.timestamp);
         }
 
+        ensureForwardedLabel(existingBubble, msg);
         return;
     }
 
@@ -2453,6 +2492,8 @@ function addMessage(msg){
 
     const row = document.createElement("div");
     row.className = "message-row";
+
+    const forwardedHtml = forwardedLabelHtml(msg);
 
     let replyHtml = "";
 
@@ -2604,6 +2645,8 @@ function addMessage(msg){
                  data-msg="${msg.id}"
                  oncontextmenu="return false;">
 
+                 ${forwardedHtml}
+
                  ${replyHtml}
 
                  ${mediaHtml}
@@ -2631,6 +2674,8 @@ function addMessage(msg){
             <div class="message message-other"
                  data-msg="${msg.id}"
                  oncontextmenu="return false;">
+
+                ${forwardedHtml}
 
                 ${replyHtml}
 
@@ -3083,7 +3128,8 @@ async function sendForward(target){
     if(!sendSocket({
         type:"forward_message",
         text:encryptedText,
-        target:target
+        target:target,
+        forwarded:true
     })){
         alert("Connection lost. Please try again.");
         return;
