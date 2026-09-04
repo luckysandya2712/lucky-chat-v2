@@ -20,7 +20,7 @@ from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.websocket import manager
-from app.models import Message, User, Status
+from app.models import Message, User, Status, StatusView, StatusLike, StatusReply
 from app.database import SessionLocal, Base, engine
 from app import models
 from app.auth import hash_password, verify_password
@@ -48,6 +48,12 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 STATUS_UPLOAD_DIR = Path("static/uploads/status")
 STATUS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _storage_user_key(username: str) -> str:
+    """Return a filesystem-safe stable identifier for per-user uploads."""
+    value = str(username or "").strip()
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
 
 # Session signing must come from deployment configuration, never from a
 # source-controlled hardcoded secret. Set SESSION_SECRET_KEY in Railway/local
@@ -127,6 +133,42 @@ def _ensure_message_forwarded_column():
 
 
 _ensure_message_forwarded_column()
+
+
+def _ensure_message_status_reply_columns():
+    """Add persistent metadata used to render Status replies in chat."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("messages"):
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("messages")}
+        statements = []
+
+        if "status_reply" not in columns:
+            statements.append(
+                "ALTER TABLE messages ADD COLUMN status_reply INTEGER DEFAULT 0"
+            )
+        if "status_reply_status_id" not in columns:
+            statements.append(
+                "ALTER TABLE messages ADD COLUMN status_reply_status_id INTEGER"
+            )
+        if "status_reply_owner" not in columns:
+            statements.append(
+                "ALTER TABLE messages ADD COLUMN status_reply_owner VARCHAR"
+            )
+
+        if statements:
+            with engine.begin() as connection:
+                for statement in statements:
+                    connection.execute(sqlalchemy_text(statement))
+            print("MESSAGE SCHEMA: Status reply columns added")
+    except Exception as exc:
+        print("MESSAGE SCHEMA ERROR (status reply):", exc)
+        traceback.print_exc()
+
+
+_ensure_message_status_reply_columns()
 
 
 def _ensure_crypto_key_columns():
@@ -462,6 +504,16 @@ async def register_user(
     email: str = Form(...),
     password: str = Form(...)
 ):
+    username = (username or "").strip()
+    email = (email or "").strip()
+
+    if not username or len(username) > 64 or any(ch in username for ch in "/\\"):
+        return {"message": "Invalid username"}
+    if not email or len(email) > 320:
+        return {"message": "Invalid email"}
+    if len(password or "") < 8 or len(password or "") > 256:
+        return {"message": "Password must be 8-256 characters"}
+
     db = SessionLocal()
     try:
 
@@ -509,6 +561,14 @@ class OnlineStatusPayload(BaseModel):
 
 class CryptoBackupPayload(BaseModel):
     backup: str
+
+
+class StatusLikePayload(BaseModel):
+    liked: bool = True
+
+
+class StatusReplyPayload(BaseModel):
+    encrypted_text: str
 
 
 @app.get("/crypto/backup")
@@ -636,7 +696,13 @@ async def upload_public_key(
 
 
 @app.get("/keys/{username}")
-async def get_public_key(username: str):
+async def get_public_key(username: str, request: Request):
+    # Public keys are used by the authenticated chat client for E2EE.
+    # Do not expose account key material to unauthenticated visitors.
+    current_username = get_authenticated_username(request)
+    if not current_username:
+        return {"success": False, "error": "Not logged in"}
+
     db = SessionLocal()
 
     try:
@@ -761,6 +827,10 @@ async def crypto_recovery(request: Request):
 @app.get("/chat/{friend}", response_class=HTMLResponse)
 async def chat(friend: str, request: Request):
 
+    current_username = get_authenticated_username(request)
+    if not current_username:
+        return RedirectResponse("/login", status_code=303)
+
     db = SessionLocal()
 
     user = resolve_user_by_username(db, friend)
@@ -841,12 +911,17 @@ async def websocket_endpoint(websocket: WebSocket):
     # Normalize the chat partner to the canonical username stored in the DB.
     # This prevents display-name/casing differences from breaking messaging
     # and voice-call routing.
-    if page != "dashboard" and friend:
+    if page != "dashboard":
         db = SessionLocal()
         try:
-            friend_user = resolve_user_by_username(db, friend)
-            if friend_user:
+            friend_user = resolve_user_by_username(db, friend) if friend else None
+            if friend_user and friend_user.username != username:
                 friend = friend_user.username
+            else:
+                # A chat WebSocket must never target an arbitrary/invalid user.
+                # Keep the connection usable for the UI, but disable message
+                # routing until a valid chat partner is supplied.
+                friend = ""
         finally:
             db.close()
 
@@ -1116,6 +1191,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             if data["type"] == "typing":
+                if not friend:
+                    continue
+
                 payload = {
                     "type": "typing",
                     "sender": username
@@ -1125,6 +1203,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             if data["type"] == "stop_typing":
+                if not friend:
+                    continue
+
                 payload = {
                     "type": "stop_typing",
                     "sender": username
@@ -1463,6 +1544,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if data.get("type") == "message":
 
+                if not friend:
+                    continue
+
                 text = data.get("text", "").strip()
                 media_url = data.get("media_url")
                 media_type = data.get("media_type")
@@ -1746,6 +1830,9 @@ async def get_messages(friend: str, request: Request):
             "edited": m.edited,
             "reaction": getattr(m, "reaction", ""),
             "forwarded": bool(int(getattr(m, "forwarded", 0) or 0)),
+            "status_reply": bool(int(getattr(m, "status_reply", 0) or 0)),
+            "status_reply_status_id": getattr(m, "status_reply_status_id", None),
+            "status_reply_owner": getattr(m, "status_reply_owner", None),
         })
 
     unread_candidates = db.query(Message).filter(
@@ -1891,7 +1978,7 @@ async def upload_chat_image(
     extension = allowed_types[file.content_type]
 
     filename = (
-        f"{username}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        f"{_storage_user_key(username)}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         f"{extension}"
     )
 
@@ -1935,7 +2022,7 @@ async def upload_chat_video(
     max_size = 30 * 1024 * 1024
     chunk_size = 1024 * 1024  # 1 MiB
     filename = (
-        f"{username}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        f"{_storage_user_key(username)}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         f"{allowed_types[content_type]}"
     )
     filepath = UPLOAD_DIR / filename
@@ -2035,6 +2122,14 @@ async def upload_chat_audio(request: Request):
         return {"error": f"Unsupported audio format: {content_type or 'unknown'}"}
 
     max_size = 10 * 1024 * 1024
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > max_size:
+                return {"error": "Voice message is too large. Maximum size is 10 MB"}
+        except ValueError:
+            return {"error": "Invalid content length"}
+
     data = await request.body()
 
     if len(data) > max_size:
@@ -2068,7 +2163,7 @@ async def upload_chat_audio(request: Request):
 
     extension = allowed_types[content_type]
     filename = (
-        f"{username}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        f"{_storage_user_key(username)}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         f"{extension}"
     )
 
@@ -2159,15 +2254,56 @@ async def set_pinned_chat(request: Request):
 
 
 @app.get("/online")
-async def online_users():
-    return list(manager.connections.keys())
+async def online_users(request: Request):
+    # Online presence is not public account data. Only authenticated users
+    # may query it, and accounts that disabled Online Status must remain hidden.
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "error": "Not logged in", "users": []}
+
+    db = SessionLocal()
+    try:
+        connected = set(manager.connections.keys())
+        if not connected:
+            return []
+
+        rows = db.query(User.username).filter(User.username.in_(connected)).all()
+        usernames = [row[0] for row in rows]
+        enabled_users = []
+
+        for name in usernames:
+            if str(name).strip().casefold() == str(username).strip().casefold():
+                enabled_users.append(name)
+                continue
+
+            row = db.execute(
+                sqlalchemy_text(
+                    "SELECT online_status_enabled "
+                    "FROM users WHERE username = :username"
+                ),
+                {"username": name}
+            ).first()
+
+            enabled = True
+            if row is not None and row[0] is not None:
+                enabled = bool(int(row[0]))
+
+            if enabled:
+                enabled_users.append(name)
+
+        return enabled_users
+    finally:
+        db.close()
 
 @app.get("/user-status/{friend}")
 async def user_status(friend: str, request: Request):
+    current_username = get_authenticated_username(request)
+    if not current_username:
+        return {"online": False, "last_seen": None, "hidden": True}
+
     db = SessionLocal()
 
     try:
-        current_username = request.session.get("username")
         user = resolve_user_by_username(db, friend)
 
         if not user:
@@ -2255,6 +2391,13 @@ async def upload_status(
             "error": "Only PNG, JPEG, and WebP images are allowed"
         }
 
+    text = (text or "").strip()
+    if len(text) > 5000:
+        return {
+            "success": False,
+            "error": "Status text is too long. Maximum size is 5000 characters"
+        }
+
     data = await file.read(STATUS_MAX_SIZE + 1)
 
     if len(data) > STATUS_MAX_SIZE:
@@ -2285,7 +2428,7 @@ async def upload_status(
 
     now = datetime.utcnow()
     filename = (
-        f"{username}_{now.strftime('%Y%m%d%H%M%S%f')}"
+        f"{_storage_user_key(username)}_{now.strftime('%Y%m%d%H%M%S%f')}"
         f"{STATUS_ALLOWED_TYPES[file.content_type]}"
     )
 
@@ -2304,7 +2447,7 @@ async def upload_status(
 
         status = Status(
             username=username,
-            text=(text or "").strip() or None,
+            text=text or None,
             media_url="/static/uploads/status/" + filename,
             media_type="image",
             created_at=now,
@@ -2387,6 +2530,468 @@ async def get_statuses(request: Request):
         db.close()
 
 
+@app.get("/statuses/{status_id}/engagement")
+async def get_status_engagement(status_id: int, request: Request):
+    """Return authoritative viewers, likes, and private replies for the owner."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        status = db.query(Status).filter(Status.id == status_id).first()
+        if not status:
+            return {"success": False, "error": "Status not found"}
+
+        if status.username != username:
+            return {
+                "success": False,
+                "error": "Only the status owner can view engagement"
+            }
+
+        if status.expires_at and status.expires_at <= datetime.utcnow():
+            return {"success": False, "error": "Status has expired"}
+
+        views = (
+            db.query(StatusView)
+            .filter(StatusView.status_id == status_id)
+            .order_by(StatusView.seen_at.desc())
+            .all()
+        )
+        likes = (
+            db.query(StatusLike)
+            .filter(StatusLike.status_id == status_id)
+            .order_by(StatusLike.created_at.desc())
+            .all()
+        )
+        replies = (
+            db.query(StatusReply)
+            .filter(StatusReply.status_id == status_id)
+            .order_by(StatusReply.replied_at.desc())
+            .all()
+        )
+
+        usernames = {
+            str(row.username).strip()
+            for row in [*views, *likes, *replies]
+            if getattr(row, "username", None)
+        }
+
+        profiles = {}
+        if usernames:
+            users = db.query(User).filter(
+                User.username.in_(list(usernames))
+            ).all()
+            profiles = {
+                user.username: {
+                    "display_name": user.display_name or user.username,
+                    "profile_picture": (
+                        user.profile_picture or
+                        "/static/profile/default.png"
+                    ),
+                }
+                for user in users
+            }
+
+        like_users = {
+            str(row.username).strip().casefold()
+            for row in likes
+        }
+
+        reply_by_user = {}
+        for reply in replies:
+            key = str(reply.username).strip().casefold()
+            if key not in reply_by_user:
+                reply_by_user[key] = reply
+
+        def person(username_value):
+            raw = str(username_value or "").strip()
+            profile = profiles.get(raw, {})
+            return {
+                "username": raw,
+                "display_name": profile.get("display_name") or raw,
+                "profile_picture": profile.get(
+                    "profile_picture",
+                    "/static/profile/default.png"
+                ),
+            }
+
+        viewer_items = []
+        for view in views:
+            key = str(view.username).strip().casefold()
+            viewer_items.append({
+                **person(view.username),
+                "seen_at": status_timestamp_iso(view.seen_at),
+                "liked": key in like_users,
+                "replied": key in reply_by_user,
+            })
+
+        liker_items = [
+            {
+                **person(row.username),
+                "liked_at": status_timestamp_iso(row.created_at),
+            }
+            for row in likes
+        ]
+
+        reply_items = [
+            {
+                **person(row.username),
+                "replied_at": status_timestamp_iso(row.replied_at),
+                "encrypted_text": row.encrypted_text,
+            }
+            for row in replies
+        ]
+
+        return {
+            "success": True,
+            "status_id": status_id,
+            "views": len(viewer_items),
+            "likes": len(liker_items),
+            "replies": len(reply_items),
+            "viewers": viewer_items,
+            "likers": liker_items,
+            "replies_list": reply_items,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/statuses/{status_id}/view")
+async def record_status_view(status_id: int, request: Request):
+    """Record one unique viewer per status and notify the owner."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        status = db.query(Status).filter(Status.id == status_id).first()
+        if not status:
+            return {"success": False, "error": "Status not found"}
+
+        if status.username == username:
+            return {
+                "success": False,
+                "error": "You cannot record a view on your own status"
+            }
+
+        if status.expires_at and status.expires_at <= datetime.utcnow():
+            return {"success": False, "error": "Status has expired"}
+
+        seen_at = datetime.utcnow()
+        view = (
+            db.query(StatusView)
+            .filter(
+                StatusView.status_id == status_id,
+                StatusView.username == username
+            )
+            .first()
+        )
+
+        created = view is None
+        if view is None:
+            view = StatusView(
+                status_id=status_id,
+                username=username,
+                seen_at=seen_at,
+            )
+            db.add(view)
+        else:
+            view.seen_at = seen_at
+
+        db.commit()
+        db.refresh(view)
+
+        viewer = resolve_user_by_username(db, username)
+        await manager.send_dashboard(
+            status.username,
+            {
+                "type": "status_view",
+                "status_id": status_id,
+                "viewer": username,
+                "username": username,
+                "display_name": viewer.display_name if viewer else username,
+                "profile_picture": (
+                    viewer.profile_picture
+                    if viewer and viewer.profile_picture
+                    else "/static/profile/default.png"
+                ),
+                "seen_at": status_timestamp_iso(view.seen_at),
+                "new_viewer": created,
+            }
+        )
+
+        return {
+            "success": True,
+            "viewed": True,
+            "new_viewer": created,
+            "seen_at": status_timestamp_iso(view.seen_at),
+        }
+    except Exception as exc:
+        db.rollback()
+        print("STATUS VIEW ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not record status view"}
+    finally:
+        db.close()
+
+
+@app.post("/statuses/{status_id}/like")
+async def record_status_like(
+    status_id: int,
+    data: StatusLikePayload,
+    request: Request
+):
+    """Persist or remove one viewer's like on a status."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        status = db.query(Status).filter(Status.id == status_id).first()
+        if not status:
+            return {"success": False, "error": "Status not found"}
+
+        if status.username == username:
+            return {
+                "success": False,
+                "error": "You cannot like your own status"
+            }
+
+        if status.expires_at and status.expires_at <= datetime.utcnow():
+            return {"success": False, "error": "Status has expired"}
+
+        # A like implies the status was viewed, so make the two datasets
+        # consistent even when the like request arrives before the view call.
+        view = (
+            db.query(StatusView)
+            .filter(
+                StatusView.status_id == status_id,
+                StatusView.username == username
+            )
+            .first()
+        )
+        if view is None:
+            db.add(StatusView(
+                status_id=status_id,
+                username=username,
+                seen_at=datetime.utcnow()
+            ))
+
+        liked = bool(data.liked)
+        row = (
+            db.query(StatusLike)
+            .filter(
+                StatusLike.status_id == status_id,
+                StatusLike.username == username
+            )
+            .first()
+        )
+
+        if liked and row is None:
+            db.add(StatusLike(
+                status_id=status_id,
+                username=username
+            ))
+        elif not liked and row is not None:
+            db.delete(row)
+
+        db.commit()
+
+        like_count = (
+            db.query(StatusLike)
+            .filter(StatusLike.status_id == status_id)
+            .count()
+        )
+
+        viewer = resolve_user_by_username(db, username)
+        await manager.send_dashboard(
+            status.username,
+            {
+                "type": "status_like" if liked else "status_unlike",
+                "status_id": status_id,
+                "viewer": username,
+                "username": username,
+                "display_name": viewer.display_name if viewer else username,
+                "profile_picture": (
+                    viewer.profile_picture
+                    if viewer and viewer.profile_picture
+                    else "/static/profile/default.png"
+                ),
+                "liked": liked,
+                "like_count": like_count,
+            }
+        )
+
+        return {
+            "success": True,
+            "liked": liked,
+            "likes": like_count,
+        }
+    except Exception as exc:
+        db.rollback()
+        print("STATUS LIKE ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not update status like"}
+    finally:
+        db.close()
+
+
+@app.post("/statuses/{status_id}/reply")
+async def record_status_reply(
+    status_id: int,
+    data: StatusReplyPayload,
+    request: Request
+):
+    """Persist a private reply as ciphertext, never plaintext."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    encrypted_text = (data.encrypted_text or "").strip()
+    if not encrypted_text:
+        return {"success": False, "error": "Reply is required"}
+    if len(encrypted_text) > 200_000:
+        return {"success": False, "error": "Reply is too large"}
+    if not (
+        encrypted_text.startswith("LCE1:") or
+        encrypted_text.startswith("LCE2:")
+    ):
+        return {"success": False, "error": "Encrypted reply required"}
+
+    db = SessionLocal()
+    try:
+        status = db.query(Status).filter(Status.id == status_id).first()
+        if not status:
+            return {"success": False, "error": "Status not found"}
+
+        if status.username == username:
+            return {
+                "success": False,
+                "error": "You cannot reply to your own status"
+            }
+
+        if status.expires_at and status.expires_at <= datetime.utcnow():
+            return {"success": False, "error": "Status has expired"}
+
+        # A reply also implies a view, keeping the viewer and engagement
+        # datasets internally consistent.
+        view = (
+            db.query(StatusView)
+            .filter(
+                StatusView.status_id == status_id,
+                StatusView.username == username
+            )
+            .first()
+        )
+        if view is None:
+            db.add(StatusView(
+                status_id=status_id,
+                username=username,
+                seen_at=datetime.utcnow()
+            ))
+
+        replied_at = datetime.utcnow()
+        reply = StatusReply(
+            status_id=status_id,
+            username=username,
+            encrypted_text=encrypted_text,
+            replied_at=replied_at
+        )
+        db.add(reply)
+
+        # Persist the private reply as a first-class chat message too. The
+        # message body stays encrypted; these fields identify it as a reply
+        # to this status so the chat UI can render it distinctly.
+        chat_message = Message(
+            sender=username,
+            receiver=status.username,
+            text=encrypted_text,
+            timestamp=utc_now_iso(),
+            unread=1,
+            seen_in_chat=0,
+            delivered=0,
+            read=0,
+            reply_to=None,
+            media_url=None,
+            media_type=None,
+            media_duration=0,
+            media_waveform=None,
+            forwarded=0,
+            status_reply=1,
+            status_reply_status_id=status_id,
+            status_reply_owner=status.username,
+        )
+        db.add(chat_message)
+        db.commit()
+        db.refresh(reply)
+        db.refresh(chat_message)
+
+        sender = resolve_user_by_username(db, username)
+        reply_count = (
+            db.query(StatusReply)
+            .filter(StatusReply.status_id == status_id)
+            .count()
+        )
+
+        await manager.send_dashboard(
+            status.username,
+            {
+                "type": "status_reply",
+                "status_id": status_id,
+                "viewer": username,
+                "username": username,
+                "display_name": sender.display_name if sender else username,
+                "profile_picture": (
+                    sender.profile_picture
+                    if sender and sender.profile_picture
+                    else "/static/profile/default.png"
+                ),
+                "replied_at": status_timestamp_iso(reply.replied_at),
+                "encrypted_text": reply.encrypted_text,
+                "replies": reply_count,
+            }
+        )
+
+        chat_payload = {
+            "type": "message",
+            "id": chat_message.id,
+            "sender": chat_message.sender,
+            "receiver": chat_message.receiver,
+            "text": chat_message.text,
+            "timestamp": chat_message.timestamp,
+            "delivered": chat_message.delivered,
+            "read": chat_message.read,
+            "reply_to": None,
+            "media_url": None,
+            "media_type": None,
+            "media_duration": 0,
+            "media_waveform": None,
+            "forwarded": False,
+            "status_reply": True,
+            "status_reply_status_id": status_id,
+            "status_reply_owner": status.username,
+        }
+        await manager.send(status.username, chat_payload)
+        await manager.send(username, chat_payload)
+
+        return {
+            "success": True,
+            "reply_id": reply.id,
+            "message_id": chat_message.id,
+            "replies": reply_count,
+        }
+    except Exception as exc:
+        db.rollback()
+        print("STATUS REPLY ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save status reply"}
+    finally:
+        db.close()
+
+
 @app.delete("/statuses/{status_id}")
 async def delete_status(status_id: int, request: Request):
     username = request.session.get("username")
@@ -2406,6 +3011,18 @@ async def delete_status(status_id: int, request: Request):
             return {"success": False, "error": "You can only delete your own status"}
 
         media_url = status.media_url
+
+        # Remove all engagement records with the status so no stale views,
+        # likes, or replies survive after the status is deleted.
+        db.query(StatusView).filter(
+            StatusView.status_id == status_id
+        ).delete(synchronize_session=False)
+        db.query(StatusLike).filter(
+            StatusLike.status_id == status_id
+        ).delete(synchronize_session=False)
+        db.query(StatusReply).filter(
+            StatusReply.status_id == status_id
+        ).delete(synchronize_session=False)
 
         db.delete(status)
         db.commit()
@@ -2526,8 +3143,8 @@ async def change_password(
     if not current_password:
         return {"success": False, "error": "Current password is required"}
 
-    if len(new_password) < 8:
-        return {"success": False, "error": "New password must be at least 8 characters"}
+    if len(new_password) < 8 or len(new_password) > 256:
+        return {"success": False, "error": "New password must be 8-256 characters"}
 
     if current_password == new_password:
         return {"success": False, "error": "New password must be different from the current password"}
@@ -2733,7 +3350,7 @@ async def upload_profile(
         )
 
     extension = allowed_types[content_type]
-    filename = f"{username}{extension}"
+    filename = f"{_storage_user_key(username)}{extension}"
 
     filepath = os.path.join(
         "static",
@@ -2801,7 +3418,9 @@ async def update_profile(
     display_name: str = Form(""),
     bio: str = Form("")
 ):
-    username = request.session.get("username")
+    username = get_authenticated_username(request)
+    if not username:
+        return RedirectResponse("/login", status_code=303)
 
     db = SessionLocal()
     try:
@@ -2811,8 +3430,16 @@ async def update_profile(
         ).first()
 
         if user:
-            user.display_name = display_name.strip()
-            user.bio = bio.strip()
+            clean_display_name = (display_name or "").strip()
+            clean_bio = (bio or "").strip()
+
+            if len(clean_display_name) > 120:
+                return RedirectResponse("/profile?error=display_name_too_long", status_code=303)
+            if len(clean_bio) > 5000:
+                return RedirectResponse("/profile?error=bio_too_long", status_code=303)
+
+            user.display_name = clean_display_name
+            user.bio = clean_bio
 
             db.commit()
 

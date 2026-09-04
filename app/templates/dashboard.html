@@ -7174,6 +7174,18 @@ body{
   box-shadow:0 10px 24px rgba(0,0,0,.28);backdrop-filter:blur(16px);cursor:pointer
 }
 .status-viewers-fab b{font:700 12px Poppins,sans-serif}
+
+
+.status-viewer-row .viewer-meta{
+  min-width:0;
+  flex:1;
+}
+.status-viewer-row .viewer-meta span{
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.25;
+}
+
 .status-viewers-faces{display:flex;align-items:center}
 .status-viewers-faces img{
   width:22px;height:22px;border-radius:50%;border:2px solid #05070d;object-fit:cover;margin-left:-6px
@@ -8967,12 +8979,28 @@ function stashOutgoingChatDraft(payload){
 
 async function encryptOutgoingChatText(text, friend){
     const plain = String(text || "");
+    const recipient = String(friend || "").trim();
+    const sender = String(CURRENT_DASHBOARD_USER || "{{ username }}" || "").trim();
+    if (!plain || !recipient || !sender) return plain;
+
     try {
         if (await ensureDashboardCrypto() && typeof LuckyCrypto.encryptMessage === "function") {
-            const encrypted = await LuckyCrypto.encryptMessage(plain, friend);
-            if (encrypted && String(encrypted).startsWith("LCE")) return String(encrypted);
+            // crypto.core.js requires all three arguments: plaintext, recipient, sender.
+            // The dashboard previously omitted the sender, which caused Status replies
+            // to fail encryption and appear as "Could not send reply".
+            const encrypted = await LuckyCrypto.encryptMessage(
+                plain,
+                recipient,
+                sender
+            );
+            if (encrypted && String(encrypted).startsWith("LCE")) {
+                return String(encrypted);
+            }
         }
-    } catch (_error) {}
+    } catch (error) {
+        console.error("DASHBOARD MESSAGE ENCRYPTION ERROR:", error);
+    }
+
     return plain;
 }
 
@@ -9171,6 +9199,7 @@ let statusReplySending = false;
 async function sendStatusPrivateReply(){
     if (statusReplySending) return;
     if (!currentStatus || currentStatus.is_mine) return;
+
     const friend = resolveStatusChatUsername(currentStatus);
     if (!friend) {
         showStatusToast("Could not find this chat", true);
@@ -9180,6 +9209,7 @@ async function sendStatusPrivateReply(){
     const inline = document.getElementById("statusReplyText");
     const sheetInput = document.getElementById("statusReplySheetText");
     const text = getStatusReplyText();
+
     if (!text) {
         showStatusToast("Write a reply first");
         (inline || sheetInput)?.focus();
@@ -9188,23 +9218,14 @@ async function sendStatusPrivateReply(){
 
     const statusId = currentStatus.id;
     const outgoingText = text;
-    recordStatusReplyLocal(currentStatus, outgoingText);
-    storePendingChatSend(friend, outgoingText);
-    stashOutgoingChatDraft({
-        to: friend,
-        username: friend,
-        text: outgoingText,
-        message: outgoingText,
-        statusId,
-        kind: "text",
-        createdAt: Date.now()
-    });
+
+    statusReplySending = true;
 
     const sendBtns = [
         document.getElementById("statusReplySendBtn"),
         document.querySelector("#statusReplySheet .status-reply-send")
     ].filter(Boolean);
-    statusReplySending = true;
+
     sendBtns.forEach(btn => {
         btn.disabled = true;
         if (btn.id === "statusReplySendBtn") {
@@ -9215,22 +9236,15 @@ async function sendStatusPrivateReply(){
         }
     });
 
-    let sent = false;
+    let saved = false;
     try {
-        sent = await sendViaLiveChatPage(friend, outgoingText);
-        if (!sent) {
-            sent = await postChatMessage({
-                username: friend,
-                text: outgoingText,
-                kind: "text"
-            });
-        }
+        saved = await recordStatusReplyServer(currentStatus, outgoingText);
     } catch (error) {
         console.error("Status reply send failed:", error);
-        sent = false;
     }
 
     statusReplySending = false;
+
     sendBtns.forEach(btn => {
         btn.disabled = false;
         if (btn.id === "statusReplySendBtn") {
@@ -9241,16 +9255,22 @@ async function sendStatusPrivateReply(){
         }
     });
 
+    if (!saved) {
+        showStatusToast("Could not send reply", true);
+        return;
+    }
+
     if (inline) inline.value = "";
     if (sheetInput) sheetInput.value = "";
+
     closeStatusSheets();
     closeStatusViewer();
-    showStatusToast(sent ? "Reply sent · opening chat" : "Opening chat to send your reply");
+
+    showStatusToast("Reply sent · opening chat");
     openChatWithDraft(
         friend,
-        "draft=" + encodeURIComponent(outgoingText) +
-        "&message=" + encodeURIComponent(outgoingText) +
-        "&autosend=1&from_status=" + encodeURIComponent(String(statusId || ""))
+        "from_status=" + encodeURIComponent(String(statusId || "")) +
+        "&status_reply=1"
     );
 }
 
@@ -9374,13 +9394,20 @@ function upsertStatusPerson(key, statusId, person, extra){
     const map = readStatusMap(key);
     const list = Array.isArray(map[id]) ? map[id] : [];
     const existing = list.find(item => String(item.username || "").toLowerCase() === username.toLowerCase());
+    const incoming = { ...(extra || {}) };
+    const created = getStatusCreatedAt(id);
     const next = {
         username,
-        display_name: person.display_name || person.name || username,
-        profile_picture: person.profile_picture || person.avatar || "",
-        seen_at: person.seen_at || Date.now(),
-        ...(extra || {})
+        display_name: person.display_name || person.name || existing?.display_name || username,
+        profile_picture: person.profile_picture || person.avatar || existing?.profile_picture || "",
+        seen_at: pickStatusEventTime("latest", created, existing?.seen_at, person.seen_at, incoming.seen_at),
+        liked_at: pickStatusEventTime("earliest", created, existing?.liked_at, person.liked_at, incoming.liked_at),
+        replied_at: pickStatusEventTime("earliest", created, existing?.replied_at, person.replied_at, incoming.replied_at),
+        ...incoming
     };
+    next.seen_at = pickStatusEventTime("latest", created, existing?.seen_at, next.seen_at) || "";
+    next.liked_at = pickStatusEventTime("earliest", created, existing?.liked_at, next.liked_at) || "";
+    next.replied_at = pickStatusEventTime("earliest", created, existing?.replied_at, next.replied_at) || "";
     if (existing) Object.assign(existing, next);
     else list.push(next);
     map[id] = list;
@@ -9406,7 +9433,26 @@ function rememberLocalStatusLiker(statusId, person, liked){
         removeStatusPerson(STATUS_LIKERS_KEY, statusId, person?.username || person?.user);
         return;
     }
-    upsertStatusPerson(STATUS_LIKERS_KEY, statusId, person, { liked: true });
+    const username = person?.username || person?.user;
+    const existing = listStatusPeople(STATUS_LIKERS_KEY, statusId).find(item =>
+        String(item.username || "").toLowerCase() === String(username || "").trim().toLowerCase()
+    );
+    // Keep the first like time forever. Re-opening the status, or a
+    // later "Just now" payload, must not move the original like forward.
+    const incomingLikeTime = earliestStatusTime(
+        existing?.liked_at,
+        person?.liked_at,
+        person?.like_at,
+        person?.likedAt,
+        person?.like_created_at
+    );
+    const isOwnLike = String(username || "").toLowerCase() === CURRENT_DASHBOARD_USER.toLowerCase();
+    const likedAt = incomingLikeTime || existing?.liked_at || (isOwnLike ? Date.now() : "");
+    upsertStatusPerson(STATUS_LIKERS_KEY, statusId, person, {
+        liked: true,
+        liked_at: likedAt
+    });
+    if (likedAt) rememberStatusPersonTimes(statusId, person, { liked_at: likedAt });
 }
 
 function rememberLocalStatusReply(statusId, person){
@@ -9447,20 +9493,127 @@ function coerceViewerList(raw){
 
 function formatViewerSeenAt(value){
     if (!value && value !== 0) return "Viewed";
-    if (typeof value === "number" && Number.isFinite(value)) {
-        const ms = value < 1e12 ? value * 1000 : value;
-        return formatStatusAge(new Date(ms).toISOString());
-    }
+    const parsed = parseStatusTimestamp(value);
+    if (Number.isFinite(parsed)) return formatStatusAge(parsed);
     const text = String(value).trim();
     if (!text) return "Viewed";
-    if (/just now|ago|today|yesterday|recently|viewed/i.test(text) && !/^\d{4}-/.test(text)) return text;
-    if (/^\d{10,13}$/.test(text)) {
-        const ms = text.length > 10 ? Number(text) : Number(text) * 1000;
-        return formatStatusAge(new Date(ms).toISOString());
-    }
-    const parsed = parseStatusTimestamp(text);
-    if (Number.isFinite(parsed)) return formatStatusAge(parsed);
     return text;
+}
+
+const STATUS_PERSON_TIMES_KEY = "lucky_status_person_times_v2";
+
+function readStatusPersonTimes(){
+    return readStatusMap(STATUS_PERSON_TIMES_KEY);
+}
+
+function writeStatusPersonTimes(map){
+    writeStatusMap(STATUS_PERSON_TIMES_KEY, map);
+}
+
+function getStatusCreatedAt(statusId){
+    if (currentStatus && statusIdsEqual(currentStatus.id, statusId)) {
+        return currentStatus.created_at || currentStatus.time || "";
+    }
+    const match = (typeof loadedStatuses !== "undefined" && Array.isArray(loadedStatuses))
+        ? loadedStatuses.find(item => statusIdsEqual(item?.id, statusId))
+        : null;
+    return match?.created_at || match?.time || "";
+}
+
+function clampStatusEventTime(value, statusCreatedAt){
+    const time = parseStatusTimestamp(value);
+    if (!Number.isFinite(time) || time <= 0) return NaN;
+    if (time > Date.now() + 120000) return NaN;
+    const created = parseStatusTimestamp(statusCreatedAt);
+    // A view/like/reply cannot happen before the status exists.
+    if (Number.isFinite(created) && time < created - 60000) return NaN;
+    return time;
+}
+
+function earliestStatusTime(...values){
+    const created = getStatusCreatedAt(currentStatus?.id);
+    let best = NaN;
+    values.forEach(value => {
+        const time = clampStatusEventTime(value, created);
+        if (!Number.isFinite(time)) return;
+        if (!Number.isFinite(best) || time < best) best = time;
+    });
+    return best;
+}
+
+function pickStatusEventTime(mode, statusCreatedAt, ...values){
+    let best = NaN;
+    values.forEach(value => {
+        const time = clampStatusEventTime(value, statusCreatedAt);
+        if (!Number.isFinite(time)) return;
+        if (!Number.isFinite(best)) {
+            best = time;
+            return;
+        }
+        if (mode === "latest") {
+            if (time > best) best = time;
+        } else if (time < best) {
+            best = time;
+        }
+    });
+    return best;
+}
+
+function getStatusPersonTimes(statusId, username){
+    const id = String(statusId || "");
+    const key = String(username || "").trim().toLowerCase();
+    if (!id || !key) return null;
+    const group = readStatusPersonTimes()[id];
+    if (!group || typeof group !== "object") return null;
+    const entry = group[key];
+    return entry && typeof entry === "object" ? entry : null;
+}
+
+function rememberStatusPersonTimes(statusId, person, extra){
+    const id = String(statusId || "");
+    const username = String(person?.username || person?.user || person?.name || "").trim();
+    if (!id || !username) return;
+    const created = getStatusCreatedAt(id);
+    const map = readStatusPersonTimes();
+    const group = map[id] && typeof map[id] === "object" ? map[id] : {};
+    const key = username.toLowerCase();
+    const prev = group[key] && typeof group[key] === "object" ? group[key] : {};
+    const next = { ...prev };
+    const latestFields = { seen_at: "latest", liked_at: "earliest", replied_at: "earliest" };
+    Object.keys(latestFields).forEach(field => {
+        const picked = pickStatusEventTime(
+            latestFields[field],
+            created,
+            prev[field],
+            person?.[field],
+            extra?.[field]
+        );
+        if (Number.isFinite(picked)) next[field] = picked;
+        else if (next[field] && !Number.isFinite(clampStatusEventTime(next[field], created))) {
+            delete next[field];
+        }
+    });
+    group[key] = next;
+    map[id] = group;
+    writeStatusPersonTimes(map);
+    return next;
+}
+
+function resolvePersonEventTime(statusId, person, field, fallbacks, mode){
+    const created = getStatusCreatedAt(statusId);
+    const cached = getStatusPersonTimes(statusId, person?.username);
+    const candidates = [
+        cached?.[field],
+        person?.[field],
+        ...(Array.isArray(fallbacks) ? fallbacks : [fallbacks])
+    ];
+    const pickMode = mode || (field === "seen_at" ? "latest" : "earliest");
+    const picked = pickStatusEventTime(pickMode, created, ...candidates);
+    if (Number.isFinite(picked)) {
+        rememberStatusPersonTimes(statusId, person, { [field]: picked });
+        return picked;
+    }
+    return "";
 }
 
 function hydrateStatusViewer(entry){
@@ -9479,7 +9632,9 @@ function hydrateStatusViewer(entry){
         username: match?.username || username,
         display_name: entry.display_name || entry.name || match?.name || username,
         profile_picture: entry.profile_picture || entry.avatar || entry.photo || match?.avatar || "/static/profile/default.png",
-        seen_at: entry.seen_at || entry.time || entry.viewed_at || entry.created_at || entry.timestamp || "",
+        seen_at: entry.seen_at || entry.viewed_at || entry.seenAt || entry.last_viewed_at || "",
+        liked_at: entry.liked_at || entry.like_at || entry.likedAt || entry.like_created_at || entry.liked_at_ts || "",
+        replied_at: entry.replied_at || entry.reply_at || entry.repliedAt || entry.reply_created_at || "",
         text: entry.text || entry.message || "",
         liked: !!(entry.liked || entry.reacted || entry.like)
     };
@@ -9490,7 +9645,17 @@ function mergeStatusViewers(...groups){
     groups.flat().map(hydrateStatusViewer).filter(Boolean).forEach(viewer => {
         const index = merged.findIndex(item => item.username.toLowerCase() === viewer.username.toLowerCase());
         if (index === -1) merged.push(viewer);
-        else merged[index] = { ...merged[index], ...viewer, seen_at: viewer.seen_at || merged[index].seen_at };
+        else {
+            const created = getStatusCreatedAt(currentStatus?.id);
+            merged[index] = {
+                ...merged[index],
+                ...viewer,
+                seen_at: pickStatusEventTime("latest", created, merged[index].seen_at, viewer.seen_at) || "",
+                liked_at: pickStatusEventTime("earliest", created, merged[index].liked_at, viewer.liked_at) || "",
+                replied_at: pickStatusEventTime("earliest", created, merged[index].replied_at, viewer.replied_at) || "",
+                liked: !!(merged[index].liked || viewer.liked)
+            };
+        }
     });
     return merged;
 }
@@ -9504,18 +9669,25 @@ function extractStatusViewers(status){
         coerceViewerList(status.watched_by),
         coerceViewerList(status.watchers),
         coerceViewerList(status.seen),
-        Array.isArray(status.views) || typeof status.views === "string" ? coerceViewerList(status.views) : [],
-        coerceViewerList(status.engagement),
-        coerceViewerList(status.stats),
-        getLocalStatusViewers(status.id)
-    ).filter(viewer => viewer.username.toLowerCase() !== CURRENT_DASHBOARD_USER.toLowerCase() || !status.is_mine);
+        Array.isArray(status.views) &&
+            typeof status.views[0] !== "number"
+            ? coerceViewerList(status.views)
+            : [],
+        coerceViewerList(status.engagement?.viewers)
+    ).filter(viewer =>
+        viewer.username.toLowerCase() !== CURRENT_DASHBOARD_USER.toLowerCase() ||
+        !status.is_mine
+    );
 }
 
 function readCountField(...values){
     for (const value of values) {
         if (value == null || value === "") continue;
         if (Array.isArray(value)) return value.length;
-        if (typeof value === "object") return coerceViewerList(value).length || Number(value.count || value.total || 0) || 0;
+        if (typeof value === "object") {
+            return coerceViewerList(value).length ||
+                Number(value.count || value.total || 0) || 0;
+        }
         const count = Number(value);
         if (Number.isFinite(count)) return count;
     }
@@ -9523,223 +9695,254 @@ function readCountField(...values){
 }
 
 function extractStatusEngagement(status, viewers){
-    const localLikers = getLocalStatusLikers(status?.id);
-    const localReplies = getLocalStatusReplies(status?.id);
-    const likes = Math.max(
-        localLikers.length,
-        readCountField(
-            status?.like_count, status?.likes_count, status?.hearts,
-            Array.isArray(status?.likes) ? status.likes : null,
-            typeof status?.likes === "number" ? status.likes : null,
-            status?.reactions, status?.engagement?.likes
-        )
+    const viewerList = Array.isArray(viewers)
+        ? viewers
+        : extractStatusViewers(status);
+
+    const likers = coerceViewerList(
+        status?.likers ||
+        status?.liked_by ||
+        status?.likes_list ||
+        status?.engagement?.likers
     );
-    const replies = Math.max(
-        localReplies.length,
-        readCountField(
-            status?.reply_count, status?.replies, status?.comments, status?.engagement?.replies
-        )
+
+    const replies = coerceViewerList(
+        status?.replies_list ||
+        status?.repliesList ||
+        status?.engagement?.replies_list
     );
+
+    const likes = readCountField(
+        status?.likes_count,
+        status?.like_count,
+        status?.engagement?.likes
+    );
+
+    const replyCount = readCountField(
+        status?.replies_count,
+        status?.reply_count,
+        status?.engagement?.replies
+    );
+
     const views = readCountField(
-        status?.view_count, status?.seen_count, status?.watch_count,
-        typeof status?.views === "number" ? status.views : null,
-        typeof status?.seen === "number" ? status.seen : null,
-        status?.engagement?.views
+        status?.views_count,
+        status?.view_count,
+        status?.seen_count,
+        status?.watch_count,
+        status?.engagement?.views,
+        viewerList.length
     );
+
     return {
-        views: Math.max(views, Array.isArray(viewers) ? viewers.length : 0),
-        likes,
-        replies,
-        likers: mergeStatusViewers(localLikers, coerceViewerList(status?.likes), coerceViewerList(status?.liked_by)),
-        repliesList: mergeStatusViewers(localReplies, coerceViewerList(status?.replies), coerceViewerList(status?.comments))
+        views: Math.max(0, Number(views) || 0),
+        likes: Math.max(0, Number(likes) || likers.length),
+        replies: Math.max(0, Number(replyCount) || replies.length),
+        likers,
+        repliesList: replies
     };
 }
 
-async function fetchStatusViewers(status){
-    const embedded = extractStatusViewers(status);
-    if (!status?.id) return { viewers: embedded, likes: [], fromApi: false, raw: status };
+function mergeServerStatusPeople(list){
+    const seen = new Map();
+    (Array.isArray(list) ? list : [])
+        .map(hydrateStatusViewer)
+        .filter(Boolean)
+        .forEach(person => {
+            const key = String(person.username || "").trim().toLowerCase();
+            if (!key) return;
+            const prev = seen.get(key) || {};
+            const created = getStatusCreatedAt(currentStatus?.id);
+            seen.set(key, {
+                ...prev,
+                ...person,
+                seen_at: pickStatusEventTime("latest", created, prev.seen_at, person.seen_at) || "",
+                liked_at: pickStatusEventTime("earliest", created, prev.liked_at, person.liked_at) || "",
+                replied_at: pickStatusEventTime("earliest", created, prev.replied_at, person.replied_at) || "",
+                liked: !!(prev.liked || person.liked)
+            });
+        });
+    return [...seen.values()];
+}
 
-    let latest = status;
+async function fetchStatusViewers(status){
+    if (!status?.id) {
+        return {
+            viewers: [],
+            views: 0,
+            likes: 0,
+            replies: 0,
+            likers: [],
+            repliesList: [],
+            fromApi: false,
+            raw: status
+        };
+    }
+
     try {
-        const res = await fetch("/statuses", { credentials: "same-origin", cache: "no-store" });
+        const id = encodeURIComponent(status.id);
+        const res = await fetch(
+            "/statuses/" + id + "/engagement",
+            {
+                credentials: "same-origin",
+                cache: "no-store"
+            }
+        );
+
         if (res.ok) {
             const data = await res.json();
-            const list = Array.isArray(data?.statuses) ? data.statuses : [];
-            const fresh = list.find(item => statusIdsEqual(item?.id, status.id));
-            if (fresh) latest = { ...status, ...fresh };
-        }
-    } catch (_error) {}
+            if (data?.success) {
+                const viewers = mergeServerStatusPeople(data.viewers);
+                const likers = mergeServerStatusPeople(data.likers);
+                const repliesList = mergeServerStatusPeople(data.replies_list);
 
-    const id = encodeURIComponent(status.id);
-    const urls = [
-        "/statuses/" + id + "/viewers",
-        "/status/" + id + "/viewers",
-        "/statuses/" + id + "/views",
-        "/status-viewers/" + id,
-        "/view-status/" + id,
-        "/status/" + id,
-        "/statuses/" + id
-    ];
-    for (const url of urls) {
-        try {
-            const res = await fetch(url, { credentials:"same-origin", cache:"no-store" });
-            if (!res.ok) continue;
-            const data = await res.json();
-            const payload = data.status || data;
-            const viewers = mergeStatusViewers(
-                extractStatusViewers(latest),
-                coerceViewerList(data),
-                extractStatusViewers(payload)
-            );
-            return {
-                viewers,
-                likes: data.likes || data.reactions || payload.likes || [],
-                fromApi: true,
-                raw: { ...latest, ...payload }
-            };
-        } catch (_error) {}
+                viewers.forEach(person => {
+                    rememberStatusPersonTimes(status.id, person, {
+                        seen_at: person.seen_at
+                    });
+                });
+                likers.forEach(person => {
+                    rememberLocalStatusLiker(status.id, person, true);
+                    rememberStatusPersonTimes(status.id, person, {
+                        liked_at: person.liked_at || person.like_at || person.likedAt
+                    });
+                });
+                repliesList.forEach(person => {
+                    rememberStatusPersonTimes(status.id, person, {
+                        replied_at: person.replied_at
+                    });
+                });
+
+                return {
+                    viewers,
+                    views: Number(data.views) || viewers.length,
+                    likes: Number(data.likes) || likers.length,
+                    replies: Number(data.replies) || repliesList.length,
+                    likers,
+                    repliesList,
+                    fromApi: true,
+                    raw: data
+                };
+            }
+        }
+    } catch (error) {
+        console.error("STATUS ENGAGEMENT FETCH ERROR:", error);
     }
 
     return {
-        viewers: extractStatusViewers(latest),
-        likes: latest.likes || [],
+        viewers: [],
+        views: 0,
+        likes: 0,
+        replies: 0,
+        likers: [],
+        repliesList: [],
         fromApi: false,
-        raw: latest
+        raw: null
     };
 }
 
 async function recordStatusView(status){
-    if (!status?.id || status.is_mine) return;
-    rememberLocalStatusViewer(status.id, {
-        username: CURRENT_DASHBOARD_USER,
-        display_name: CURRENT_DASHBOARD_USER,
-        seen_at: Date.now()
-    });
-
-    const payload = {
-        status_id: status.id,
-        id: status.id,
-        viewer: CURRENT_DASHBOARD_USER,
-        username: CURRENT_DASHBOARD_USER,
-        seen_by: CURRENT_DASHBOARD_USER
-    };
-    const id = encodeURIComponent(status.id);
-    const urls = [
-        "/view-status",
-        "/view_status",
-        "/seen-status",
-        "/status-view",
-        "/statuses/" + id + "/view",
-        "/statuses/" + id + "/seen",
-        "/status/" + id + "/view",
-        "/view-status/" + id
-    ];
-    for (const url of urls) {
-        try {
-            const res = await fetch(url, {
-                method: "POST",
-                credentials: "same-origin",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-            if (res.ok) break;
-        } catch (_error) {}
-        try {
-            const form = new URLSearchParams();
-            Object.entries(payload).forEach(([key, value]) => form.append(key, String(value)));
-            const res = await fetch(url, {
-                method: "POST",
-                credentials: "same-origin",
-                headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-                body: form
-            });
-            if (res.ok) break;
-        } catch (_error) {}
-    }
+    if (!status?.id || status.is_mine) return false;
 
     try {
-        if (dashboardSocket && dashboardSocket.readyState === WebSocket.OPEN) {
-            dashboardSocket.send(JSON.stringify({
-                type: "status_view",
-                status_id: status.id,
-                viewer: CURRENT_DASHBOARD_USER,
-                username: CURRENT_DASHBOARD_USER
-            }));
-        }
-    } catch (_error) {}
+        const res = await fetch(
+            "/statuses/" + encodeURIComponent(status.id) + "/view",
+            {
+                method: "POST",
+                credentials: "same-origin",
+                cache: "no-store"
+            }
+        );
+        if (!res.ok) return false;
+        const data = await res.json();
+        return data?.success === true;
+    } catch (error) {
+        console.error("STATUS VIEW ERROR:", error);
+        return false;
+    }
 }
 
 async function recordStatusLike(status, liked){
-    if (!status?.id || status.is_mine) return;
-    const payload = {
-        status_id: status.id,
-        id: status.id,
-        liked: !!liked,
-        like: !!liked,
-        username: CURRENT_DASHBOARD_USER,
-        viewer: CURRENT_DASHBOARD_USER
-    };
-    const id = encodeURIComponent(status.id);
-    const urls = [
-        "/statuses/" + id + "/like",
-        "/status/" + id + "/like",
-        "/like-status",
-        "/status-like",
-        "/react-status"
-    ];
-    for (const url of urls) {
-        try {
-            const res = await fetch(url, {
-                method: liked ? "POST" : "DELETE",
-                credentials: "same-origin",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-            if (res.ok) break;
-        } catch (_error) {}
-        try {
-            const res = await fetch(url, {
+    if (!status?.id || status.is_mine) return false;
+
+    try {
+        const res = await fetch(
+            "/statuses/" + encodeURIComponent(status.id) + "/like",
+            {
                 method: "POST",
                 credentials: "same-origin",
+                cache: "no-store",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-            if (res.ok) break;
-        } catch (_error) {}
+                body: JSON.stringify({ liked: !!liked })
+            }
+        );
+        if (!res.ok) return false;
+        const data = await res.json();
+        return data?.success === true;
+    } catch (error) {
+        console.error("STATUS LIKE ERROR:", error);
+        return false;
     }
-    try {
-        if (dashboardSocket && dashboardSocket.readyState === WebSocket.OPEN) {
-            dashboardSocket.send(JSON.stringify({
-                type: liked ? "status_like" : "status_unlike",
-                status_id: status.id,
-                username: CURRENT_DASHBOARD_USER,
-                viewer: CURRENT_DASHBOARD_USER,
-                liked: !!liked
-            }));
-        }
-    } catch (_error) {}
 }
 
-function recordStatusReplyLocal(status, text){
-    if (!status?.id) return;
-    rememberLocalStatusReply(status.id, {
-        username: CURRENT_DASHBOARD_USER,
-        display_name: CURRENT_DASHBOARD_USER,
-        text,
-        replied_at: Date.now(),
-        seen_at: Date.now()
-    });
+async function recordStatusReplyServer(status, text){
+    if (!status?.id || status.is_mine) return false;
+    const friend = resolveStatusChatUsername(status);
+    if (!friend) return false;
+
     try {
-        if (dashboardSocket && dashboardSocket.readyState === WebSocket.OPEN) {
-            dashboardSocket.send(JSON.stringify({
-                type: "status_reply",
-                status_id: status.id,
-                username: CURRENT_DASHBOARD_USER,
-                viewer: CURRENT_DASHBOARD_USER,
-                text
-            }));
+        const encryptedText = await encryptOutgoingChatText(text, friend);
+        if (!String(encryptedText || "").startsWith("LCE")) {
+            console.warn(
+                "STATUS REPLY: encryption unavailable; not recording engagement"
+            );
+            return false;
         }
-    } catch (_error) {}
+
+        const res = await fetch(
+            "/statuses/" + encodeURIComponent(status.id) + "/reply",
+            {
+                method: "POST",
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ encrypted_text: encryptedText })
+            }
+        );
+        if (!res.ok) return false;
+        const data = await res.json();
+        return data?.success === true;
+    } catch (error) {
+        console.error("STATUS REPLY ENGAGEMENT ERROR:", error);
+        return false;
+    }
+}
+
+async function decryptStatusReplyText(reply){
+    const encrypted = String(reply?.encrypted_text || "").trim();
+    if (!encrypted) return "";
+
+    if (
+        !encrypted.startsWith("LCE1:") &&
+        !encrypted.startsWith("LCE2:")
+    ) {
+        return encrypted;
+    }
+
+    try {
+        if (
+            await ensureDashboardCrypto() &&
+            typeof LuckyCrypto.decryptMessage === "function"
+        ) {
+            return await LuckyCrypto.decryptMessage(
+                encrypted,
+                "{{ username }}"
+            );
+        }
+    } catch (error) {
+        console.error("STATUS REPLY DECRYPT ERROR:", error);
+    }
+
+    return "Private reply";
 }
 
 function openChatFromViewer(username){
@@ -9752,61 +9955,182 @@ function openChatFromViewer(username){
 
 async function openStatusViewersSheet(){
     if (!currentStatus) return;
+
     const list = document.getElementById("statusViewersList");
     const meta = document.getElementById("statusViewersMeta");
     const stats = document.getElementById("statusEngageStats");
-    if (list) list.innerHTML = '<div class="status-sheet-empty">Loading viewers…</div>';
+
+    if (list) {
+        list.innerHTML = '<div class="status-sheet-empty">Loading viewers…</div>';
+    }
     if (stats) {
         stats.hidden = true;
         stats.innerHTML = "";
     }
+
     openStatusSheet("statusViewersSheet");
 
+    if (!currentStatus.is_mine) {
+        if (meta) {
+            meta.textContent =
+                "Viewer names are only visible on your own status";
+        }
+        if (stats) {
+            stats.hidden = false;
+            stats.innerHTML = `
+                <div class="status-engage-chip"><b>—</b><span>Views</span></div>
+                <div class="status-engage-chip"><b>—</b><span>Likes</span></div>
+                <div class="status-engage-chip"><b>—</b><span>Replies</span></div>
+            `;
+        }
+        if (list) {
+            list.innerHTML =
+                '<div class="status-sheet-empty">Viewer names are only visible on your own status.</div>';
+        }
+        return;
+    }
+
     const fetched = await fetchStatusViewers(currentStatus);
-    const viewers = (Array.isArray(fetched.viewers) ? fetched.viewers : [])
-        .map(hydrateStatusViewer)
-        .filter(Boolean)
-        .sort((a, b) => {
-            const timeA = parseStatusTimestamp(a.seen_at) || 0;
-            const timeB = parseStatusTimestamp(b.seen_at) || 0;
-            return timeB - timeA;
+    const statusId = currentStatus.id;
+    const localViewers = getLocalStatusViewers(statusId).map(hydrateStatusViewer).filter(Boolean);
+    const localLikers = getLocalStatusLikers(statusId).map(hydrateStatusViewer).filter(Boolean);
+    const viewers = mergeStatusViewers(
+        Array.isArray(fetched.viewers) ? fetched.viewers : [],
+        localViewers,
+        localLikers
+    ).sort((a, b) => {
+        const created = currentStatus.created_at;
+        const timeA = pickStatusEventTime("latest", created, a.seen_at, a.liked_at) || 0;
+        const timeB = pickStatusEventTime("latest", created, b.seen_at, b.liked_at) || 0;
+        return timeB - timeA;
+    });
+
+    const likers = mergeStatusViewers(
+        Array.isArray(fetched.likers) ? fetched.likers : [],
+        localLikers
+    );
+    const replies = Array.isArray(fetched.repliesList)
+        ? fetched.repliesList
+        : [];
+
+    const likedSet = new Set(
+        likers
+            .map(item =>
+                String(item.username || "").trim().toLowerCase()
+            )
+            .filter(Boolean)
+    );
+
+    // Prefer an explicit like stamp, then a locally cached first-like time.
+    // Never fall back to updated-now fields such as created_at/timestamp —
+    // those make an old like look like "Just now" every time the sheet opens.
+    const likeTimeMap = new Map(
+        likers.map(liker => {
+            const key = String(liker.username || "").trim().toLowerCase();
+            const value = resolvePersonEventTime(statusId, liker, "liked_at", [
+                liker.liked_at,
+                liker.like_at,
+                liker.likedAt,
+                liker.like_created_at
+            ]);
+            return [key, value];
+        }).filter(([key]) => !!key)
+    );
+
+    const replyMap = new Map(
+        replies.map(reply => [
+            String(reply.username || "").trim().toLowerCase(),
+            reply
+        ])
+    );
+
+    for (const viewer of viewers) {
+        const key = String(viewer.username || "")
+            .trim()
+            .toLowerCase();
+
+        const liker = likers.find(item =>
+            String(item.username || "").trim().toLowerCase() === key
+        );
+        viewer.liked = !!viewer.liked || !!liker || likedSet.has(key);
+        viewer.seen_at = resolvePersonEventTime(statusId, viewer, "seen_at", [
+            viewer.seen_at,
+            liker?.seen_at
+        ]) || viewer.seen_at;
+        if (viewer.liked) {
+            viewer.liked_at = likeTimeMap.get(key) ||
+                resolvePersonEventTime(statusId, viewer, "liked_at", [
+                    viewer.liked_at,
+                    liker?.liked_at,
+                    liker?.like_at,
+                    liker?.likedAt,
+                    liker?.like_created_at
+                ]);
+        }
+
+        const reply = replyMap.get(key);
+        if (reply) {
+            viewer.replied = true;
+            viewer.replied_at = resolvePersonEventTime(statusId, viewer, "replied_at", [
+                viewer.replied_at,
+                reply.replied_at,
+                reply.reply_at,
+                reply.repliedAt
+            ]) || viewer.replied_at || reply.replied_at || "";
+            viewer.reply_text = await decryptStatusReplyText(reply);
+        }
+
+        rememberStatusPersonTimes(statusId, viewer, {
+            seen_at: viewer.seen_at,
+            liked_at: viewer.liked_at,
+            replied_at: viewer.replied_at
         });
-    viewers.forEach(viewer => rememberLocalStatusViewer(currentStatus.id, viewer));
-    const engagement = extractStatusEngagement(fetched.raw || currentStatus, viewers);
-    const likers = (engagement.likers || []).map(hydrateStatusViewer).filter(Boolean);
-    const replies = (engagement.repliesList || []).map(hydrateStatusViewer).filter(Boolean);
-    const likedSet = new Set(likers.map(item => String(item.username || "").toLowerCase()).filter(Boolean));
-    const repliedSet = new Set(replies.map(item => String(item.username || "").toLowerCase()).filter(Boolean));
+    }
 
     if (stats) {
         stats.hidden = false;
         stats.innerHTML = `
-            <div class="status-engage-chip"><b>${engagement.views}</b><span>Views</span></div>
-            <div class="status-engage-chip"><b>${engagement.likes}</b><span>Likes</span></div>
-            <div class="status-engage-chip"><b>${engagement.replies}</b><span>Replies</span></div>
+            <div class="status-engage-chip">
+                <b>${Number(fetched.views) || viewers.length}</b>
+                <span>Views</span>
+            </div>
+            <div class="status-engage-chip">
+                <b>${Number(fetched.likes) || likers.length}</b>
+                <span>Likes</span>
+            </div>
+            <div class="status-engage-chip">
+                <b>${Number(fetched.replies) || replies.length}</b>
+                <span>Replies</span>
+            </div>
         `;
     }
 
     if (meta) {
-        meta.textContent = currentStatus.is_mine
-            ? (viewers.length
-                ? `Seen by ${viewers.length} · ${formatStatusAge(currentStatus.created_at)}`
-                : "No views yet · only you can see this list")
-            : "Likes and replies stay between you two";
+        meta.textContent = viewers.length
+            ? `Seen by ${viewers.length} · ${formatStatusAge(currentStatus.created_at)}`
+            : "No views yet · only you can see this list";
     }
 
-    paintViewersFab(viewers, engagement.views);
+    paintViewersFab(
+        viewers,
+        Number(fetched.views) || viewers.length
+    );
 
     if (!list) return;
 
     const renderPersonRow = (person, subtitle, extra) => {
         const username = String(person.username || "").trim();
         const name = person.display_name || username || "Contact";
-        const avatar = person.profile_picture || "/static/profile/default.png";
+        const avatar =
+            person.profile_picture ||
+            "/static/profile/default.png";
         const safeUser = username.replace(/'/g, "\\'");
         return `
-            <button class="status-sheet-row status-viewer-row" type="button" ${username ? `onclick="openChatFromViewer('${safeUser}')"` : ""}>
-                <img src="${escapeHtml(avatar)}" alt="" onerror="this.src='/static/profile/default.png'">
+            <button class="status-sheet-row status-viewer-row" type="button"
+                ${username ? `onclick="openChatFromViewer('${safeUser}')"` : ""}>
+                <img src="${escapeHtml(avatar)}"
+                     alt=""
+                     onerror="this.src='/static/profile/default.png'">
                 <div class="viewer-meta">
                     <strong>${escapeHtml(name)}</strong>
                     <span>${escapeHtml(subtitle)}</span>
@@ -9817,33 +10141,115 @@ async function openStatusViewersSheet(){
     };
 
     let html = "";
+
     if (viewers.length) {
-        html += '<div class="status-viewers-section-title">Viewed by</div>' + viewers.map(viewer => {
-            const username = String(viewer.username || "").trim().toLowerCase();
-            const liked = viewer.liked || likedSet.has(username);
-            const replied = repliedSet.has(username);
-            const bits = [formatViewerSeenAt(viewer.seen_at)];
-            if (liked) bits.push("liked");
-            if (replied) bits.push("replied");
-            return renderPersonRow(viewer, bits.join(" · "), liked ? '<span class="viewer-like">♥</span>' : "");
+        html +=
+            '<div class="status-viewers-section-title">Viewed by</div>';
+
+        html += viewers.map(viewer => {
+            const key = String(viewer.username || "")
+                .trim()
+                .toLowerCase();
+            const viewedAt = resolvePersonEventTime(statusId, viewer, "seen_at", [
+                viewer.seen_at,
+                viewer.liked_at,
+                viewer.replied_at
+            ], "latest");
+            const viewedLabel = viewedAt ? formatStatusAge(viewedAt) : "Viewed";
+            const bits = [viewedLabel];
+
+            if (viewer.liked) {
+                const likedAt = likeTimeMap.get(key) ||
+                    resolvePersonEventTime(statusId, viewer, "liked_at", [
+                        viewer.liked_at
+                    ], "earliest");
+                const likedLabel = likedAt ? formatStatusAge(likedAt) : "";
+                if (likedLabel && likedLabel !== viewedLabel) {
+                    bits.push("liked " + likedLabel);
+                } else {
+                    bits.push("liked");
+                }
+            }
+
+            if (viewer.replied) {
+                const replyText = String(
+                    viewer.reply_text || ""
+                ).trim();
+                const repliedAt = resolvePersonEventTime(statusId, viewer, "replied_at", [
+                    viewer.replied_at
+                ], "earliest");
+                const repliedLabel = repliedAt ? formatStatusAge(repliedAt) : "replied";
+                bits.push(
+                    replyText
+                        ? `replied ${repliedLabel}: ${replyText.slice(0, 42)}`
+                        : `replied ${repliedLabel}`
+                );
+            }
+
+            return renderPersonRow(
+                viewer,
+                bits.join(" · "),
+                viewer.liked
+                    ? '<span class="viewer-like">♥</span>'
+                    : ""
+            );
         }).join("");
     } else {
-        html += currentStatus.is_mine
-            ? '<div class="status-sheet-empty">No views yet. When someone opens this status, they will show up here.</div>'
-            : '<div class="status-sheet-empty">Viewer names are only visible on your own status.</div>';
+        html +=
+            '<div class="status-sheet-empty">No views yet. When someone opens this status, they will show up here.</div>';
     }
 
-    const extraLikers = likers.filter(person => !viewers.some(viewer => viewer.username.toLowerCase() === person.username.toLowerCase()));
+    // Exceptional records are still shown, but nobody already present in
+    // "Viewed by" is duplicated under another section.
+    const viewerNames = new Set(
+        viewers.map(item =>
+            String(item.username || "").trim().toLowerCase()
+        )
+    );
+
+    const extraLikers = likers.filter(person =>
+        !viewerNames.has(
+            String(person.username || "").trim().toLowerCase()
+        )
+    );
+
     if (extraLikers.length) {
-        html += '<div class="status-viewers-section-title">Liked</div>' + extraLikers.map(person =>
-            renderPersonRow(person, "Liked this status", '<span class="viewer-like">♥</span>')
-        ).join("");
+        html +=
+            '<div class="status-viewers-section-title">Liked</div>';
+        html += extraLikers.map(person => {
+            const likedAt = resolvePersonEventTime(statusId, person, "liked_at", [
+                person.liked_at,
+                person.like_at
+            ]);
+            return renderPersonRow(
+                person,
+                likedAt ? ("Liked " + formatStatusAge(likedAt)) : "Liked this status",
+                '<span class="viewer-like">♥</span>'
+            );
+        }).join("");
     }
 
-    if (replies.length) {
-        html += '<div class="status-viewers-section-title">Replied privately</div>' + replies.map(person =>
-            renderPersonRow(person, person.text ? String(person.text).slice(0, 42) : "Sent a private reply")
-        ).join("");
+    const extraReplies = replies.filter(person =>
+        !viewerNames.has(
+            String(person.username || "").trim().toLowerCase()
+        )
+    );
+
+    if (extraReplies.length) {
+        html +=
+            '<div class="status-viewers-section-title">Replied privately</div>';
+
+        for (const person of extraReplies) {
+            const replyText =
+                await decryptStatusReplyText(person);
+
+            html += renderPersonRow(
+                person,
+                replyText
+                    ? replyText.slice(0, 42)
+                    : "Sent a private reply"
+            );
+        }
     }
 
     list.innerHTML = html;
@@ -10164,10 +10570,49 @@ function escapeHtml(value){
 }
 
 function parseStatusTimestamp(value){
-    if (!value) return NaN;
+    if (value == null || value === "") return NaN;
+    if (value instanceof Date) {
+        const ms = value.getTime();
+        return Number.isFinite(ms) ? ms : NaN;
+    }
+    if (typeof value === "number") {
+        if (!Number.isFinite(value) || value <= 0) return NaN;
+        return value < 1e12 ? value * 1000 : value;
+    }
     const text = String(value).trim();
     if (!text) return NaN;
-    // Legacy status timestamps were stored as naive UTC. Explicitly mark those as UTC.
+    if (/^\d{10,13}$/.test(text)) {
+        const num = Number(text);
+        return text.length <= 10 ? num * 1000 : num;
+    }
+    // Frozen relative labels are not absolute times. Ignore them so a
+    // cached first-seen stamp can age instead of staying "Just now".
+    if (/^(just now|now|recently|viewed|liked|replied)$/i.test(text)) return NaN;
+
+    const relative = text.match(/^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)\s*ago$/i);
+    if (relative) {
+        const amount = Number(relative[1]);
+        const unit = relative[2].toLowerCase();
+        const ms = unit.startsWith("m") ? 60 * 1000
+            : unit.startsWith("h") ? 60 * 60 * 1000
+            : 24 * 60 * 60 * 1000;
+        return Date.now() - (amount * ms);
+    }
+
+    const naive = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/);
+    if (naive && !/(Z|[+-]\d{2}:?\d{2})$/.test(text)) {
+        const iso = naive[1] + "T" + naive[2];
+        const utc = Date.parse(iso + "Z");
+        const local = Date.parse(iso);
+        // Prefer the reading that is not in the future (clock / TZ skew).
+        if (Number.isFinite(utc) && utc > Date.now() + 120000 && Number.isFinite(local) && local <= Date.now() + 120000) {
+            return local;
+        }
+        if (Number.isFinite(utc)) return utc;
+        return local;
+    }
+
+    // Legacy status timestamps were stored as naive UTC.
     if (/^\d{4}-\d{2}-\d{2}T.*$/.test(text) && !/(Z|[+-]\d{2}:?\d{2})$/.test(text)) {
         return Date.parse(text + "Z");
     }
@@ -10804,43 +11249,63 @@ function connectDashboardSocket() {
                 }
             }
 
-            if (data.type === "status_view" || data.type === "status_seen" || data.type === "status_viewed") {
-                const statusId = data.status_id || data.id || data.status?.id;
-                const viewer = data.viewer || data.username || data.user;
-                if (statusId && viewer) {
-                    rememberLocalStatusViewer(statusId, {
-                        username: viewer,
-                        display_name: data.display_name || viewer,
-                        profile_picture: data.profile_picture || data.avatar || "",
-                        seen_at: data.seen_at || Date.now()
-                    });
-                }
-                if (currentStatus && currentStatus.is_mine && statusIdsEqual(currentStatus.id, statusId)) {
-                    paintViewersFab(extractStatusViewers(currentStatus));
-                }
-            }
+            if (
+                data.type === "status_view" ||
+                data.type === "status_seen" ||
+                data.type === "status_viewed" ||
+                data.type === "status_like" ||
+                data.type === "status_unlike" ||
+                data.type === "status_reply"
+            ) {
+                const statusId =
+                    data.status_id ||
+                    data.id ||
+                    data.status?.id;
 
-            if (data.type === "status_like" || data.type === "status_unlike") {
-                const statusId = data.status_id || data.id || data.status?.id;
-                const viewer = data.viewer || data.username || data.user;
-                if (statusId && viewer) {
-                    rememberLocalStatusLiker(statusId, {
-                        username: viewer,
-                        display_name: data.display_name || viewer,
-                        profile_picture: data.profile_picture || data.avatar || ""
-                    }, data.type !== "status_unlike" && data.liked !== false);
-                }
-            }
+                if (
+                    currentStatus?.is_mine &&
+                    statusId &&
+                    statusIdsEqual(currentStatus.id, statusId)
+                ) {
+                    const actorName = data.username || data.user ||
+                        data.viewer || data.liker || data.actor ||
+                        data.status?.username;
+                    if (actorName && data.type === "status_like") {
+                        rememberLocalStatusLiker(statusId, {
+                            username: actorName,
+                            display_name: data.display_name || actorName,
+                            liked_at: data.liked_at || data.timestamp || Date.now()
+                        }, true);
+                    }
+                    if (actorName && (data.type === "status_view" || data.type === "status_seen" || data.type === "status_viewed")) {
+                        rememberStatusPersonTimes(statusId, { username: actorName }, {
+                            seen_at: data.seen_at || data.timestamp || Date.now()
+                        });
+                    }
+                    fetchStatusViewers(currentStatus)
+                        .then(result => {
+                            if (!currentStatus?.is_mine) return;
 
-            if (data.type === "status_reply") {
-                const statusId = data.status_id || data.id || data.status?.id;
-                const viewer = data.viewer || data.username || data.user;
-                if (statusId && viewer) {
-                    rememberLocalStatusReply(statusId, {
-                        username: viewer,
-                        display_name: data.display_name || viewer,
-                        text: data.text || data.message || ""
-                    });
+                            const viewers =
+                                Array.isArray(result.viewers)
+                                    ? result.viewers
+                                    : [];
+
+                            paintViewersFab(
+                                viewers,
+                                Number(result.views) || viewers.length
+                            );
+
+                            const sheet =
+                                document.getElementById(
+                                    "statusViewersSheet"
+                                );
+
+                            if (sheet?.classList.contains("open")) {
+                                openStatusViewersSheet();
+                            }
+                        })
+                        .catch(() => {});
                 }
             }
 

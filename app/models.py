@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text
+from sqlalchemy import Column, Integer, String, DateTime, Text, UniqueConstraint
 from .database import Base
 
 class User(Base):
@@ -61,6 +61,12 @@ class Message(Base):
 
     forwarded = Column(Integer, default=0)
 
+    # Persistent metadata for messages created by a Status private reply.
+    # The reply text itself remains encrypted in the normal `text` column.
+    status_reply = Column(Integer, default=0)
+    status_reply_status_id = Column(Integer, nullable=True)
+    status_reply_owner = Column(String, nullable=True)
+
 
 class Status(Base):
     __tablename__ = "statuses"
@@ -72,6 +78,51 @@ class Status(Base):
     media_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, index=True)
+
+
+class StatusView(Base):
+    __tablename__ = "status_views"
+
+    id = Column(Integer, primary_key=True, index=True)
+    status_id = Column(Integer, index=True, nullable=False)
+    username = Column(String, index=True, nullable=False)
+    seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "status_id",
+            "username",
+            name="uq_status_view_status_user"
+        ),
+    )
+
+
+class StatusLike(Base):
+    __tablename__ = "status_likes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    status_id = Column(Integer, index=True, nullable=False)
+    username = Column(String, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "status_id",
+            "username",
+            name="uq_status_like_status_user"
+        ),
+    )
+
+
+class StatusReply(Base):
+    __tablename__ = "status_replies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    status_id = Column(Integer, index=True, nullable=False)
+    username = Column(String, index=True, nullable=False)
+    encrypted_text = Column(Text, nullable=False)
+    replied_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
 
 class PushSubscription(Base):
     __tablename__ = "push_subscriptions"

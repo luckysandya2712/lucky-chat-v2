@@ -2451,6 +2451,45 @@ function ensureForwardedLabel(bubble, msg){
     bubble.insertBefore(label, bubble.firstChild);
 }
 
+function isStatusReplyMessage(msg){
+    if (!msg) return false;
+    const value = msg.status_reply ?? msg.statusReply ?? msg.source_status_reply;
+    if (value === true || value === 1) return true;
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized === "1" || normalized === "true" || normalized === "yes";
+    }
+    return false;
+}
+
+function statusReplyHtml(msg){
+    if (!isStatusReplyMessage(msg)) return "";
+
+    const owner = String(
+        msg.status_reply_owner ||
+        msg.statusReplyOwner ||
+        "Status"
+    ).trim() || "Status";
+
+    return `
+        <div class="status-reply-card" aria-label="Status reply">
+            <div class="status-reply-card-head">
+                <span class="status-reply-card-icon" aria-hidden="true">↩</span>
+                <span class="status-reply-card-label">Status reply</span>
+            </div>
+            <div class="status-reply-card-subtitle">
+                Replying to ${escapeHTML(owner)}'s status
+            </div>
+        </div>
+    `;
+}
+
+function ensureStatusReplyLabel(bubble, msg){
+    if (!bubble || !isStatusReplyMessage(msg)) return;
+    if (bubble.querySelector(".status-reply-card")) return;
+    bubble.insertAdjacentHTML("afterbegin", statusReplyHtml(msg));
+}
+
 function addMessage(msg){
 
     if (deletedMessages[msg.id]) {
@@ -2485,6 +2524,7 @@ function addMessage(msg){
         }
 
         ensureForwardedLabel(existingBubble, msg);
+        ensureStatusReplyLabel(existingBubble, msg);
         return;
     }
 
@@ -2494,6 +2534,7 @@ function addMessage(msg){
     row.className = "message-row";
 
     const forwardedHtml = forwardedLabelHtml(msg);
+    const statusReplyMarkup = statusReplyHtml(msg);
 
     let replyHtml = "";
 
@@ -2647,6 +2688,8 @@ function addMessage(msg){
 
                  ${forwardedHtml}
 
+                 ${statusReplyMarkup}
+
                  ${replyHtml}
 
                  ${mediaHtml}
@@ -2676,6 +2719,8 @@ function addMessage(msg){
                  oncontextmenu="return false;">
 
                 ${forwardedHtml}
+
+                ${statusReplyMarkup}
 
                 ${replyHtml}
 
