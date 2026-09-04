@@ -215,6 +215,59 @@ def resolve_user_by_username(db, username):
         .first()
     )
 
+
+# Short-lived record of recent forwards so a client that both:
+#   1) sends type="forward_message" to the chosen recipient, and
+#   2) also emits a regular type="message" on the open chat socket
+# does not persist a duplicate copy into the conversation that is
+# currently on screen (e.g. forwarding to LuckyNova while chatting
+# with GautAm).
+_recent_forwards = {}
+_RECENT_FORWARD_TTL = 10.0
+
+
+def _remember_forward(username, text, target):
+    now = time.time()
+    items = [
+        item
+        for item in _recent_forwards.get(username, [])
+        if now - item["t"] < _RECENT_FORWARD_TTL
+    ]
+    items.append({
+        "t": now,
+        "text": str(text or ""),
+        "target": str(target or "").strip(),
+    })
+    _recent_forwards[username] = items[-20:]
+
+
+def _is_accidental_forward_resend(username, text, receiver):
+    """True when this outgoing text was just forwarded to someone else."""
+    now = time.time()
+    receiver_key = str(receiver or "").strip().casefold()
+    text_key = str(text or "")
+    for item in _recent_forwards.get(username, []):
+        if now - item["t"] > _RECENT_FORWARD_TTL:
+            continue
+        if item["text"] != text_key:
+            continue
+        if str(item["target"] or "").strip().casefold() != receiver_key:
+            return True
+    return False
+
+
+def _payload_is_forward(data):
+    if not isinstance(data, dict):
+        return False
+    if data.get("type") == "forward_message":
+        return True
+    for key in ("forward", "forwarded", "is_forward", "isForward"):
+        value = data.get(key)
+        if value is True or value == 1 or str(value).strip().lower() in {"true", "1", "yes"}:
+            return True
+    return False
+
+
 templates = Jinja2Templates(directory="app/templates")
 
 def get_authenticated_username(scope):
@@ -1215,54 +1268,92 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             if data["type"] == "forward_message":
+                # Forwarding currently sends encrypted text only. Resolve the
+                # selected recipient to the canonical database username and
+                # never reuse the current chat's `friend` value.
                 text = data.get("text", "").strip()
-                target = data.get("target", "").strip()
+                requested_target = (
+                    data.get("target")
+                    or data.get("receiver")
+                    or data.get("to")
+                    or data.get("username")
+                    or ""
+                )
+                requested_target = str(requested_target).strip()
 
-                if not text or not target:
+                if not text or not requested_target:
                     continue
 
                 db = SessionLocal()
+                payload = None
+                target = None
+                try:
+                    target_user = resolve_user_by_username(db, requested_target)
 
-                target_user = db.query(User).filter(
-                    User.username == target
-                ).first()
+                    if not target_user:
+                        print(
+                            "FORWARD TARGET USER NOT FOUND:",
+                            requested_target
+                        )
+                        continue
 
-                if not target_user:
-                    db.close()
+                    target = target_user.username
+
+                    message = Message(
+                        sender=username,
+                        receiver=target,
+                        text=text,
+                        timestamp=utc_now_iso(),
+                        unread=1,
+                        seen_in_chat=0,
+                        reply_to=None,
+                        media_url=data.get("media_url"),
+                        media_type=data.get("media_type"),
+                        media_duration=int(data.get("media_duration") or 0),
+                        media_waveform=data.get("media_waveform"),
+                    )
+
+                    db.add(message)
+                    db.commit()
+                    db.refresh(message)
+
+                    _remember_forward(username, text, target)
+
+                    print(
+                        "FORWARDED MESSAGE:",
+                        message.id,
+                        username,
+                        "->",
+                        target
+                    )
+
+                    payload = {
+                        "type": "message",
+                        "id": message.id,
+                        "sender": username,
+                        "receiver": target,
+                        "text": message.text,
+                        "timestamp": message.timestamp,
+                        "delivered": message.delivered,
+                        "read": message.read,
+                        "reply_to": None,
+                        "media_url": message.media_url,
+                        "media_type": message.media_type,
+                        "media_duration": message.media_duration or 0,
+                        "media_waveform": message.media_waveform,
+                        "forwarded": True,
+                        "client_id": data.get("client_id"),
+                    }
+                except Exception as exc:
+                    db.rollback()
+                    print("FORWARD MESSAGE ERROR:", exc)
+                    traceback.print_exc()
                     continue
+                finally:
+                    db.close()
 
-                message = Message(
-                    sender=username,
-                    receiver=friend,
-                    text=text,
-                    timestamp=utc_now_iso(),
-                    unread=1,
-                    seen_in_chat=0,
-                    reply_to=data.get("reply_to"),
-                    media_url=media_url,
-                    media_type=media_type,
-                )
-
-                db.add(message)
-                db.commit()
-                db.refresh(message)
-
-                print("SAVED SENDER:", message.sender)
-                print("SAVED RECEIVER:", message.receiver)
-
-                payload = {
-                    "type": "message",
-                    "id": message.id,
-                    "sender": username,
-                    "receiver": target,
-                    "text": message.text,
-                    "timestamp": message.timestamp,
-                    "delivered": message.delivered,
-                    "read": message.read,
-                    "reply_to": None
-                }
-
-                db.close()
+                if not payload or not target:
+                    continue
 
                 await manager.send_dashboard(
                     target,
@@ -1280,8 +1371,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                 )
 
-                await manager.send(username, payload)
-
+                # Deliver the forwarded message to the chosen recipient.
                 if target != username:
                     await manager.send(target, payload)
                     asyncio.create_task(
@@ -1295,6 +1385,25 @@ async def websocket_endpoint(websocket: WebSocket):
                             },
                         )
                     )
+
+                # Only echo a renderable "message" event back to the sender
+                # when they are already viewing that recipient's chat.
+                # Otherwise the open conversation (GautAm) would draw a
+                # brand-new outgoing bubble for a message that belongs to
+                # LuckyNova.
+                current_friend = str(friend or "").strip().casefold()
+                if current_friend and current_friend == str(target).strip().casefold():
+                    await manager.send(username, payload)
+                else:
+                    await manager.send(username, {
+                        "type": "forward_ack",
+                        "id": payload["id"],
+                        "sender": username,
+                        "receiver": target,
+                        "timestamp": payload["timestamp"],
+                        "forwarded": True,
+                        "client_id": data.get("client_id"),
+                    })
 
                 continue
 
@@ -1332,17 +1441,60 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not text and not media_url:
                     continue
 
+                is_forward = _payload_is_forward(data)
+                requested_target = (
+                    data.get("target")
+                    or data.get("receiver")
+                    or data.get("to")
+                    or ""
+                )
+                requested_target = str(requested_target).strip()
+
+                # Regular composer messages stay in the open chat. Forwarded
+                # messages must go only to the selected recipient.
+                if is_forward and requested_target:
+                    receiver_name = requested_target
+                elif requested_target and str(requested_target).strip().casefold() != str(friend or "").strip().casefold():
+                    # Client included an explicit other recipient. Treat that
+                    # as a forward so it is not also saved to the open chat.
+                    receiver_name = requested_target
+                    is_forward = True
+                else:
+                    receiver_name = friend
+
+                if is_forward and not requested_target:
+                    print("FORWARD MESSAGE MISSING TARGET, ignoring open-chat fallback")
+                    continue
+
+                if _is_accidental_forward_resend(username, text, receiver_name):
+                    print(
+                        "SKIP DUPLICATE FORWARD RESEND:",
+                        username,
+                        "->",
+                        receiver_name
+                    )
+                    continue
+
                 db = SessionLocal()
 
                 try:
+                    target_user = resolve_user_by_username(db, receiver_name)
+                    receiver_name = target_user.username if target_user else str(receiver_name or "").strip()
+
+                    if not receiver_name:
+                        continue
+
+                    if is_forward:
+                        _remember_forward(username, text, receiver_name)
+
                     message = Message(
                         sender=username,
-                        receiver=friend,
+                        receiver=receiver_name,
                         text=text,
                         timestamp=utc_now_iso(),
                         unread=1,
                         seen_in_chat=0,
-                        reply_to=data.get("reply_to"),
+                        reply_to=None if is_forward else data.get("reply_to"),
                         media_url=media_url,
                         media_type=media_type,
                         media_duration=int(data.get("media_duration") or 0),
@@ -1361,14 +1513,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         message.id,
                         username,
                         "->",
-                        friend
+                        receiver_name,
+                        "(forwarded)" if is_forward else ""
                     )
 
                     payload = {
                         "type": "message",
                         "id": message.id,
                         "sender": username,
-                        "receiver": friend,
+                        "receiver": receiver_name,
                         "text": message.text,
                         "timestamp": message.timestamp,
                         "delivered": message.delivered,
@@ -1378,21 +1531,36 @@ async def websocket_endpoint(websocket: WebSocket):
                         "media_type": message.media_type,
                         "media_duration": message.media_duration or 0,
                         "media_waveform": message.media_waveform,
-                        "client_id": data.get("client_id")
+                        "client_id": data.get("client_id"),
+                        "forwarded": True if is_forward else False,
                     }
 
                     # Deliver the actual chat message first. Dashboard
                     # notifications must never delay message delivery.
-                    await manager.send(username, payload)
+                    current_friend = str(friend or "").strip().casefold()
+                    same_open_chat = current_friend == str(receiver_name).strip().casefold()
 
-                    if friend != username:
-                        await manager.send(friend, payload)
+                    if not is_forward or same_open_chat:
+                        await manager.send(username, payload)
+                    else:
+                        await manager.send(username, {
+                            "type": "forward_ack",
+                            "id": payload["id"],
+                            "sender": username,
+                            "receiver": receiver_name,
+                            "timestamp": payload["timestamp"],
+                            "forwarded": True,
+                            "client_id": data.get("client_id"),
+                        })
+
+                    if receiver_name != username:
+                        await manager.send(receiver_name, payload)
 
                         # Push payload intentionally contains NO message text.
                         # The chat content is end-to-end encrypted.
                         asyncio.create_task(
                             send_push_to_user(
-                                friend,
+                                receiver_name,
                                 {
                                     "type": "message",
                                     "sender": username,
@@ -1404,7 +1572,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # Dashboard updates are secondary.
                     await manager.send_dashboard(
-                        friend,
+                        receiver_name,
                         {
                             "type": "dashboard_update",
                             "from": username
@@ -1415,7 +1583,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         username,
                         {
                             "type": "dashboard_update",
-                            "from": friend
+                            "from": receiver_name
                         }
                     )
 
@@ -1638,7 +1806,7 @@ async def get_users(request: Request):
     # Require an authenticated session and return only the public fields
     # that the picker actually needs. Never serialize the full User model,
     # which contains password hashes and private crypto/backup material.
-    current_username = get_authenticated_username(request.scope)
+    current_username = get_authenticated_username(request)
     if not current_username:
         return {"success": False, "error": "Not logged in"}
 
