@@ -5899,7 +5899,7 @@ body{
     <aside class="sidebar">
 
 <div class="logo">
-    <span><i class="logo-mark" aria-hidden="true">🚀</i><b>Lucky Chat</b></span>
+    <span><img class="logo-mark" src="/static/pwa/icon-192.png" alt="Lucky Chat"><b>Lucky Chat</b></span>
 
     <button class="settings-btn" onclick="openSettings()" aria-label="Settings" title="Settings">
     ⚙️
@@ -12023,12 +12023,13 @@ html,body{
 .logo-mark{
   width:40px!important;
   height:40px!important;
-  border-radius:14px!important;
-  background:
-    radial-gradient(circle at 30% 28%,rgba(75,227,255,.42),transparent 46%),
-    linear-gradient(160deg,#1a2a55,#2a1570)!important;
+  display:block!important;
+  flex:0 0 40px!important;
+  object-fit:cover!important;
+  border-radius:12px!important;
   border:1px solid rgba(75,227,255,.35)!important;
-  box-shadow:0 10px 24px rgba(75,227,255,.18)!important;
+  background:#061329!important;
+  box-shadow:0 0 0 2px rgba(65,168,255,.08),0 10px 24px rgba(75,227,255,.18)!important;
 }
 
 .settings-btn{
