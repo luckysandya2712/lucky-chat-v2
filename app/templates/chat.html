@@ -1435,6 +1435,497 @@ html.lucky-light .status-reply-card-icon{
 }
 html.lucky-light .status-reply-card-subtitle{color:#52657b}
 </style>
+
+<style id="lucky-chat-final-ui-v1">
+/* =========================================================
+   LUCKY CHAT — FINAL CHAT UI V1
+   Final visual consistency layer.
+   Existing DOM, IDs, handlers, media, receipts, Status replies,
+   voice calls, search and realtime behavior are untouched.
+   ========================================================= */
+
+/* ---------- Dark / default theme ---------- */
+html:not(.lucky-light) body{
+    background:
+        radial-gradient(900px 460px at 8% -12%,rgba(68,206,255,.10),transparent 46%),
+        radial-gradient(780px 430px at 104% 0%,rgba(142,105,255,.10),transparent 48%),
+        linear-gradient(180deg,#050912 0%,#07101d 52%,#050a12 100%) !important;
+}
+
+html:not(.lucky-light) .header{
+    height:76px !important;
+    min-height:76px !important;
+    padding:0 18px !important;
+    gap:11px !important;
+    background:rgba(7,15,28,.78) !important;
+    border-bottom:1px solid rgba(148,196,255,.10) !important;
+    box-shadow:0 12px 30px rgba(0,0,0,.18) !important;
+    backdrop-filter:blur(20px) saturate(1.12) !important;
+    -webkit-backdrop-filter:blur(20px) saturate(1.12) !important;
+}
+
+html:not(.lucky-light) .header-avatar{
+    width:48px !important;
+    height:48px !important;
+    border:2px solid rgba(91,195,255,.72) !important;
+    box-shadow:
+        0 0 0 3px rgba(91,195,255,.08),
+        0 8px 20px rgba(15,86,155,.18) !important;
+}
+
+html:not(.lucky-light) .header-name{
+    color:#f8fbff !important;
+    font-size:17px !important;
+    font-weight:750 !important;
+    letter-spacing:-.025em !important;
+}
+
+html:not(.lucky-light) .chat-header-status{
+    color:#7f95ad !important;
+    font-size:10px !important;
+    margin-top:2px !important;
+}
+
+html:not(.lucky-light) #online-users{
+    color:#59dca9 !important;
+}
+
+html:not(.lucky-light) .back-btn,
+html:not(.lucky-light) .chat-search-btn,
+html:not(.lucky-light) .voice-call-btn,
+html:not(.lucky-light) .chat-media-gallery-btn{
+    width:42px !important;
+    height:42px !important;
+    min-width:42px !important;
+    flex:0 0 42px !important;
+    padding:0 !important;
+    border-radius:13px !important;
+    border:1px solid rgba(148,196,255,.13) !important;
+    background:linear-gradient(145deg,rgba(21,36,59,.90),rgba(10,20,35,.92)) !important;
+    color:#dcefff !important;
+    box-shadow:0 8px 20px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+
+html:not(.lucky-light) .back-btn:hover,
+html:not(.lucky-light) .chat-search-btn:hover,
+html:not(.lucky-light) .voice-call-btn:hover,
+html:not(.lucky-light) .chat-media-gallery-btn:hover{
+    border-color:rgba(105,201,255,.30) !important;
+    background:linear-gradient(145deg,rgba(28,49,78,.94),rgba(12,25,43,.95)) !important;
+}
+
+html:not(.lucky-light) .back-btn:active,
+html:not(.lucky-light) .chat-search-btn:active,
+html:not(.lucky-light) .voice-call-btn:active,
+html:not(.lucky-light) .chat-media-gallery-btn:active{
+    transform:scale(.94) !important;
+}
+
+/* Compact header action cluster */
+html:not(.lucky-light) .header > .back-btn{
+    margin-right:1px !important;
+}
+
+html:not(.lucky-light) .header-identity{
+    min-width:0 !important;
+    flex:1 1 auto !important;
+    overflow:hidden !important;
+}
+
+html:not(.lucky-light) .header-identity .header-name{
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap !important;
+}
+
+html:not(.lucky-light) .messages{
+    background:
+        radial-gradient(740px 380px at 100% 0%,rgba(54,153,255,.055),transparent 58%),
+        radial-gradient(650px 340px at 0% 100%,rgba(104,91,255,.035),transparent 58%),
+        linear-gradient(180deg,#07111e 0%,#050b13 100%) !important;
+    padding:18px 18px 16px !important;
+    gap:9px !important;
+    scrollbar-width:thin !important;
+    scrollbar-color:#263a56 transparent !important;
+}
+
+html:not(.lucky-light) .messages::-webkit-scrollbar{
+    width:6px !important;
+}
+
+html:not(.lucky-light) .messages::-webkit-scrollbar-thumb{
+    background:#263a56 !important;
+    border-radius:999px !important;
+}
+
+html:not(.lucky-light) .message{
+    max-width:min(72%,620px) !important;
+    border-radius:19px !important;
+    padding:11px 13px !important;
+    line-height:1.42 !important;
+}
+
+html:not(.lucky-light) .messages .message-row.lucky-group-start{
+    margin-top:5px !important;
+}
+
+html:not(.lucky-light) .messages .message-row.lucky-group-follow{
+    margin-top:-3px !important;
+}
+
+html:not(.lucky-light) .message-own{
+    background:linear-gradient(145deg,#347df5,#245fce) !important;
+    border:1px solid rgba(119,190,255,.16) !important;
+    box-shadow:0 10px 24px rgba(28,99,205,.19),inset 0 1px 0 rgba(255,255,255,.09) !important;
+}
+
+html:not(.lucky-light) .message-other,
+html:not(.lucky-light) .received{
+    background:linear-gradient(145deg,rgba(21,35,55,.96),rgba(11,21,36,.98)) !important;
+    color:#eaf2fb !important;
+    border:1px solid rgba(148,196,255,.09) !important;
+    box-shadow:0 8px 22px rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+
+html:not(.lucky-light) .msg-avatar{
+    width:28px !important;
+    height:28px !important;
+    min-width:28px !important;
+    border:1px solid rgba(102,195,255,.44) !important;
+    box-shadow:0 5px 13px rgba(0,0,0,.18) !important;
+}
+
+html:not(.lucky-light) .msg-time{
+    color:#7890aa !important;
+    font-size:9px !important;
+    font-weight:600 !important;
+}
+
+html:not(.lucky-light) .message-own .msg-time,
+html:not(.lucky-light) .message-own .message-meta{
+    color:rgba(238,248,255,.84) !important;
+}
+
+html:not(.lucky-light) .ticks.read{
+    color:#83e8ff !important;
+}
+
+html:not(.lucky-light) .reply-box{
+    border-radius:11px !important;
+    background:rgba(255,255,255,.065) !important;
+    border-left:2px solid rgba(111,202,255,.65) !important;
+}
+
+html:not(.lucky-light) .message-own .reply-box{
+    background:rgba(255,255,255,.10) !important;
+    border-left-color:rgba(213,241,255,.78) !important;
+}
+
+html:not(.lucky-light) .forwarded-label{
+    color:#8bb4d2 !important;
+    opacity:.86 !important;
+}
+
+html:not(.lucky-light) .status-reply-card{
+    border-color:rgba(111,202,255,.16) !important;
+    background:linear-gradient(145deg,rgba(29,55,83,.70),rgba(10,22,37,.84)) !important;
+}
+
+html:not(.lucky-light) .status-reply-card-head{
+    color:#cfeaff !important;
+}
+
+html:not(.lucky-light) .status-reply-card-subtitle{
+    color:#90a6bd !important;
+}
+
+/* Composer */
+html:not(.lucky-light) .input-area{
+    padding:10px 11px calc(10px + env(safe-area-inset-bottom,0px)) !important;
+    gap:8px !important;
+    background:rgba(7,15,28,.84) !important;
+    border-top:1px solid rgba(148,196,255,.10) !important;
+    box-shadow:0 -14px 34px rgba(0,0,0,.20) !important;
+    backdrop-filter:blur(20px) !important;
+    -webkit-backdrop-filter:blur(20px) !important;
+}
+
+html:not(.lucky-light) #messageInput{
+    min-height:50px !important;
+    border-radius:17px !important;
+    background:linear-gradient(180deg,rgba(16,29,48,.96),rgba(9,18,31,.98)) !important;
+    border:1px solid rgba(148,196,255,.12) !important;
+    color:#f2f8ff !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 6px 18px rgba(0,0,0,.14) !important;
+}
+
+html:not(.lucky-light) #messageInput:focus{
+    border-color:rgba(83,194,255,.40) !important;
+    box-shadow:0 0 0 4px rgba(55,180,255,.08),inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+html:not(.lucky-light) #messageInput::placeholder{
+    color:#657b94 !important;
+}
+
+html:not(.lucky-light) #imageBtn,
+html:not(.lucky-light) #videoBtn,
+html:not(.lucky-light) #voiceBtn{
+    width:42px !important;
+    height:42px !important;
+    min-width:42px !important;
+    border-radius:13px !important;
+    background:linear-gradient(145deg,rgba(20,36,58,.94),rgba(10,20,35,.96)) !important;
+    border:1px solid rgba(148,196,255,.12) !important;
+    color:#cce9ff !important;
+    box-shadow:0 7px 17px rgba(0,0,0,.16) !important;
+}
+
+html:not(.lucky-light) #sendBtn{
+    width:46px !important;
+    min-width:46px !important;
+    height:46px !important;
+    flex-basis:46px !important;
+    border-radius:50% !important;
+    background:linear-gradient(145deg,#48cfff,#3284ff) !important;
+    border:1px solid rgba(151,221,255,.30) !important;
+    box-shadow:0 10px 25px rgba(42,137,255,.28),0 0 0 4px rgba(51,154,255,.07) !important;
+}
+
+/* Search / overlay surfaces */
+html:not(.lucky-light) .chat-search-overlay{
+    background:rgba(3,8,15,.94) !important;
+    backdrop-filter:blur(28px) !important;
+    -webkit-backdrop-filter:blur(28px) !important;
+}
+
+html:not(.lucky-light) .chat-search-top,
+html:not(.lucky-light) .chat-search-results{
+    background:rgba(9,18,32,.94) !important;
+    border-color:rgba(148,196,255,.10) !important;
+}
+
+html:not(.lucky-light) .chat-search-field,
+html:not(.lucky-light) #chatSearchInput{
+    border-color:rgba(148,196,255,.12) !important;
+    background:rgba(14,28,46,.92) !important;
+    color:#f2f8ff !important;
+}
+
+html:not(.lucky-light) .chat-search-heading strong{
+    color:#f7fbff !important;
+}
+
+/* ---------- Light theme polish ---------- */
+html.lucky-light body{
+    background:
+        radial-gradient(900px 430px at 7% -8%,rgba(59,130,246,.10),transparent 44%),
+        radial-gradient(760px 380px at 100% 0%,rgba(14,165,233,.06),transparent 45%),
+        linear-gradient(180deg,#f7fbff 0%,#edf3f8 100%) !important;
+}
+
+html.lucky-light .header{
+    height:76px !important;
+    min-height:76px !important;
+    padding:0 18px !important;
+    gap:11px !important;
+}
+
+html.lucky-light .header-avatar{
+    width:48px !important;
+    height:48px !important;
+}
+
+html.lucky-light .header-name{
+    font-size:17px !important;
+    letter-spacing:-.025em !important;
+}
+
+html.lucky-light .chat-header-status{
+    font-size:10px !important;
+}
+
+html.lucky-light .back-btn,
+html.lucky-light .chat-search-btn,
+html.lucky-light .voice-call-btn,
+html.lucky-light .chat-media-gallery-btn{
+    width:42px !important;
+    height:42px !important;
+    min-width:42px !important;
+    flex-basis:42px !important;
+    border-radius:13px !important;
+}
+
+html.lucky-light .messages{
+    padding:18px 18px 16px !important;
+    gap:9px !important;
+    background:
+        radial-gradient(740px 380px at 100% 0%,rgba(59,130,246,.055),transparent 58%),
+        linear-gradient(180deg,#f9fcff 0%,#eef4f8 100%) !important;
+}
+
+html.lucky-light .message{
+    max-width:min(72%,620px) !important;
+    border-radius:19px !important;
+    padding:11px 13px !important;
+}
+
+html.lucky-light .message-other,
+html.lucky-light .received{
+    background:linear-gradient(145deg,#ffffff,#e9f1f7) !important;
+    border-color:#cfdce7 !important;
+    box-shadow:0 8px 22px rgba(15,23,42,.065),inset 0 1px 0 rgba(255,255,255,.94) !important;
+}
+
+html.lucky-light .message-own,
+html.lucky-light .sent{
+    background:linear-gradient(145deg,#3b82f6,#2563eb) !important;
+    border-color:rgba(37,99,235,.20) !important;
+    box-shadow:0 10px 24px rgba(37,99,235,.18),inset 0 1px 0 rgba(255,255,255,.12) !important;
+}
+
+html.lucky-light .msg-avatar{
+    width:28px !important;
+    height:28px !important;
+    min-width:28px !important;
+    border-color:#3b82f6 !important;
+}
+
+html.lucky-light .input-area{
+    padding:10px 11px calc(10px + env(safe-area-inset-bottom,0px)) !important;
+}
+
+html.lucky-light #messageInput{
+    min-height:50px !important;
+    border-radius:17px !important;
+}
+
+html.lucky-light #imageBtn,
+html.lucky-light #videoBtn,
+html.lucky-light #voiceBtn{
+    width:42px !important;
+    height:42px !important;
+    min-width:42px !important;
+    border-radius:13px !important;
+}
+
+html.lucky-light #sendBtn{
+    width:46px !important;
+    min-width:46px !important;
+    height:46px !important;
+    flex-basis:46px !important;
+}
+
+/* ---------- Responsive mobile ---------- */
+@media(max-width:600px){
+    html:not(.lucky-light) .header,
+    html.lucky-light .header{
+        padding-left:10px !important;
+        padding-right:10px !important;
+        gap:8px !important;
+    }
+
+    html:not(.lucky-light) .header-name,
+    html.lucky-light .header-name{
+        font-size:16px !important;
+    }
+
+    html:not(.lucky-light) .header-avatar,
+    html.lucky-light .header-avatar{
+        width:44px !important;
+        height:44px !important;
+    }
+
+    html:not(.lucky-light) .back-btn,
+    html:not(.lucky-light) .chat-search-btn,
+    html:not(.lucky-light) .voice-call-btn,
+    html:not(.lucky-light) .chat-media-gallery-btn,
+    html.lucky-light .back-btn,
+    html.lucky-light .chat-search-btn,
+    html.lucky-light .voice-call-btn,
+    html.lucky-light .chat-media-gallery-btn{
+        width:39px !important;
+        height:39px !important;
+        min-width:39px !important;
+        flex-basis:39px !important;
+        border-radius:12px !important;
+    }
+
+    .messages{
+        padding:12px 9px 12px !important;
+        gap:7px !important;
+    }
+
+    .message{
+        max-width:82% !important;
+        border-radius:17px !important;
+        padding:10px 12px !important;
+    }
+
+    .msg-avatar{
+        width:25px !important;
+        height:25px !important;
+        min-width:25px !important;
+    }
+
+    .input-area{
+        padding-left:8px !important;
+        padding-right:8px !important;
+    }
+}
+
+@media(max-width:380px){
+    html:not(.lucky-light) .header,
+    html.lucky-light .header{
+        gap:6px !important;
+    }
+
+    html:not(.lucky-light) .header-avatar,
+    html.lucky-light .header-avatar{
+        width:41px !important;
+        height:41px !important;
+    }
+
+    html:not(.lucky-light) .back-btn,
+    html:not(.lucky-light) .chat-search-btn,
+    html:not(.lucky-light) .voice-call-btn,
+    html:not(.lucky-light) .chat-media-gallery-btn,
+    html.lucky-light .back-btn,
+    html.lucky-light .chat-search-btn,
+    html.lucky-light .voice-call-btn,
+    html.lucky-light .chat-media-gallery-btn{
+        width:36px !important;
+        height:36px !important;
+        min-width:36px !important;
+        flex-basis:36px !important;
+        border-radius:11px !important;
+    }
+
+    .message{
+        max-width:86% !important;
+    }
+}
+
+button,
+input,
+a{
+    -webkit-tap-highlight-color:transparent;
+}
+
+@media(prefers-reduced-motion:reduce){
+    .back-btn,
+    .chat-search-btn,
+    .voice-call-btn,
+    .chat-media-gallery-btn,
+    #sendBtn,
+    #imageBtn,
+    #videoBtn,
+    #voiceBtn{
+        transition:none !important;
+    }
+}
+</style>
+
 </head>
 
 <body data-chat-friend="{{ friend }}">
