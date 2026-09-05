@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func
+from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func, case
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.websocket import manager
@@ -743,79 +743,112 @@ async def get_public_key(username: str, request: Request):
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-
+    """Render the dashboard with batched conversation queries."""
     current_user = get_authenticated_username(request)
     if not current_user:
         return RedirectResponse("/login", status_code=303)
+
     db = SessionLocal()
     try:
         users = db.query(User).all()
-        chat_list = []
-        last_messages = {}
-        unread_counts = {}
 
-        for user in users:
+        peer_expr = case(
+            (Message.sender == current_user, Message.receiver),
+            else_=Message.sender
+        )
 
-            current_user = get_authenticated_username(request)
-
-            count = db.query(Message).filter(
-            Message.sender == user.username,
-            Message.receiver == current_user,
-            Message.unread == 1
-            ).count()
-
-            unread_counts[user.username] = count
-
-            msg = (
-            db.query(Message)
+        latest_ids = (
+            db.query(
+                peer_expr.label("peer"),
+                func.max(Message.id).label("last_id")
+            )
             .filter(
-            (
-                (Message.sender == current_user) &
-                (Message.receiver == user.username)
-            ) |
-            (
-                (Message.sender == user.username) &
-                (Message.receiver == current_user)
+                or_(
+                    Message.sender == current_user,
+                    Message.receiver == current_user
+                )
             )
+            .group_by(peer_expr)
+            .subquery()
+        )
+
+        latest_rows = (
+            db.query(Message)
+            .join(latest_ids, Message.id == latest_ids.c.last_id)
+            .all()
+        )
+
+        last_messages = {
+            str(message.sender if message.receiver == current_user else message.receiver): message
+            for message in latest_rows
+        }
+
+        # Keep the template contract from the original dashboard route:
+        # every other user must have a dictionary entry, even when there is no
+        # conversation yet. Jinja dot-lookup raises UndefinedError for a
+        # missing username key, so populate empty defaults before rendering.
+        for user in users:
+            if user.username == current_user:
+                continue
+            last_messages.setdefault(user.username, None)
+
+        unread_rows = (
+            db.query(
+                Message.sender.label("peer"),
+                func.count(Message.id).label("unread")
             )
-            .order_by(Message.id.desc())
-            .first()
+            .filter(
+                Message.receiver == current_user,
+                Message.unread == 1
             )
+            .group_by(Message.sender)
+            .all()
+        )
 
-            print("USER:", user.username)
-            print("MSG :", msg.text if msg else "NO MESSAGE")
-            print("TIME:", msg.timestamp if msg else "NO TIME")
-            print("----------------")
+        unread_counts = {
+            str(row.peer): int(row.unread or 0)
+            for row in unread_rows
+        }
 
-            last_messages[user.username] = msg
+        # Preserve the original template behavior for users with no unread
+        # messages by providing an explicit zero for every chat-list user.
+        for user in users:
+            if user.username == current_user:
+                continue
+            unread_counts.setdefault(user.username, 0)
 
+        chat_list = []
+        for user in users:
+            if user.username == current_user:
+                continue
+
+            msg = last_messages.get(user.username)
             chat_list.append({
                 "user": user,
                 "last_message": msg,
                 "time": msg.timestamp if msg else ""
             })
 
-            chat_list.sort(
-            key=lambda x: x["last_message"].id if x["last_message"] else 0,
+        chat_list.sort(
+            key=lambda item: item["last_message"].id
+            if item["last_message"] else 0,
             reverse=True
-            )
+        )
 
         return templates.TemplateResponse(
-        request=request,
-        name="dashboard.html",
-
-        context={
-            "request": request,
-            "chat_list": chat_list,
-            "username": current_user,
-            "last_messages": last_messages,
-            "unread_counts": unread_counts
-        }
-
-    )
-
+            request=request,
+            name="dashboard.html",
+            context={
+                "request": request,
+                "chat_list": chat_list,
+                "username": current_user,
+                "last_messages": last_messages,
+                "unread_counts": unread_counts
+            }
+        )
     finally:
         db.close()
+
 
 @app.get("/crypto-recovery", response_class=HTMLResponse)
 async def crypto_recovery(request: Request):
@@ -960,7 +993,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
                 continue
 
-            print("Received:", data)
+            # Avoid logging full client payloads in production.
 
 
             async def persist_call_history_event(call_id, caller, callee, event_type):
@@ -1861,62 +1894,88 @@ async def get_messages(friend: str, request: Request):
 
 @app.get("/dashboard-data")
 async def dashboard_data(request: Request):
-
+    """Return dashboard conversation data with batched Message queries."""
     current_user = get_authenticated_username(request)
     if not current_user:
         return {"success": False, "error": "Not logged in", "users": []}
 
     db = SessionLocal()
+    try:
+        users = db.query(User).all()
 
-    users = db.query(User).all()
-
-    result = []
-
-    for user in users:
-
-        if user.username == current_user:
-            continue
-
-        unread = db.query(Message).filter(
-            Message.sender == user.username,
-            Message.receiver == current_user,
-            Message.unread == 1
-        ).count()
-
-        last = (
-            db.query(Message)
-            .filter(
-                (
-                    (Message.sender == current_user) &
-                    (Message.receiver == user.username)
-                ) |
-                (
-                    (Message.sender == user.username) &
-                    (Message.receiver == current_user)
-                )
-            )
-            .order_by(Message.id.desc())
-            .first()
+        peer_expr = case(
+            (Message.sender == current_user, Message.receiver),
+            else_=Message.sender
         )
 
-        result.append({
-           "username": user.username,
-           "display_name": user.display_name or user.username,
-           "profile": user.profile_picture,
-           "unread": unread,
-           "last": last.text if last else "",
-           "sender": last.sender if last else "",
-           "time": last.timestamp if last else "",
-           "id": last.id if last else 0,
-           "media_url": last.media_url if last else None,
-           "media_type": last.media_type if last else None
-        })
+        latest_ids = (
+            db.query(
+                peer_expr.label("peer"),
+                func.max(Message.id).label("last_id")
+            )
+            .filter(
+                or_(
+                    Message.sender == current_user,
+                    Message.receiver == current_user
+                )
+            )
+            .group_by(peer_expr)
+            .subquery()
+        )
 
-    result.sort(key=lambda x: x["id"], reverse=True)
+        latest_rows = (
+            db.query(Message)
+            .join(latest_ids, Message.id == latest_ids.c.last_id)
+            .all()
+        )
 
-    db.close()
+        last_by_user = {
+            str(message.sender if message.receiver == current_user else message.receiver): message
+            for message in latest_rows
+        }
 
-    return result
+        unread_rows = (
+            db.query(
+                Message.sender.label("peer"),
+                func.count(Message.id).label("unread")
+            )
+            .filter(
+                Message.receiver == current_user,
+                Message.unread == 1
+            )
+            .group_by(Message.sender)
+            .all()
+        )
+
+        unread_by_user = {
+            str(row.peer): int(row.unread or 0)
+            for row in unread_rows
+        }
+
+        result = []
+        for user in users:
+            if user.username == current_user:
+                continue
+
+            last = last_by_user.get(user.username)
+            result.append({
+                "username": user.username,
+                "display_name": user.display_name or user.username,
+                "profile": user.profile_picture,
+                "unread": unread_by_user.get(user.username, 0),
+                "last": last.text if last else "",
+                "sender": last.sender if last else "",
+                "time": last.timestamp if last else "",
+                "id": last.id if last else 0,
+                "media_url": last.media_url if last else None,
+                "media_type": last.media_type if last else None
+            })
+
+        result.sort(key=lambda item: item["id"], reverse=True)
+        return result
+    finally:
+        db.close()
+
 
 @app.get("/users")
 async def get_users(request: Request):
