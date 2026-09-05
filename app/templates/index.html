@@ -6,72 +6,190 @@
 <title>Lucky Chat v2</title>
 
 <style>
-*{
-margin:0;
-padding:0;
-box-sizing:border-box;
-font-family:Arial,sans-serif;
+:root{
+    --text:#f7fbff;
+    --muted:#9ab0cb;
+    --blue:#65adff;
+    --cyan:#43d9ff;
 }
-
+*{margin:0;padding:0;box-sizing:border-box;font-family:Poppins,Arial,sans-serif}
+html,body{width:100%;min-height:100%}
 body{
-background:#0f172a;
-display:flex;
-justify-content:center;
-align-items:center;
-height:100vh;
-color:white;
+    min-height:100vh;min-height:100dvh;
+    display:flex;align-items:center;justify-content:center;
+    padding:18px 12px 28px;overflow-x:hidden;color:var(--text);
+    background:
+      radial-gradient(520px 340px at -8% -5%,rgba(63,137,255,.28),transparent 68%),
+      radial-gradient(520px 340px at 108% 10%,rgba(106,93,255,.20),transparent 65%),
+      radial-gradient(420px 260px at 50% 108%,rgba(58,203,255,.12),transparent 68%),
+      linear-gradient(180deg,#061022 0%,#081328 48%,#050a16 100%);
+    position:relative;
 }
-
+body:before,body:after{content:"";position:fixed;pointer-events:none;border-radius:50%;border:1px solid rgba(83,168,255,.13)}
+body:before{
+    width:270px;height:270px;top:-135px;left:-125px;
+    box-shadow:0 0 0 58px rgba(61,127,245,.05),0 0 0 118px rgba(61,127,245,.03)
+}
+body:after{
+    width:200px;height:200px;right:-95px;top:28%;
+    box-shadow:0 0 0 48px rgba(102,122,255,.035)
+}
+.page-shell{width:min(100%,760px);position:relative;z-index:1}
+.topbar{display:flex;justify-content:flex-end;margin:0 0 10px}
+.lang-chip{
+    min-height:40px;padding:0 13px;display:inline-flex;align-items:center;gap:8px;
+    border:1px solid rgba(90,171,255,.22);border-radius:14px;
+    background:rgba(8,18,37,.62);color:#c9d9ee;font-size:11px;font-weight:650;
+    box-shadow:0 10px 28px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.04);
+    backdrop-filter:blur(14px)
+}
+.lang-icon{color:#7bc5ff;font-size:17px}
+.hero-note{
+    margin:0 0 10px 6px;color:#5e9eff;font-size:13px;font-style:italic;font-weight:600;
+    letter-spacing:.02em;opacity:.95
+}
 .card{
-background:#1e293b;
-padding:35px;
-width:330px;
-border-radius:18px;
-text-align:center;
-box-shadow:0 0 25px rgba(0,0,0,.3);
+    position:relative;width:100%;padding:28px 26px 24px;border-radius:30px;
+    border:1px solid rgba(119,189,255,.20);
+    background:
+      radial-gradient(520px 250px at 50% 0%,rgba(63,157,255,.12),transparent 76%),
+      radial-gradient(420px 240px at 100% 100%,rgba(127,93,255,.08),transparent 78%),
+      linear-gradient(150deg,rgba(10,25,49,.88),rgba(5,14,29,.82));
+    box-shadow:0 35px 100px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.05);
+    backdrop-filter:blur(24px);overflow:hidden;animation:cardIn .5s ease-out
 }
-
-h1{
-margin-bottom:10px;
+.brand{text-align:center;position:relative;margin-bottom:18px}
+.brand-icon{
+    width:78px;height:78px;margin:0 auto 11px;display:flex;align-items:center;justify-content:center;
+    border-radius:24px;background:linear-gradient(145deg,rgba(35,102,193,.34),rgba(39,53,136,.16));
+    border:1px solid rgba(97,181,255,.34);
+    box-shadow:0 0 0 5px rgba(68,156,255,.05),0 14px 34px rgba(26,98,195,.22);
+    font-size:40px
 }
-
-p{
-margin-bottom:25px;
-color:#cbd5e1;
+.brand-kicker{color:#7fc8ff;font-size:8px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;margin-bottom:5px}
+h1{margin:0;font-size:35px;line-height:1.02;font-weight:800;letter-spacing:-.055em}
+.brand-v2{color:#69aaff}
+.subtitle{margin:8px 0 0;color:#9ab0cb;font-size:12px}
+.subtitle span{color:#6caeff}
+.intro{margin:0 auto 17px;max-width:520px;text-align:center;color:#8499b4;font-size:11px;line-height:1.5}
+.features{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:9px;
+    padding:4px 0 18px;border-bottom:1px solid rgba(146,190,231,.08)
 }
-
+.feature{text-align:center;min-width:0}
+.feature-icon{
+    width:42px;height:42px;margin:0 auto 7px;display:flex;align-items:center;justify-content:center;
+    border-radius:13px;border:1px solid rgba(91,166,255,.20);
+    background:linear-gradient(145deg,rgba(36,92,164,.28),rgba(44,60,137,.16));
+    color:#78baff;font-size:19px;box-shadow:inset 0 1px 0 rgba(255,255,255,.045)
+}
+.feature strong{display:block;color:#c7d6e9;font-size:8px;line-height:1.2;font-weight:700}
+.feature small{display:block;margin-top:3px;color:#6d819c;font-size:7px;line-height:1.2}
+.actions{margin-top:18px}
 .btn{
-display:block;
-width:100%;
-padding:12px;
-margin:10px 0;
-background:#2563eb;
-color:white;
-text-decoration:none;
-border-radius:10px;
-font-weight:bold;
+    display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+    min-height:58px;margin:10px 0;border-radius:18px;text-decoration:none;
+    font-size:16px;font-weight:800;transition:transform .16s ease,filter .16s ease,box-shadow .16s ease
 }
-
-.btn:hover{
-background:#1d4ed8;
+.btn:active{transform:scale(.985)}
+.btn-login{
+    color:white;background:linear-gradient(135deg,#3a91ff,#2767ff 54%,#3955ee);
+    border:1px solid rgba(136,211,255,.24);
+    box-shadow:0 15px 32px rgba(37,109,255,.28),inset 0 1px 0 rgba(255,255,255,.18)
+}
+.btn-login:hover{filter:brightness(1.06);box-shadow:0 18px 38px rgba(37,109,255,.34)}
+.btn-create{
+    color:#72b6ff;background:rgba(8,21,41,.45);
+    border:1px solid rgba(79,160,255,.45);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035)
+}
+.btn-create:hover{background:rgba(39,110,214,.10);border-color:rgba(98,181,255,.68);color:#a7d5ff}
+.btn-icon{font-size:20px;line-height:1}
+.divider{
+    display:flex;align-items:center;gap:12px;margin:15px 0;color:#5f7592;font-size:9px;font-weight:700;letter-spacing:.16em
+}
+.divider:before,.divider:after{content:"";height:1px;flex:1;background:linear-gradient(90deg,transparent,rgba(106,161,217,.22))}
+.divider:after{background:linear-gradient(90deg,rgba(106,161,217,.22),transparent)}
+.footer{
+    margin:16px auto 0;text-align:center;color:#6f85a0;font-size:9px;line-height:1.5
+}
+.footer b{color:#9fc7f0}
+@keyframes cardIn{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:430px){
+    body{padding:12px 10px 20px;align-items:flex-start}
+    .page-shell{width:100%}
+    .hero-note{font-size:11px;margin-left:5px}
+    .card{padding:22px 16px 18px;border-radius:24px}
+    .brand-icon{width:70px;height:70px;font-size:36px}
+    h1{font-size:29px}
+    .intro{font-size:10px;margin-bottom:14px}
+    .features{gap:5px;padding-bottom:14px}
+    .feature-icon{width:37px;height:37px;font-size:16px}
+    .feature strong{font-size:7px}
+    .feature small{font-size:6px}
+    .btn{min-height:56px;border-radius:16px;font-size:15px}
+    .footer{font-size:8px;margin-top:13px}
+}
+@media(max-height:680px){
+    body{align-items:flex-start;padding-top:12px;padding-bottom:18px}
+    .card{padding-top:18px;padding-bottom:16px}
+    .brand{margin-bottom:12px}
+    .brand-icon{width:62px;height:62px;font-size:32px;margin-bottom:7px}
+    h1{font-size:27px}
+    .features{padding-bottom:12px}
+    .actions{margin-top:12px}
+    .btn{min-height:50px;margin:7px 0}
+    .intro{display:none}
 }
 </style>
 
 </head>
 
 <body>
+<div class="page-shell">
+  <div class="topbar">
+    <div class="lang-chip"><span class="lang-icon">◎</span><span>English</span><span>⌄</span></div>
+  </div>
 
-<div class="card">
+  <div class="hero-note">Connect without limits</div>
 
-<h1>🚀 Lucky Chat v2</h1>
+  <div class="card">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">🚀</div>
+      <div class="brand-kicker">Secure messaging</div>
+      <h1>Lucky Chat <span class="brand-v2">v2</span></h1>
+      <div class="subtitle">Connect <span>•</span> Chat <span>•</span> Share <span>•</span> Secure</div>
+    </div>
 
-<p>Build your own secure messaging app.</p>
+    <div class="intro">A private, modern space to message, share moments, and stay connected.</div>
 
-<a href="/login" class="btn">Login</a>
+    <div class="features" aria-label="Lucky Chat features">
+      <div class="feature">
+        <div class="feature-icon" aria-hidden="true">●</div>
+        <strong>Real-time</strong><small>Messaging</small>
+      </div>
+      <div class="feature">
+        <div class="feature-icon" aria-hidden="true">✓</div>
+        <strong>End-to-End</strong><small>Secure</small>
+      </div>
+      <div class="feature">
+        <div class="feature-icon" aria-hidden="true">◎</div>
+        <strong>Share</strong><small>Status</small>
+      </div>
+      <div class="feature">
+        <div class="feature-icon" aria-hidden="true">⌕</div>
+        <strong>Voice</strong><small>Calling</small>
+      </div>
+    </div>
 
-<a href="/register" class="btn">Create Account</a>
+    <div class="actions">
+      <a href="/login" class="btn btn-login"><span class="btn-icon">→</span>Login</a>
+      <div class="divider"><span>OR</span></div>
+      <a href="/register" class="btn btn-create"><span class="btn-icon">♙+</span>Create Account</a>
+    </div>
 
+    <div class="footer">💙 A safer place to connect<br>Made with <b>💙</b> by <b>Lucky Chat</b></div>
+  </div>
 </div>
-
 </body>
 </html>
