@@ -130,9 +130,20 @@ async function analyzeAudioBlob(blob) {
             throw new Error("Audio duration could not be determined");
         }
 
-        const channels = audioBuffer.numberOfChannels;
+        const channels = audioBuffer.numberOfChannels || 1;
+        const channelData = Array.from(
+            { length: channels },
+            (_, channel) => audioBuffer.getChannelData(channel)
+        );
         const blockSize = Math.max(1, Math.floor(length / bars));
         const waveform = [];
+
+        /*
+         * Waveform display only needs a representative sample for each bar.
+         * Scanning every PCM frame is unnecessarily expensive on mobile,
+         * especially for long recordings. Sample at most 128 points per bar.
+         */
+        const MAX_SAMPLES_PER_BAR = 128;
 
         for (let bar = 0; bar < bars; bar++) {
             const start = bar * blockSize;
@@ -140,18 +151,21 @@ async function analyzeAudioBlob(blob) {
                 ? length
                 : Math.min(length, start + blockSize);
 
+            const span = Math.max(1, end - start);
+            const step = Math.max(1, Math.ceil(span / MAX_SAMPLES_PER_BAR));
+
             let sum = 0;
             let peak = 0;
             let count = 0;
 
-            for (let index = start; index < end; index += 1) {
+            for (let index = start; index < end; index += step) {
                 let sample = 0;
 
                 for (let channel = 0; channel < channels; channel += 1) {
-                    sample += Math.abs(audioBuffer.getChannelData(channel)[index] || 0);
+                    sample += Math.abs(channelData[channel][index] || 0);
                 }
 
-                sample /= channels || 1;
+                sample /= channels;
                 sum += sample * sample;
                 peak = Math.max(peak, sample);
                 count += 1;
@@ -196,7 +210,17 @@ async function analyzeAudioUrl(url) {
 
         const blob = await response.blob();
         const result = await analyzeAudioBlob(blob);
+
+        // Keep the cache bounded so long chat histories cannot grow the
+        // browser's memory indefinitely.
+        voiceAnalysisCache.delete(url);
         voiceAnalysisCache.set(url, result);
+        while (voiceAnalysisCache.size > 40) {
+            const oldestKey = voiceAnalysisCache.keys().next().value;
+            if (!oldestKey) break;
+            voiceAnalysisCache.delete(oldestKey);
+        }
+
         return result;
     })();
 
