@@ -1,12 +1,29 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Register</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08111f">
+<title>Create Account • Lucky Chat</title>
 
 <style>
 *{
     box-sizing:border-box;
+}
+
+:root{
+    color-scheme:dark;
+    --bg-1:#060b14;
+    --bg-2:#0a1220;
+    --card:#101b2d;
+    --card-2:#0d1727;
+    --text:#f8fafc;
+    --muted:#8fa1b8;
+    --muted-2:#61738c;
+    --line:rgba(148,163,184,.14);
+    --line-strong:rgba(96,165,250,.28);
+    --blue:#2563eb;
+    --blue-2:#60a5fa;
 }
 
 html,body{
@@ -15,112 +32,166 @@ html,body{
 }
 
 body{
-    background:
-        radial-gradient(circle at 50% 18%, rgba(37,99,235,.12), transparent 34%),
-        linear-gradient(180deg,#0b1220 0%,#0f172a 55%,#0b1322 100%);
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    min-height:100vh;
-    font-family:Arial,sans-serif;
     margin:0;
-    padding:24px 16px;
-    color:#fff;
+    min-height:100vh;
+    min-height:100svh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:22px 16px;
+    overflow-x:hidden;
+    color:var(--text);
+    font-family:Arial,sans-serif;
+    background:
+        radial-gradient(circle at 50% 0%,rgba(37,99,235,.20),transparent 32%),
+        radial-gradient(circle at 15% 85%,rgba(14,116,144,.08),transparent 28%),
+        linear-gradient(180deg,var(--bg-1) 0%,var(--bg-2) 52%,#07101d 100%);
+}
+
+.page-glow{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    background:
+        radial-gradient(circle at 50% 18%,rgba(96,165,250,.06),transparent 24%),
+        radial-gradient(circle at 50% 100%,rgba(37,99,235,.05),transparent 34%);
 }
 
 .card{
     position:relative;
-    width:min(100%,420px);
-    padding:34px 30px 30px;
-    border:1px solid rgba(148,163,184,.14);
-    border-radius:26px;
-    background:linear-gradient(180deg,rgba(30,41,59,.98),rgba(23,34,54,.98));
+    z-index:1;
+    width:min(100%,430px);
+    padding:30px 28px 26px;
+    border:1px solid var(--line);
+    border-radius:28px;
+    background:
+        linear-gradient(180deg,rgba(18,31,50,.98),rgba(12,23,39,.98));
     box-shadow:
-        0 25px 70px rgba(0,0,0,.35),
-        0 0 0 1px rgba(59,130,246,.03);
+        0 30px 80px rgba(0,0,0,.46),
+        0 0 0 1px rgba(59,130,246,.035),
+        inset 0 1px 0 rgba(255,255,255,.025);
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
     animation:cardIn .45s ease-out both;
 }
 
 .brand{
     text-align:center;
-    margin-bottom:26px;
+    margin-bottom:24px;
 }
 
-.brand-icon{
+.brand-logo{
+    display:block;
+    width:76px;
+    height:76px;
+    margin:0 auto 14px;
+    object-fit:contain;
+    border-radius:22px;
+    filter:drop-shadow(0 10px 24px rgba(37,99,235,.20));
+}
+
+.brand-kicker{
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    width:70px;
-    height:70px;
-    margin-bottom:12px;
-    border-radius:22px;
-    background:linear-gradient(145deg,rgba(59,130,246,.18),rgba(30,64,175,.12));
-    border:1px solid rgba(96,165,250,.18);
-    box-shadow:0 10px 30px rgba(37,99,235,.12);
-    font-size:36px;
+    min-height:28px;
+    padding:0 11px;
+    border:1px solid rgba(96,165,250,.16);
+    border-radius:999px;
+    background:rgba(37,99,235,.08);
+    color:#9cc7ff;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:.14em;
+    text-transform:uppercase;
 }
 
 h1{
-    color:#f8fafc;
-    text-align:center;
-    margin:0;
+    margin:11px 0 0;
+    color:var(--text);
     font-size:30px;
-    letter-spacing:-.7px;
+    line-height:1.1;
+    letter-spacing:-.8px;
 }
 
 .subtitle{
-    color:#94a3b8;
-    text-align:center;
     margin:8px 0 0;
+    color:var(--muted);
     font-size:13px;
+    line-height:1.5;
+}
+
+.form{
+    margin-top:22px;
 }
 
 .form-group{
     position:relative;
-    margin:14px 0;
+    margin:13px 0;
+}
+
+.field-label{
+    display:block;
+    margin:0 0 7px 2px;
+    color:#aab8ca;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.02em;
 }
 
 input{
     width:100%;
     height:54px;
     padding:0 15px;
-    border:1px solid rgba(148,163,184,.14);
-    border-radius:14px;
+    border:1px solid var(--line);
+    border-radius:15px;
     outline:none;
-    background:#0f172a;
-    color:#f8fafc;
+    background:rgba(7,16,29,.88);
+    color:var(--text);
     font-size:16px;
-    transition:border-color .2s ease,box-shadow .2s ease,background .2s ease;
+    transition:
+        border-color .2s ease,
+        box-shadow .2s ease,
+        background .2s ease,
+        transform .2s ease;
 }
 
 input::placeholder{
-    color:#64748b;
+    color:#596a82;
+}
+
+input:hover{
+    border-color:rgba(148,163,184,.22);
 }
 
 input:focus{
-    border-color:rgba(59,130,246,.65);
-    background:#111c30;
+    border-color:var(--line-strong);
+    background:#0b1729;
     box-shadow:0 0 0 4px rgba(37,99,235,.10);
 }
 
 .password-group input{
-    padding-right:52px;
+    padding-right:56px;
 }
 
 .toggle-password{
     position:absolute;
-    right:8px;
-    top:7px;
+    right:7px;
+    bottom:7px;
     width:40px;
     height:40px;
     margin:0;
     padding:0;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
     border:0;
     border-radius:11px;
     background:transparent;
-    color:#94a3b8;
-    font-size:18px;
+    color:#8fa1b8;
+    font-size:17px;
     cursor:pointer;
+    transition:background .18s ease,color .18s ease,transform .18s ease;
 }
 
 .toggle-password:hover{
@@ -128,42 +199,86 @@ input:focus{
     color:#e2e8f0;
 }
 
+.toggle-password:active{
+    transform:scale(.95);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible{
+    outline:2px solid rgba(96,165,250,.75);
+    outline-offset:3px;
+}
+
 button[type="submit"]{
     width:100%;
     height:54px;
-    margin-top:12px;
-    border:0;
-    border-radius:14px;
-    background:linear-gradient(135deg,#2563eb,#3b82f6);
-    color:white;
-    font-size:16px;
-    font-weight:bold;
+    margin-top:9px;
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:15px;
+    background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+    color:#fff;
+    font-size:15px;
+    font-weight:700;
+    letter-spacing:.01em;
     cursor:pointer;
-    box-shadow:0 10px 24px rgba(37,99,235,.20);
-    transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;
+    box-shadow:
+        0 14px 28px rgba(37,99,235,.22),
+        inset 0 1px 0 rgba(255,255,255,.12);
+    transition:
+        transform .16s ease,
+        box-shadow .16s ease,
+        filter .16s ease;
 }
 
 button[type="submit"]:hover{
     filter:brightness(1.05);
-    box-shadow:0 13px 28px rgba(37,99,235,.27);
+    box-shadow:
+        0 17px 34px rgba(37,99,235,.28),
+        inset 0 1px 0 rgba(255,255,255,.14);
 }
 
 button[type="submit"]:active{
-    transform:scale(.985);
+    transform:translateY(1px) scale(.992);
 }
 
 button[type="submit"]:disabled{
-    opacity:.7;
+    opacity:.72;
     cursor:not-allowed;
+    filter:none;
+}
+
+.security-note{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    margin-top:14px;
+    color:var(--muted-2);
+    font-size:10px;
+    line-height:1.4;
+    text-align:center;
+}
+
+.security-note::before{
+    content:"";
+    width:6px;
+    height:6px;
+    flex:0 0 6px;
+    border-radius:50%;
+    background:#60a5fa;
+    box-shadow:0 0 0 4px rgba(96,165,250,.08);
 }
 
 .divider{
     display:flex;
     align-items:center;
     gap:10px;
-    margin:24px 0 0;
-    color:#475569;
-    font-size:10px;
+    margin:21px 0 0;
+    color:#52647c;
+    font-size:9px;
+    font-weight:700;
+    letter-spacing:.14em;
 }
 
 .divider::before,
@@ -174,17 +289,18 @@ button[type="submit"]:disabled{
     background:rgba(148,163,184,.10);
 }
 
-p{
-    color:#94a3b8;
+.footer-copy{
+    margin:15px 0 0;
+    color:#788ba4;
     text-align:center;
-    margin:22px 0 0;
     font-size:13px;
+    line-height:1.5;
 }
 
 a{
-    color:#60a5fa;
+    color:#75b7ff;
     text-decoration:none;
-    font-weight:600;
+    font-weight:700;
 }
 
 a:hover{
@@ -204,43 +320,105 @@ a:hover{
 
 @media(max-width:430px){
     body{
-        padding:18px 12px;
+        padding:16px 12px;
     }
 
     .card{
-        padding:30px 20px 24px;
-        border-radius:23px;
+        padding:27px 19px 23px;
+        border-radius:24px;
+    }
+
+    .brand-logo{
+        width:70px;
+        height:70px;
+        margin-bottom:12px;
     }
 
     h1{
-        font-size:28px;
+        font-size:27px;
+    }
+
+    .form{
+        margin-top:19px;
     }
 }
 
 @media(max-height:720px){
     body{
         align-items:flex-start;
-        padding-top:28px;
-        padding-bottom:28px;
+        padding-top:20px;
+        padding-bottom:20px;
+    }
+
+    .card{
+        margin:0 auto;
+    }
+
+    .brand{
+        margin-bottom:18px;
+    }
+
+    .brand-logo{
+        width:62px;
+        height:62px;
+        margin-bottom:10px;
+    }
+
+    h1{
+        font-size:26px;
+    }
+
+    .form{
+        margin-top:15px;
+    }
+
+    .form-group{
+        margin:10px 0;
+    }
+
+    button[type="submit"]{
+        margin-top:7px;
+    }
+
+    .divider{
+        margin-top:17px;
+    }
+
+    .footer-copy{
+        margin-top:12px;
+    }
+}
+
+@media(prefers-reduced-motion:reduce){
+    .card{
+        animation:none;
+    }
+
+    input,
+    button{
+        transition:none;
     }
 }
 </style>
-
 </head>
 
 <body>
+<div class="page-glow" aria-hidden="true"></div>
 
 <div class="card">
-
     <div class="brand">
-        <div class="brand-icon" aria-hidden="true">🚀</div>
+        <img
+            class="brand-logo"
+            src="/static/pwa/icon-512.png?v=logo3"
+            alt="Lucky Chat">
+        <div class="brand-kicker">Lucky Chat</div>
         <h1>Create Account</h1>
-        <div class="subtitle">Join Lucky Chat today ✨</div>
+        <div class="subtitle">Join Lucky Chat and start chatting with confidence ✨</div>
     </div>
 
-    <form method="POST" action="/register" id="registerForm">
-
+    <form method="POST" action="/register" id="registerForm" class="form">
         <div class="form-group">
+            <label class="field-label" for="username">Username</label>
             <input
                 type="text"
                 name="username"
@@ -251,16 +429,18 @@ a:hover{
         </div>
 
         <div class="form-group">
+            <label class="field-label" for="email">Email</label>
             <input
                 type="email"
                 name="email"
                 id="email"
-                placeholder="Email address"
+                placeholder="Enter your email address"
                 autocomplete="email"
                 required>
         </div>
 
         <div class="form-group password-group">
+            <label class="field-label" for="password">Password</label>
             <input
                 type="password"
                 name="password"
@@ -279,15 +459,15 @@ a:hover{
         <button type="submit" id="registerButton">Create Account</button>
     </form>
 
+    <div class="security-note">Your account details are sent securely to Lucky Chat</div>
+
     <div class="divider">SECURE SIGN UP</div>
 
-    <p>
+    <p class="footer-copy">
         Already have an account?
         <a href="/login">Login</a>
     </p>
-
 </div>
-
 
 <script>
 const passwordInput = document.getElementById("password");
@@ -308,6 +488,5 @@ registerForm.addEventListener("submit", () => {
     registerButton.textContent = "Creating account...";
 });
 </script>
-
 </body>
 </html>
