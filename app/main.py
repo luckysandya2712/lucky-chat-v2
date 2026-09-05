@@ -2822,23 +2822,8 @@ async def record_status_like(
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
 
-        # A like implies the status was viewed, so make the two datasets
-        # consistent even when the like request arrives before the view call.
-        view = (
-            db.query(StatusView)
-            .filter(
-                StatusView.status_id == status_id,
-                StatusView.username == username
-            )
-            .first()
-        )
-        if view is None:
-            db.add(StatusView(
-                status_id=status_id,
-                username=username,
-                seen_at=datetime.utcnow()
-            ))
-
+        # Viewing is recorded only by the explicit /view endpoint.
+        # Do not create a StatusView as a side effect of a like request.
         liked = bool(data.liked)
         row = (
             db.query(StatusLike)

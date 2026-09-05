@@ -9992,25 +9992,20 @@ async function openStatusViewersSheet(){
 
     const fetched = await fetchStatusViewers(currentStatus);
     const statusId = currentStatus.id;
-    const localViewers = getLocalStatusViewers(statusId).map(hydrateStatusViewer).filter(Boolean);
-    const localLikers = getLocalStatusLikers(statusId).map(hydrateStatusViewer).filter(Boolean);
-    const viewers = mergeStatusViewers(
-        Array.isArray(fetched.viewers) ? fetched.viewers : [],
-        localViewers,
-        localLikers
-    ).sort((a, b) => {
-        const created = currentStatus.created_at;
-        const timeA = pickStatusEventTime("latest", created, a.seen_at, a.liked_at) || 0;
-        const timeB = pickStatusEventTime("latest", created, b.seen_at, b.liked_at) || 0;
-        return timeB - timeA;
-    });
 
-    const likers = mergeStatusViewers(
-        Array.isArray(fetched.likers) ? fetched.likers : [],
-        localLikers
-    );
+    // The owner engagement panel is server-authoritative.
+    // Never merge browser-local viewer/liker caches into this panel because
+    // those caches can survive older tests, browser sessions, or old UI state.
+    const viewers = Array.isArray(fetched.viewers)
+        ? fetched.viewers.slice()
+        : [];
+
+    const likers = Array.isArray(fetched.likers)
+        ? fetched.likers.slice()
+        : [];
+
     const replies = Array.isArray(fetched.repliesList)
-        ? fetched.repliesList
+        ? fetched.repliesList.slice()
         : [];
 
     const likedSet = new Set(
@@ -10054,8 +10049,7 @@ async function openStatusViewersSheet(){
         );
         viewer.liked = !!viewer.liked || !!liker || likedSet.has(key);
         viewer.seen_at = resolvePersonEventTime(statusId, viewer, "seen_at", [
-            viewer.seen_at,
-            liker?.seen_at
+            viewer.seen_at
         ]) || viewer.seen_at;
         if (viewer.liked) {
             viewer.liked_at = likeTimeMap.get(key) ||
@@ -10091,15 +10085,15 @@ async function openStatusViewersSheet(){
         stats.hidden = false;
         stats.innerHTML = `
             <div class="status-engage-chip">
-                <b>${Number(fetched.views) || viewers.length}</b>
+                <b>${fetched.fromApi ? Number(fetched.views) : viewers.length}</b>
                 <span>Views</span>
             </div>
             <div class="status-engage-chip">
-                <b>${Number(fetched.likes) || likers.length}</b>
+                <b>${fetched.fromApi ? Number(fetched.likes) : likers.length}</b>
                 <span>Likes</span>
             </div>
             <div class="status-engage-chip">
-                <b>${Number(fetched.replies) || replies.length}</b>
+                <b>${fetched.fromApi ? Number(fetched.replies) : replies.length}</b>
                 <span>Replies</span>
             </div>
         `;
@@ -11270,13 +11264,8 @@ function connectDashboardSocket() {
                     const actorName = data.username || data.user ||
                         data.viewer || data.liker || data.actor ||
                         data.status?.username;
-                    if (actorName && data.type === "status_like") {
-                        rememberLocalStatusLiker(statusId, {
-                            username: actorName,
-                            display_name: data.display_name || actorName,
-                            liked_at: data.liked_at || data.timestamp || Date.now()
-                        }, true);
-                    }
+                    // The owner panel re-fetches authoritative engagement below.
+                    // Do not seed the local liker cache from a server event here.
                     if (actorName && (data.type === "status_view" || data.type === "status_seen" || data.type === "status_viewed")) {
                         rememberStatusPersonTimes(statusId, { username: actorName }, {
                             seen_at: data.seen_at || data.timestamp || Date.now()
