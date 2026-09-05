@@ -16,308 +16,79 @@
 <link rel="icon" href="/static/pwa/icon-192.png">
 
 <style>
-*{
-    box-sizing:border-box;
-}
-
-html,body{
-    width:100%;
-    min-height:100%;
-}
-
-body{
-    background:
-        radial-gradient(circle at 50% 20%, rgba(37,99,235,.12), transparent 34%),
-        linear-gradient(180deg,#0b1220 0%,#0f172a 55%,#0b1322 100%);
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    min-height:100vh;
-    font-family:Arial, sans-serif;
-    margin:0;
-    padding:24px 16px;
-    color:#fff;
-}
-
-.card{
-    position:relative;
-    width:min(100%,420px);
-    padding:34px 30px 30px;
-    border:1px solid rgba(148,163,184,.14);
-    border-radius:26px;
-    background:linear-gradient(180deg,rgba(30,41,59,.98),rgba(23,34,54,.98));
-    box-shadow:
-        0 25px 70px rgba(0,0,0,.35),
-        0 0 0 1px rgba(59,130,246,.03);
-    animation:cardIn .45s ease-out both;
-}
-
-.brand{
-    text-align:center;
-    margin-bottom:28px;
-}
-
-.brand-icon{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:70px;
-    height:70px;
-    margin-bottom:12px;
-    border-radius:22px;
-    background:linear-gradient(145deg,rgba(59,130,246,.18),rgba(30,64,175,.12));
-    border:1px solid rgba(96,165,250,.18);
-    box-shadow:0 10px 30px rgba(37,99,235,.12);
-    font-size:36px;
-}
-
-h1{
-    color:#f8fafc;
-    text-align:center;
-    margin:0;
-    font-size:30px;
-    letter-spacing:-.7px;
-}
-
-.subtitle{
-    color:#94a3b8;
-    text-align:center;
-    margin:8px 0 0;
-    font-size:13px;
-}
-
-.form-group{
-    position:relative;
-    margin:14px 0;
-}
-
-input{
-    width:100%;
-    height:54px;
-    padding:0 15px;
-    border:1px solid rgba(148,163,184,.14);
-    border-radius:14px;
-    outline:none;
-    background:#0f172a;
-    color:#f8fafc;
-    font-size:16px;
-    transition:border-color .2s ease,box-shadow .2s ease,background .2s ease;
-}
-
-input::placeholder{
-    color:#64748b;
-}
-
-input:focus{
-    border-color:rgba(59,130,246,.65);
-    background:#111c30;
-    box-shadow:0 0 0 4px rgba(37,99,235,.10);
-}
-
-.password-group input{
-    padding-right:52px;
-}
-
-.toggle-password{
-    position:absolute;
-    right:8px;
-    top:7px;
-    width:40px;
-    height:40px;
-    margin:0;
-    padding:0;
-    border:0;
-    border-radius:11px;
-    background:transparent;
-    color:#94a3b8;
-    font-size:18px;
-    cursor:pointer;
-}
-
-.toggle-password:hover{
-    background:rgba(148,163,184,.08);
-    color:#e2e8f0;
-}
-
-button[type="submit"]{
-    width:100%;
-    height:54px;
-    margin-top:12px;
-    border:0;
-    border-radius:14px;
-    background:linear-gradient(135deg,#2563eb,#3b82f6);
-    color:white;
-    font-size:16px;
-    font-weight:bold;
-    cursor:pointer;
-    box-shadow:0 10px 24px rgba(37,99,235,.20);
-    transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;
-}
-
-button[type="submit"]:hover{
-    filter:brightness(1.05);
-    box-shadow:0 13px 28px rgba(37,99,235,.27);
-}
-
-button[type="submit"]:active{
-    transform:scale(.985);
-}
-
-button[type="submit"]:disabled{
-    opacity:.7;
-    cursor:not-allowed;
-}
-
-p{
-    color:#94a3b8;
-    text-align:center;
-    margin:22px 0 0;
-    font-size:13px;
-}
-
-a{
-    color:#60a5fa;
-    text-decoration:none;
-    font-weight:600;
-}
-
-a:hover{
-    text-decoration:underline;
-}
-
-.divider{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    margin:24px 0 0;
-    color:#475569;
-    font-size:10px;
-}
-
-.divider::before,
-.divider::after{
-    content:"";
-    height:1px;
-    flex:1;
-    background:rgba(148,163,184,.10);
-}
-
-@keyframes cardIn{
-    from{
-        opacity:0;
-        transform:translateY(14px) scale(.985);
-    }
-    to{
-        opacity:1;
-        transform:translateY(0) scale(1);
-    }
-}
-
-@media(max-width:430px){
-    body{
-        padding:18px 12px;
-    }
-
-    .card{
-        padding:30px 20px 24px;
-        border-radius:23px;
-    }
-
-    h1{
-        font-size:28px;
-    }
-}
-
-@media(max-height:720px){
-    body{
-        align-items:flex-start;
-        padding-top:28px;
-        padding-bottom:28px;
-    }
-}
+:root{--bg:#050b18;--text:#f7fbff;--muted:#91a7c4;--blue:#62a9ff;--line:rgba(103,186,255,.24)}
+*{box-sizing:border-box}
+html,body{width:100%;min-height:100%;margin:0}
+body{min-height:100vh;min-height:100dvh;padding:18px 12px 28px;display:flex;justify-content:center;align-items:center;overflow-x:hidden;color:var(--text);font-family:Poppins,Arial,sans-serif;background:radial-gradient(520px 360px at -8% -6%,rgba(63,137,255,.27),transparent 68%),radial-gradient(520px 340px at 108% 10%,rgba(106,93,255,.20),transparent 65%),linear-gradient(180deg,#061022,#081328 48%,#050a16);position:relative}
+body:before,body:after{content:"";position:fixed;pointer-events:none;border-radius:50%;border:1px solid rgba(83,168,255,.13)}
+body:before{width:230px;height:230px;top:-95px;left:-95px;box-shadow:0 0 0 54px rgba(61,127,245,.05),0 0 0 110px rgba(61,127,245,.03)}
+body:after{width:180px;height:180px;right:-78px;top:32%;box-shadow:0 0 0 46px rgba(102,122,255,.03)}
+.page-shell{width:min(100%,760px);position:relative;z-index:1}
+.topbar{display:flex;justify-content:flex-end;margin:0 0 10px}
+.lang-chip{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 13px;border:1px solid rgba(90,171,255,.22);border-radius:14px;background:rgba(8,18,37,.62);color:#c9d9ee;font-size:11px;font-weight:650;box-shadow:0 10px 28px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.04);backdrop-filter:blur(14px)}
+.lang-icon{color:#7bc5ff;font-size:17px}.card{position:relative;width:100%;padding:28px 26px 24px;border:1px solid rgba(119,189,255,.20);border-radius:30px;background:radial-gradient(460px 220px at 50% 0%,rgba(63,157,255,.11),transparent 76%),radial-gradient(420px 240px at 100% 100%,rgba(127,93,255,.08),transparent 78%),linear-gradient(150deg,rgba(10,25,49,.88),rgba(5,14,29,.82));box-shadow:0 35px 100px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.05);backdrop-filter:blur(24px);overflow:hidden;animation:cardIn .5s ease-out}
+.brand{text-align:center;margin:0 auto 22px;position:relative}.brand-icon{width:74px;height:74px;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;border-radius:23px;background:linear-gradient(145deg,rgba(35,102,193,.34),rgba(39,53,136,.16));border:1px solid rgba(97,181,255,.34);box-shadow:0 0 0 5px rgba(68,156,255,.05),0 14px 34px rgba(26,98,195,.22),inset 0 1px 0 rgba(255,255,255,.08);font-size:38px}.brand-kicker{color:#7fc8ff;font-size:8px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;margin-bottom:5px}h1{margin:0;color:#f7fbff;font-size:34px;line-height:1.02;font-weight:800;letter-spacing:-.055em}.brand-v2{color:#69aaff}.subtitle{margin:8px 0 0;color:#9ab0cb;font-size:12px}.subtitle span{color:#6caeff}
+.form-group{position:relative;margin:11px 0}.field-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#78bfff;font-size:17px;z-index:2;pointer-events:none}
+input{width:100%;height:58px;padding:0 16px 0 48px;border:1px solid rgba(105,164,222,.18);border-radius:17px;outline:none;background:rgba(4,13,28,.76);color:#f4f9ff;font:500 15px Poppins,Arial,sans-serif;box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 7px 22px rgba(0,0,0,.12);transition:.2s}
+input::placeholder{color:#7187a4}input:focus{border-color:rgba(75,170,255,.64);background:rgba(7,20,40,.92);box-shadow:0 0 0 4px rgba(64,158,255,.09),0 12px 28px rgba(0,0,0,.17)}
+.password-group input{padding-right:56px}.toggle-password{position:absolute;right:7px;top:7px;width:44px;height:44px;border:1px solid transparent;border-radius:13px;background:transparent;color:#95acca;font-size:18px;cursor:pointer}.toggle-password:hover{background:rgba(89,165,255,.08);color:#d8eaff}
+.helper-row{display:flex;justify-content:flex-end;min-height:18px;margin:6px 2px 13px}.secure-badge{display:inline-flex;align-items:center;gap:6px;color:#76dcb1;font-size:9px;font-weight:700}.secure-dot{width:7px;height:7px;border-radius:50%;background:#3fe19f;box-shadow:0 0 12px rgba(63,225,159,.62)}
+button[type=submit]{width:100%;min-height:58px;border:1px solid rgba(136,211,255,.24);border-radius:18px;background:linear-gradient(135deg,#3a91ff,#2767ff 54%,#3955ee);color:#fff;font:800 16px Poppins,Arial,sans-serif;cursor:pointer;box-shadow:0 15px 32px rgba(37,109,255,.28),inset 0 1px 0 rgba(255,255,255,.18);transition:.16s}.divider{display:flex;align-items:center;gap:12px;margin:20px 0 14px;color:#5f7592;font-size:9px;font-weight:700;letter-spacing:.16em}.divider:before,.divider:after{content:"";height:1px;flex:1;background:linear-gradient(90deg,transparent,rgba(106,161,217,.22))}.divider:after{background:linear-gradient(90deg,rgba(106,161,217,.22),transparent)}
+.create-link{width:100%;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid rgba(79,160,255,.45);border-radius:16px;background:rgba(8,21,41,.48);color:#72b6ff;font-size:14px;font-weight:750;text-decoration:none}.create-link:hover{background:rgba(39,110,214,.10);border-color:rgba(98,181,255,.68);color:#a7d5ff;text-decoration:none}.create-icon{font-size:18px}
+.feature-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(146,190,231,.08)}.feature{text-align:center}.feature-icon{width:40px;height:40px;margin:0 auto 7px;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(91,166,255,.18);background:linear-gradient(145deg,rgba(36,92,164,.28),rgba(44,60,137,.16));color:#78baff;font-size:18px}.feature strong{display:block;color:#c7d6e9;font-size:8px;line-height:1.2;font-weight:700}.feature small{display:block;margin-top:3px;color:#6d819c;font-size:7px;line-height:1.2}
+.footer-copy{margin:15px 0 0;text-align:center;color:#6f85a0;font-size:9px}.footer-copy b{color:#9fc7f0}
+@keyframes cardIn{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:430px){body{padding:12px 10px 20px}.card{padding:22px 16px 18px;border-radius:24px}.brand{margin-bottom:18px}.brand-icon{width:70px;height:70px;font-size:35px}h1{font-size:29px}.subtitle{font-size:11px}input{height:56px;border-radius:16px}button[type=submit]{min-height:56px;border-radius:16px}.feature-grid{margin-top:15px;padding-top:14px;gap:5px}.feature-icon{width:37px;height:37px;font-size:16px}.feature strong{font-size:7px}.feature small{font-size:6px}.footer-copy{margin-top:12px;font-size:8px}}
 </style>
 
 </head>
 
 <body>
-
-<div class="card">
-
+<div class="page-shell">
+  <div class="topbar"><div class="lang-chip"><span class="lang-icon">◎</span><span>English</span><span>⌄</span></div></div>
+  <div class="card">
     <div class="brand">
-        <div class="brand-icon" aria-hidden="true">🚀</div>
-        <h1>Lucky Chat</h1>
-        <div class="subtitle">Welcome back 👋</div>
+      <div class="brand-icon" aria-hidden="true">🚀</div>
+      <div class="brand-kicker">Secure messaging</div>
+      <h1>Lucky Chat <span class="brand-v2">v2</span></h1>
+      <div class="subtitle">Connect <span>•</span> Chat <span>•</span> Share <span>•</span> Secure</div>
     </div>
-
-    <form method="POST" action="/login" id="loginForm">
-
+    <div>
+      <form method="POST" action="/login" id="loginForm">
         <div class="form-group">
-            <input
-                type="text"
-                name="username"
-                id="username"
-                placeholder="Username"
-                autocomplete="username"
-                required>
+          <span class="field-icon">♙</span>
+          <input type="text" name="username" id="username" placeholder="Username" autocomplete="username" required>
         </div>
-
         <div class="form-group password-group">
-            <input
-                type="password"
-                name="password"
-                id="password"
-                placeholder="Password"
-                autocomplete="current-password"
-                required>
-            <button
-                class="toggle-password"
-                type="button"
-                id="togglePassword"
-                aria-label="Show password"
-                title="Show password">👁️</button>
+          <span class="field-icon">♙</span>
+          <input type="password" name="password" id="password" placeholder="Password" autocomplete="current-password" required>
+          <button class="toggle-password" type="button" id="togglePassword" aria-label="Show password" title="Show password">👁️</button>
         </div>
-
+        <div class="helper-row"><span class="secure-badge"><span class="secure-dot"></span>Secure login</span></div>
         <button type="submit" id="loginButton">Login</button>
-    </form>
-
-    <div class="divider">SECURE LOGIN</div>
-
-    <p>
-        Don't have an account?
-        <a href="/register">Create one</a>
-    </p>
-
+      </form>
+      <div class="divider"><span>OR</span></div>
+      <a class="create-link" href="/register"><span class="create-icon">♙+</span>Create New Account</a>
+      <div class="feature-grid">
+        <div class="feature"><div class="feature-icon">●</div><strong>Real-time</strong><small>Messaging</small></div>
+        <div class="feature"><div class="feature-icon">✓</div><strong>End-to-End</strong><small>Secure</small></div>
+        <div class="feature"><div class="feature-icon">◎</div><strong>Share</strong><small>Status</small></div>
+        <div class="feature"><div class="feature-icon">⌕</div><strong>Voice</strong><small>Calling</small></div>
+      </div>
+      <div class="footer-copy">Made with <b>💙</b> by <b>Lucky Chat</b> · A safer place to connect</div>
+    </div>
+  </div>
 </div>
-
-
 <script>
-const passwordInput = document.getElementById("password");
-const togglePassword = document.getElementById("togglePassword");
-const loginForm = document.getElementById("loginForm");
-const loginButton = document.getElementById("loginButton");
-
-togglePassword.addEventListener("click", () => {
-    const hidden = passwordInput.type === "password";
-    passwordInput.type = hidden ? "text" : "password";
-    togglePassword.textContent = hidden ? "🙈" : "👁️";
-    togglePassword.setAttribute("aria-label", hidden ? "Hide password" : "Show password");
-    togglePassword.setAttribute("title", hidden ? "Hide password" : "Show password");
-});
-
-loginForm.addEventListener("submit", () => {
-    loginButton.disabled = true;
-    loginButton.textContent = "Logging in...";
-});
-
-<script>
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/service-worker.js")
-            .then(() => console.log("Lucky Chat PWA Ready"))
-            .catch(console.error);
-    });
-}
+const passwordInput=document.getElementById("password");
+const togglePassword=document.getElementById("togglePassword");
+const loginForm=document.getElementById("loginForm");
+const loginButton=document.getElementById("loginButton");
+togglePassword.addEventListener("click",()=>{const hidden=passwordInput.type==="password";passwordInput.type=hidden?"text":"password";togglePassword.textContent=hidden?"🙈":"👁️";togglePassword.setAttribute("aria-label",hidden?"Hide password":"Show password");togglePassword.setAttribute("title",hidden?"Hide password":"Show password")});
+loginForm.addEventListener("submit",()=>{loginButton.disabled=true;loginButton.textContent="Logging in..."});
 </script>
-
-</body>
+<script>
+if("serviceWorker"in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("/service-worker.js").then(()=>console.log("Lucky Chat PWA Ready")).catch(console.error)})}
+</script>
+</body></body>
 </html>
