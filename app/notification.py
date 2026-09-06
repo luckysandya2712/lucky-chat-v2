@@ -203,10 +203,16 @@ async def send_push_to_user(username: str, payload: dict) -> int:
     Send a best-effort push notification without blocking the WebSocket
     message/call path.
     """
-    if not push_configured():
+    username = str(username or "").strip()
+    print("PUSH START:", username)
+
+    configured = push_configured()
+    print("PUSH CONFIGURED:", configured)
+    if not configured:
         return 0
 
     subscriptions = get_subscriptions(username)
+    print("PUSH SUBSCRIPTIONS FOUND:", len(subscriptions))
     if not subscriptions:
         return 0
 
@@ -218,4 +224,6 @@ async def send_push_to_user(username: str, payload: dict) -> int:
         return_exceptions=True,
     )
 
-    return sum(result is True for result in results)
+    sent = sum(result is True for result in results)
+    print("PUSH SEND RESULTS:", sent, "/", len(subscriptions))
+    return sent
