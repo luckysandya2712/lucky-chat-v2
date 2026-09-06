@@ -2,6 +2,7 @@
     "use strict";
 
     const SETTING_KEY = "lucky_setting_notifications";
+    const SUBSCRIPTION_REFRESH_KEY = "lucky_push_subscription_refresh_v4";
     let registrationPromise = null;
     let syncPromise = null;
 
@@ -152,6 +153,31 @@
                 let subscription =
                     await registration.pushManager.getSubscription();
 
+                // One-time migration: discard the old subscription created by
+                // earlier notification code. A browser PushSubscription can
+                // remain present locally even after the push service has
+                // permanently expired it (which appears server-side as 410 Gone).
+                const needsSubscriptionRefresh =
+                    localStorage.getItem(SUBSCRIPTION_REFRESH_KEY) !== "1";
+
+                if (subscription && needsSubscriptionRefresh) {
+                    console.info(
+                        "[Lucky Push Diagnostic] Refreshing existing push subscription."
+                    );
+
+                    await fetch("/subscribe", {
+                        method: "DELETE",
+                        credentials: "same-origin",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(subscription.toJSON())
+                    }).catch(() => {});
+
+                    await subscription.unsubscribe().catch(() => {});
+                    subscription = null;
+                }
+
                 if (subscription) {
                     console.info("[Lucky Push Diagnostic] Existing subscription found.");
                 } else {
@@ -165,6 +191,7 @@
                 }
 
                 await saveSubscription(subscription);
+                localStorage.setItem(SUBSCRIPTION_REFRESH_KEY, "1");
                 console.info("[Lucky Push Diagnostic] POST /subscribe succeeded.");
                 return true;
 
@@ -271,7 +298,7 @@
         sync,
         unsubscribe,
         getRegistration,
-        diagnosticVersion: "v3"
+        diagnosticVersion: "v4"
     };
 
     // Keep the existing chat-core call site working without exposing
