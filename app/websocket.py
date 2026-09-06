@@ -129,18 +129,30 @@ class ConnectionManager:
         }
 
         # Update open chat pages
+        dead_chat = []
         for user, ws in list(self.connections.items()):
             try:
                 await ws.send_json(payload)
             except Exception:
-                pass
+                if self.connections.get(user) is ws:
+                    dead_chat.append((user, ws))
+
+        # Remove failed chat sockets
+        for user, ws in dead_chat:
+            await self.disconnect(user, ws)
 
         # Update open dashboards
+        dead_dashboards = []
         for user, ws in list(self.dashboard_connections.items()):
             try:
                 await ws.send_json(payload)
             except Exception:
-                pass
+                if self.dashboard_connections.get(user) is ws:
+                    dead_dashboards.append((user, ws))
+
+        # Remove failed dashboard sockets
+        for user, ws in dead_dashboards:
+            self.dashboard_connections.pop(user, None)
 
     async def broadcast_online(self):
 
