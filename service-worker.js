@@ -141,6 +141,11 @@ self.addEventListener("fetch", event => {
         return;
     }
 
+    if (url.pathname === "/manifest.json") {
+        event.respondWith(networkFirst(request));
+        return;
+    }
+
     if (isPrecacheableStatic(url.pathname)) {
         event.respondWith(staleWhileRevalidate(request));
     }
