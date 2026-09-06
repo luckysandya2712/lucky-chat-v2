@@ -206,7 +206,7 @@ async def send_push_to_user(username: str, payload: dict) -> int:
     if not push_configured():
         return 0
 
-    subscriptions = await asyncio.to_thread(get_subscriptions, username)
+    subscriptions = get_subscriptions(username)
     if not subscriptions:
         return 0
 
