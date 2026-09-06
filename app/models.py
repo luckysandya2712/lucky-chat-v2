@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Text, UniqueConstraint, Index
 from .database import Base
 
 class User(Base):
@@ -25,6 +25,12 @@ class User(Base):
     public_key = Column(String, nullable=True)
     public_key_history = Column(Text, nullable=True, default="[]")
     crypto_key_backup = Column(Text, nullable=True)
+
+    # Account-level privacy preferences. main.py already contains runtime
+    # migrations for existing databases, so adding these here also keeps fresh
+    # database creation aligned with the deployed schema.
+    read_receipts_enabled = Column(Integer, default=1, nullable=False)
+    online_status_enabled = Column(Integer, default=1, nullable=False)
 
 class Message(Base):
     __tablename__ = "messages"
@@ -61,6 +67,34 @@ class Message(Base):
 
     forwarded = Column(Integer, default=0)
 
+    # Composite indexes match the production dashboard/chat query patterns:
+    # conversation lookups by participant pair, newest-message lookups, and
+    # unread-message counts for a receiver/sender pair.
+    __table_args__ = (
+        Index(
+            "ix_messages_sender_receiver_id",
+            "sender",
+            "receiver",
+            "id",
+        ),
+        Index(
+            "ix_messages_receiver_unread_sender_id",
+            "receiver",
+            "unread",
+            "sender",
+            "id",
+        ),
+        # Reverse participant order for the other side of the conversation
+        # lookup. This complements sender/receiver/id above and keeps both
+        # directions efficient without changing message behavior.
+        Index(
+            "ix_messages_receiver_sender_id",
+            "receiver",
+            "sender",
+            "id",
+        ),
+    )
+
     # Persistent metadata for messages created by a Status private reply.
     # The reply text itself remains encrypted in the normal `text` column.
     status_reply = Column(Integer, default=0)
@@ -79,6 +113,18 @@ class Status(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, index=True)
 
+    __table_args__ = (
+        # Status listing first filters on expiry and then sorts newest first.
+        # This composite index complements the existing expires_at index for
+        # the production status-list query.
+        Index(
+            "ix_statuses_expires_created_id",
+            "expires_at",
+            "created_at",
+            "id",
+        ),
+    )
+
 
 class StatusView(Base):
     __tablename__ = "status_views"
@@ -93,6 +139,11 @@ class StatusView(Base):
             "status_id",
             "username",
             name="uq_status_view_status_user"
+        ),
+        Index(
+            "ix_status_views_status_seen",
+            "status_id",
+            "seen_at",
         ),
     )
 
@@ -111,6 +162,11 @@ class StatusLike(Base):
             "username",
             name="uq_status_like_status_user"
         ),
+        Index(
+            "ix_status_likes_status_created",
+            "status_id",
+            "created_at",
+        ),
     )
 
 
@@ -122,6 +178,14 @@ class StatusReply(Base):
     username = Column(String, index=True, nullable=False)
     encrypted_text = Column(Text, nullable=False)
     replied_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_status_replies_status_replied",
+            "status_id",
+            "replied_at",
+        ),
+    )
 
 
 class PushSubscription(Base):
