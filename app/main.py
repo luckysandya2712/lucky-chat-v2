@@ -10,6 +10,9 @@ import os
 import shutil
 import time
 import traceback
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
@@ -48,6 +51,120 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 STATUS_UPLOAD_DIR = Path("static/uploads/status")
 STATUS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Chat images can use Cloudinary for persistent, shared delivery in production.
+# When Cloudinary is not configured, the existing local filesystem behavior is
+# preserved for local development.
+CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "").strip()
+CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "").strip()
+CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "").strip()
+
+
+def _cloudinary_configured() -> bool:
+    return bool(
+        CLOUDINARY_CLOUD_NAME
+        and CLOUDINARY_API_KEY
+        and CLOUDINARY_API_SECRET
+    )
+
+
+def _cloudinary_upload_image(data: bytes, filename: str) -> str:
+    """Upload chat-image bytes to Cloudinary and return its HTTPS delivery URL."""
+    timestamp = int(time.time())
+    public_id = Path(filename).stem
+    folder = "lucky_chat/chat"
+
+    sign_params = {
+        "folder": folder,
+        "public_id": public_id,
+        "timestamp": timestamp,
+    }
+    query = urllib.parse.urlencode(sorted(sign_params.items()))
+    signature = hashlib.sha1(
+        (query + CLOUDINARY_API_SECRET).encode("utf-8")
+    ).hexdigest()
+
+    boundary = "----LuckyChatCloudinaryBoundary" + hashlib.sha256(
+        f"{filename}:{timestamp}".encode("utf-8")
+    ).hexdigest()[:24]
+
+    fields = {
+        "api_key": CLOUDINARY_API_KEY,
+        "folder": folder,
+        "public_id": public_id,
+        "timestamp": str(timestamp),
+        "signature": signature,
+    }
+
+    body = bytearray()
+    boundary_bytes = boundary.encode("ascii")
+
+    for key, value in fields.items():
+        body.extend(b"--" + boundary_bytes + b"\r\n")
+        body.extend(
+            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8")
+        )
+        body.extend(str(value).encode("utf-8"))
+        body.extend(b"\r\n")
+
+    body.extend(b"--" + boundary_bytes + b"\r\n")
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
+        ).encode("utf-8")
+    )
+    body.extend(data)
+    body.extend(b"\r\n")
+    body.extend(b"--" + boundary_bytes + b"--\r\n")
+
+    endpoint = (
+        f"https://api.cloudinary.com/v1_1/"
+        f"{urllib.parse.quote(CLOUDINARY_CLOUD_NAME, safe='')}/image/upload"
+    )
+
+    request = urllib.request.Request(
+        endpoint,
+        data=bytes(body),
+        method="POST",
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Accept": "application/json",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = str(exc)
+        raise RuntimeError(f"Cloudinary upload failed (HTTP {exc.code}): {detail[:500]}")
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise RuntimeError(f"Cloudinary upload failed: {exc}")
+
+    secure_url = str(payload.get("secure_url") or "").strip()
+    if not secure_url:
+        raise RuntimeError("Cloudinary upload succeeded but returned no secure URL")
+
+    return secure_url
+
+
+async def _store_chat_image(data: bytes, filename: str) -> str:
+    """Store a chat image in shared cloud storage or the existing local fallback."""
+    if _cloudinary_configured():
+        return await asyncio.to_thread(
+            _cloudinary_upload_image,
+            data,
+            filename,
+        )
+
+    filepath = UPLOAD_DIR / filename
+    with open(filepath, "wb") as buffer:
+        buffer.write(data)
+    return "/static/uploads/chat/" + filename
 
 
 def _storage_user_key(username: str) -> str:
@@ -2041,14 +2158,18 @@ async def upload_chat_image(
         f"{extension}"
     )
 
-    filepath = UPLOAD_DIR / filename
-
-    with open(filepath, "wb") as buffer:
-        buffer.write(data)
+    try:
+        media_url = await _store_chat_image(data, filename)
+    except Exception as exc:
+        print("CHAT IMAGE STORAGE ERROR:", exc)
+        return {
+            "success": False,
+            "error": "Could not store image"
+        }
 
     return {
         "success": True,
-        "url": "/static/uploads/chat/" + filename,
+        "url": media_url,
         "media_type": "image"
     }
 
@@ -2756,11 +2877,13 @@ async def record_status_view(status_id: int, request: Request):
                 seen_at=seen_at,
             )
             db.add(view)
+            db.commit()
+            db.refresh(view)
         else:
-            view.seen_at = seen_at
-
-        db.commit()
-        db.refresh(view)
+            # Preserve the user's original first-view timestamp.
+            # Re-opening a Status must not make the viewer appear as
+            # "Just now" in the owner's engagement panel.
+            db.refresh(view)
 
         viewer = resolve_user_by_username(db, username)
         await manager.send_dashboard(
