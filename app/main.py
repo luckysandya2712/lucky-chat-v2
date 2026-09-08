@@ -69,54 +69,48 @@ def _cloudinary_configured() -> bool:
 
 
 def _cloudinary_upload_image(data: bytes, filename: str) -> str:
-    """Upload chat-image bytes to Cloudinary and return its HTTPS delivery URL."""
-    timestamp = int(time.time())
+    """Upload chat-image bytes to Cloudinary using backend Basic Authentication."""
     public_id = Path(filename).stem
     folder = "lucky_chat/chat"
 
-    sign_params = {
-        "folder": folder,
-        "public_id": public_id,
-        "timestamp": timestamp,
-    }
-    query = urllib.parse.urlencode(sorted(sign_params.items()))
-    signature = hashlib.sha1(
-        (query + CLOUDINARY_API_SECRET).encode("utf-8")
-    ).hexdigest()
+    # Cloudinary documents backend Basic Authentication as the simpler
+    # authenticated Upload API method because it avoids manual signature
+    # generation and timestamp handling.
+    credentials = f"{CLOUDINARY_API_KEY}:{CLOUDINARY_API_SECRET}"
+    authorization = base64.b64encode(
+        credentials.encode("utf-8")
+    ).decode("ascii")
 
     boundary = "----LuckyChatCloudinaryBoundary" + hashlib.sha256(
-        f"{filename}:{timestamp}".encode("utf-8")
+        f"{filename}:{time.time_ns()}".encode("utf-8")
     ).hexdigest()[:24]
+    boundary_bytes = boundary.encode("ascii")
 
     fields = {
-        "api_key": CLOUDINARY_API_KEY,
         "folder": folder,
         "public_id": public_id,
-        "timestamp": str(timestamp),
-        "signature": signature,
     }
 
     body = bytearray()
-    boundary_bytes = boundary.encode("ascii")
 
     for key, value in fields.items():
-        body.extend(b"--" + boundary_bytes + b"\r\n")
+        body.extend(b"--" + boundary_bytes + b"\\r\\n")
         body.extend(
-            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8")
+            f'Content-Disposition: form-data; name="{key}"\\r\\n\\r\\n'.encode("utf-8")
         )
         body.extend(str(value).encode("utf-8"))
-        body.extend(b"\r\n")
+        body.extend(b"\\r\\n")
 
-    body.extend(b"--" + boundary_bytes + b"\r\n")
+    body.extend(b"--" + boundary_bytes + b"\\r\\n")
     body.extend(
         (
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-            f"Content-Type: application/octet-stream\r\n\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\\r\\n'
+            f"Content-Type: application/octet-stream\\r\\n\\r\\n"
         ).encode("utf-8")
     )
     body.extend(data)
-    body.extend(b"\r\n")
-    body.extend(b"--" + boundary_bytes + b"--\r\n")
+    body.extend(b"\\r\\n")
+    body.extend(b"--" + boundary_bytes + b"--\\r\\n")
 
     endpoint = (
         f"https://api.cloudinary.com/v1_1/"
@@ -128,6 +122,7 @@ def _cloudinary_upload_image(data: bytes, filename: str) -> str:
         data=bytes(body),
         method="POST",
         headers={
+            "Authorization": f"Basic {authorization}",
             "Content-Type": f"multipart/form-data; boundary={boundary}",
             "Accept": "application/json",
         },
@@ -135,19 +130,28 @@ def _cloudinary_upload_image(data: bytes, filename: str) -> str:
 
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            raw = response.read().decode("utf-8")
+            payload = json.loads(raw)
     except urllib.error.HTTPError as exc:
         try:
             detail = exc.read().decode("utf-8", errors="replace")
         except Exception:
             detail = str(exc)
-        raise RuntimeError(f"Cloudinary upload failed (HTTP {exc.code}): {detail[:500]}")
+        raise RuntimeError(
+            f"Cloudinary upload failed (HTTP {exc.code}): {detail[:700]}"
+        )
     except (urllib.error.URLError, TimeoutError) as exc:
         raise RuntimeError(f"Cloudinary upload failed: {exc}")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Cloudinary returned invalid JSON: {exc}")
 
     secure_url = str(payload.get("secure_url") or "").strip()
     if not secure_url:
-        raise RuntimeError("Cloudinary upload succeeded but returned no secure URL")
+        message = str(payload.get("error", {}).get("message") or "").strip()
+        raise RuntimeError(
+            "Cloudinary upload returned no secure URL"
+            + (f": {message}" if message else "")
+        )
 
     return secure_url
 
@@ -2164,7 +2168,7 @@ async def upload_chat_image(
         print("CHAT IMAGE STORAGE ERROR:", exc)
         return {
             "success": False,
-            "error": "Could not store image"
+            "error": str(exc)[:1000]
         }
 
     return {
