@@ -1900,6 +1900,7 @@ async function initChatCore() {
 
     updateFriendStatus();
     bindImageAndSendControls();
+    bindStaticChatInteractions();
 }
 
 function bindImageAndSendControls() {
@@ -1960,6 +1961,128 @@ function bindImageAndSendControls() {
             sendMessage();
         };
     }
+}
+
+
+/* =========================================================
+   Lucky Chat static interaction bindings
+   Moved from inline HTML attributes so chat.html stays markup/UI only.
+   ========================================================= */
+function bindStaticChatInteractions() {
+    const bindOnce = (element, eventName, handler, options) => {
+        if (!element) return;
+        const key = `lucky${eventName}Bound`;
+        if (element.dataset[key] === "1") return;
+        element.addEventListener(eventName, handler, options);
+        element.dataset[key] = "1";
+    };
+
+    const backButton = document.getElementById("chatBackBtn");
+    bindOnce(backButton, "click", () => {
+        window.location.href = "/dashboard";
+    });
+
+    const pinnedMain = document.getElementById("pinnedBarMain");
+    bindOnce(pinnedMain, "click", () => {
+        jumpToLatestPinned();
+    });
+
+    const pinnedClose = document.getElementById("pinnedBarClose");
+    bindOnce(pinnedClose, "click", () => {
+        hidePinnedBar();
+    });
+
+    const replyPreviewClose = document.getElementById("replyPreviewClose");
+    bindOnce(replyPreviewClose, "click", () => {
+        cancelReply();
+    });
+
+    const messageMenu = document.getElementById("messageMenu");
+    if (messageMenu) {
+        bindOnce(messageMenu, "click", event => {
+            event.stopPropagation();
+        });
+        bindOnce(messageMenu, "pointerdown", event => {
+            event.stopPropagation();
+        });
+
+        messageMenu.querySelectorAll("[data-chat-action]").forEach(item => {
+            bindOnce(item, "click", event => {
+                event.stopPropagation();
+                const action = item.dataset.chatAction;
+                switch (action) {
+                    case "editMessage":
+                        editMessage();
+                        break;
+                    case "deleteEveryone":
+                        openDeleteConfirmation("everyone");
+                        break;
+                    case "deleteMe":
+                        openDeleteConfirmation("me");
+                        break;
+                    case "copyMessage":
+                        copyMessage();
+                        break;
+                    case "replyMessage":
+                        replyMessage();
+                        break;
+                    case "forwardMessage":
+                        forwardMessage();
+                        break;
+                    case "reactToMessage":
+                        reactToMessage();
+                        break;
+                    case "togglePinSelectedMessage":
+                        togglePinSelectedMessage();
+                        break;
+                }
+            });
+        });
+    }
+
+    const deleteOverlay = document.getElementById("deleteModalOverlay");
+    bindOnce(deleteOverlay, "click", event => {
+        if (event.target === deleteOverlay) {
+            closeDeleteModal();
+        }
+    });
+
+    const deleteModal = deleteOverlay?.querySelector(".delete-modal");
+    bindOnce(deleteModal, "click", event => {
+        event.stopPropagation();
+    });
+
+    bindOnce(deleteOverlay?.querySelector(".delete-cancel-btn"), "click", () => {
+        closeDeleteModal();
+    });
+    bindOnce(deleteOverlay?.querySelector(".delete-confirm-btn"), "click", () => {
+        confirmDelete();
+    });
+
+    bindOnce(document.getElementById("forwardModalCloseBtn"), "click", () => {
+        closeForwardModal();
+    });
+
+    const reactionPicker = document.getElementById("reactionPicker");
+    if (reactionPicker) {
+        reactionPicker.querySelectorAll("[data-reaction]").forEach(item => {
+            bindOnce(item, "click", event => {
+                event.stopPropagation();
+                chooseReaction(item.dataset.reaction || "");
+            });
+        });
+    }
+
+    const editOverlay = document.getElementById("editModalOverlay");
+    bindOnce(editOverlay?.querySelector(".edit-modal-close"), "click", () => {
+        closeEditModal();
+    });
+    bindOnce(editOverlay?.querySelector(".edit-cancel-btn"), "click", () => {
+        closeEditModal();
+    });
+    bindOnce(editOverlay?.querySelector(".edit-save-btn"), "click", () => {
+        saveEditedMessage();
+    });
 }
 
 

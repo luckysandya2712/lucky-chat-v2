@@ -2088,8 +2088,7 @@ html.lucky-light .messages .message-reactions{
 
 <div class="header">
 
-    <button class="back-btn"
-            onclick="window.location.href='/dashboard'">
+    <button class="back-btn" id="chatBackBtn" type="button">
         ←
     </button>
 
@@ -2345,12 +2344,12 @@ html.lucky-light .messages .message-reactions{
 </style>
 
 <div id="pinnedBar" class="pinned-bar">
-    <div id="pinnedBarMain" class="pinned-bar-main" onclick="jumpToLatestPinned()">
+    <div id="pinnedBarMain" class="pinned-bar-main">
         <div class="pinned-bar-title">📌 Pinned message</div>
         <div id="pinnedBarText" class="pinned-bar-text">Pinned message</div>
     </div>
     <span id="pinnedBarCount" class="pinned-bar-count"></span>
-    <button class="pinned-bar-close" type="button" onclick="hidePinnedBar()" aria-label="Hide pinned message">✕</button>
+    <button class="pinned-bar-close" id="pinnedBarClose" type="button" aria-label="Hide pinned message">✕</button>
 </div>
 
 <div class="messages">
@@ -2367,7 +2366,7 @@ Welcome to Lucky Chat 🚀
         <div id="replySender" class="reply-preview-sender"></div>
         <div id="replyText" class="reply-preview-text"></div>
     </div>
-    <button class="reply-preview-close" type="button" onclick="cancelReply()" aria-label="Cancel reply">✕</button>
+    <button class="reply-preview-close" id="replyPreviewClose" type="button" aria-label="Cancel reply">✕</button>
 </div>
 
 
@@ -3027,60 +3026,46 @@ Welcome to Lucky Chat 🚀
 
 
 <div id="messageMenu"
-     class="message-menu"
-     onclick="event.stopPropagation()"
-     onpointerdown="event.stopPropagation()">
+     class="message-menu">
 
-    <div onclick="event.stopPropagation(); editMessage()"
-         onpointerup="event.stopPropagation()">
+    <div data-chat-action="editMessage">
         ✏️ Edit
     </div>
 
-    <div class="delete-everyone-action"
-         onclick="event.stopPropagation(); openDeleteConfirmation('everyone')"
-         onpointerup="event.stopPropagation()">
+    <div class="delete-everyone-action" data-chat-action="deleteEveryone">
         🗑 Delete for Everyone
     </div>
 
-    <div onclick="event.stopPropagation(); openDeleteConfirmation('me')"
-         onpointerup="event.stopPropagation()">
+    <div data-chat-action="deleteMe">
         👤 Delete for Me
     </div>
 
-    <div onclick="event.stopPropagation(); copyMessage()"
-         onpointerup="event.stopPropagation()">
+    <div data-chat-action="copyMessage">
         📋 Copy
     </div>
 
-    <div onclick="event.stopPropagation(); replyMessage()"
-         onpointerup="event.stopPropagation()">
+    <div data-chat-action="replyMessage">
         ↩ Reply
     </div>
 
-    <div onclick="event.stopPropagation(); forwardMessage()"
-         onpointerup="event.stopPropagation()">
+    <div data-chat-action="forwardMessage">
         ➡️ Forward
     </div>
 
-    <div onclick="event.stopPropagation(); reactToMessage()"
-         onpointerup="event.stopPropagation()">
+    <div data-chat-action="reactToMessage">
         ❤️ React
     </div>
 
-    <div class="pin-message-action"
-         onclick="event.stopPropagation(); togglePinSelectedMessage()"
-         onpointerup="event.stopPropagation()">
+    <div class="pin-message-action" data-chat-action="togglePinSelectedMessage">
         📌 Pin
     </div>
 
 </div>
 
 <div id="deleteModalOverlay"
-     class="delete-modal-overlay"
-     onclick="if(event.target === this) closeDeleteModal()">
+     class="delete-modal-overlay">
 
-    <div class="delete-modal"
-         onclick="event.stopPropagation()">
+    <div class="delete-modal">
 
         <div class="delete-modal-header">
             <div id="deleteModalTitle"
@@ -3100,13 +3085,13 @@ Welcome to Lucky Chat 🚀
 
             <button type="button"
                     class="delete-cancel-btn"
-                    onclick="closeDeleteModal()">
+                    data-chat-action="closeDeleteModal">
                 Cancel
             </button>
 
             <button type="button"
                     class="delete-confirm-btn"
-                    onclick="confirmDelete()">
+                    data-chat-action="confirmDelete">
                 Delete
             </button>
 
@@ -3121,7 +3106,7 @@ Welcome to Lucky Chat 🚀
         <div class="forward-header">
             <span>Forward Message</span>
 
-            <button onclick="closeForwardModal()">
+            <button id="forwardModalCloseBtn" type="button">
                 ✕
             </button>
         </div>
@@ -3135,12 +3120,12 @@ Welcome to Lucky Chat 🚀
 </div>
 
 <div id="reactionPicker" class="reaction-picker">
-    <span onclick="chooseReaction('👍')">👍</span>
-    <span onclick="chooseReaction('❤️')">❤️</span>
-    <span onclick="chooseReaction('😂')">😂</span>
-    <span onclick="chooseReaction('😮')">😮</span>
-    <span onclick="chooseReaction('😢')">😢</span>
-    <span onclick="chooseReaction('🔥')">🔥</span>
+    <span data-reaction="👍">👍</span>
+    <span data-reaction="❤️">❤️</span>
+    <span data-reaction="😂">😂</span>
+    <span data-reaction="😮">😮</span>
+    <span data-reaction="😢">😢</span>
+    <span data-reaction="🔥">🔥</span>
 </div>
 
 <div id="editModalOverlay" class="edit-modal-overlay">
@@ -3156,7 +3141,7 @@ Welcome to Lucky Chat 🚀
             <button
                 type="button"
                 class="edit-modal-close"
-                onclick="closeEditModal()">
+                data-chat-action="closeEditModal">
                 ✕
             </button>
 
@@ -3175,14 +3160,14 @@ Welcome to Lucky Chat 🚀
                 <button
                     type="button"
                     class="edit-cancel-btn"
-                    onclick="closeEditModal()">
+                    data-chat-action="closeEditModal">
                     Cancel
                 </button>
 
                 <button
                     type="button"
                     class="edit-save-btn"
-                    onclick="saveEditedMessage()">
+                    data-chat-action="saveEditedMessage">
                     Save
                 </button>
 
@@ -3578,7 +3563,7 @@ Welcome to Lucky Chat 🚀
 
 <script src="/static/js/crypto.core.js?v=20260907-crypto-receive-v1"></script>
 <script src="/static/js/notification.js?v=20260909-chat-target-v5"></script>
-<script src="/static/js/chat.core.js?v=20260909-reference-ui-migration-v1"></script>
+<script src="/static/js/chat.core.js?v=20260910-inline-handlers-v1"></script>
 
 <style>
 
