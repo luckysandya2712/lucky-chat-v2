@@ -4340,7 +4340,7 @@ body::after{
         const raw = (row.textContent || "").replace(/\s+/g, " ").trim();
         const media = row.querySelector("img:not(.msg-avatar), video, audio, .voice-message, .status-reply-card, .call-history-card");
         const looksLikeTime = /^(?:\d{1,2}:\d{2}\s?(?:am|pm)?)$/i.test(raw);
-        return (!text && !media && looksLikeTime) || looksLikeTime;
+        return !text && !media && looksLikeTime;
     }
 
     function polishThread(){
