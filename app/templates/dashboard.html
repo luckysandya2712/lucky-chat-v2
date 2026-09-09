@@ -5891,6 +5891,38 @@ body{
 </style>
 
 
+<script id="lucky-dashboard-theme-runtime">
+(function(){
+    const KEY = "lucky_setting_darkMode";
+
+    function isDarkModeEnabled(){
+        return localStorage.getItem(KEY) !== "0";
+    }
+
+    function applyLuckyDashboardTheme(){
+        const dark = isDarkModeEnabled();
+        document.documentElement.classList.toggle("lucky-light", !dark);
+        document.documentElement.dataset.luckyTheme = dark ? "dark" : "light";
+
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeMeta) {
+            themeMeta.setAttribute("content", dark ? "#0b1220" : "#f3f7fb");
+        }
+    }
+
+    window.applyLuckyDashboardTheme = applyLuckyDashboardTheme;
+    applyLuckyDashboardTheme();
+
+    window.addEventListener("storage", event => {
+        if (event.key === KEY) applyLuckyDashboardTheme();
+    });
+
+    window.addEventListener("lucky-setting-changed", event => {
+        if (event?.detail?.key === "darkMode") applyLuckyDashboardTheme();
+    });
+})();
+</script>
+
 </head>
 
 <body>
@@ -8748,7 +8780,7 @@ function reactToStatus(eventOrFromDoubleTap){
     const id = getStatusReactionId(status);
     if (!id) return false;
 
-    const wasLiked = getLikedStatusIds().includes(id);
+    const wasLiked = button.classList.contains("liked");
     // Double-tap is always a like; a deliberate heart tap toggles.
     const nextLiked = fromDoubleTap ? true : !wasLiked;
 
@@ -10875,9 +10907,45 @@ function openCurrentStatusViewer(){
     if (heartButton) {
         heartButton.style.display = currentStatus.is_mine ? "none" : "flex";
         heartButton.classList.remove("liked","pop");
-        paintStatusHeart(heartButton, getLikedStatusIds().includes(getStatusReactionId(currentStatus)));
+
+        // Never trust the browser's cached like state when opening a story.
+        // The server is authoritative for whether THIS account currently
+        // likes THIS status. Start visually unliked, then reconcile from the
+        // engagement endpoint without re-playing the like animation.
+        paintStatusHeart(heartButton, false);
+
         if (!heartButton.querySelector("svg")) {
             heartButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 8.6c0 5.2-8.8 11-8.8 11S3.2 13.8 3.2 8.6A4.6 4.6 0 0 1 12 6.7a4.6 4.6 0 0 1 8.8 1.9z"></path></svg>';
+        }
+
+        if (!currentStatus.is_mine) {
+            const openedStatusId = getStatusReactionId(currentStatus);
+            const openedStatus = currentStatus;
+
+            void fetchStatusViewers(openedStatus).then(result => {
+                // Do not let a late response for an older story overwrite the
+                // currently visible story or a deliberate like/unlike tap.
+                if (!currentStatus) return;
+                if (getStatusReactionId(currentStatus) !== openedStatusId) return;
+                if (!result?.fromApi) return;
+
+                const ownKey = String(CURRENT_DASHBOARD_USER || "").trim().toLowerCase();
+                const serverLiked = (Array.isArray(result.likers) ? result.likers : [])
+                    .some(person =>
+                        String(person?.username || person?.user || "")
+                            .trim()
+                            .toLowerCase() === ownKey
+                    );
+
+                // Reconcile the browser cache with server truth. In
+                // particular, remove a stale cached "liked" flag when the
+                // server says this account is not a liker.
+                rememberStatusLike(openedStatusId, serverLiked);
+                paintStatusHeart(heartButton, serverLiked);
+            }).catch(() => {
+                // Keep the safe unliked visual state when the server cannot
+                // confirm a previous like. A deliberate new tap still works.
+            });
         }
     }
 
@@ -13246,6 +13314,239 @@ a:focus-visible{
 
 @media(prefers-reduced-motion:reduce){
   .chat-item,button,a{transition:none !important;}
+}
+</style>
+
+
+
+<style id="lucky-dashboard-light-mode-v1">
+/* Lucky Chat dashboard light-mode layer. Visual-only; existing logic is untouched. */
+html.lucky-light,
+html.lucky-light body{
+  color-scheme:light!important;
+  background:#f3f7fb!important;
+}
+
+html.lucky-light body{
+  background:
+    radial-gradient(900px 430px at 8% -12%,rgba(59,130,246,.10),transparent 45%),
+    radial-gradient(760px 400px at 108% 0%,rgba(139,92,246,.08),transparent 46%),
+    linear-gradient(180deg,#f8fbff 0%,#eef4f9 54%,#f7fafc 100%) !important;
+  color:#0f172a!important;
+}
+
+html.lucky-light .app{background:transparent!important;}
+
+html.lucky-light .sidebar{
+  background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(242,247,252,.98))!important;
+  border-right:1px solid #dbe4ee!important;
+  box-shadow:18px 0 45px rgba(15,23,42,.07)!important;
+  backdrop-filter:blur(22px)!important;
+  -webkit-backdrop-filter:blur(22px)!important;
+}
+
+html.lucky-light .sidebar:before{
+  background:linear-gradient(180deg,#38bdf8,#818cf8 55%,transparent)!important;
+  opacity:.45!important;
+}
+
+html.lucky-light .logo{
+  background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(244,248,252,.88))!important;
+  border-bottom:1px solid #dbe4ee!important;
+}
+
+html.lucky-light .logo span,
+html.lucky-light .logo b{
+  color:#0f172a!important;
+}
+
+html.lucky-light .logo-mark{
+  background:#eaf3fb!important;
+  border-color:#b8d9f0!important;
+  box-shadow:0 0 0 3px rgba(59,130,246,.08),0 10px 24px rgba(59,130,246,.12)!important;
+}
+
+html.lucky-light .settings-btn{
+  background:#e8f0f7!important;
+  color:#24415c!important;
+  border-color:#cbd9e6!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 8px 18px rgba(15,23,42,.08)!important;
+}
+
+html.lucky-light .settings-btn:hover{
+  background:#dde9f3!important;
+  border-color:#9ec7e7!important;
+}
+
+html.lucky-light .search{
+  background:transparent!important;
+}
+
+html.lucky-light .search input{
+  background:linear-gradient(180deg,#ffffff,#f3f7fb)!important;
+  color:#172033!important;
+  border:1px solid #d7e1eb!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 8px 22px rgba(15,23,42,.06)!important;
+}
+
+html.lucky-light .search input::placeholder{color:#7a8898!important;}
+html.lucky-light .search input:focus{
+  background:#ffffff!important;
+  border-color:#8ec8ef!important;
+  box-shadow:0 0 0 4px rgba(59,130,246,.08),0 10px 24px rgba(15,23,42,.08)!important;
+}
+html.lucky-light .search::before{color:#378ac2!important;}
+
+html.lucky-light .status-section{
+  border-color:#cfe0ee!important;
+  background:
+    radial-gradient(300px 150px at 0% 0%,rgba(56,189,248,.12),transparent 72%),
+    radial-gradient(300px 150px at 100% 100%,rgba(139,92,246,.09),transparent 72%),
+    linear-gradient(180deg,#f8fbfe,#eef4f9)!important;
+  box-shadow:0 14px 32px rgba(15,23,42,.07),inset 0 1px 0 rgba(255,255,255,.95)!important;
+}
+
+html.lucky-light .status-heading>div:first-child::before{color:#2d78bb!important;}
+html.lucky-light .status-heading h3{color:#0f172a!important;}
+html.lucky-light .status-heading p{color:#6b7b8d!important;}
+
+html.lucky-light .status-see-all{
+  border-color:#a9cae5!important;
+  background:linear-gradient(180deg,#edf7ff,#e1eef8)!important;
+  color:#245277!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 8px 18px rgba(37,99,235,.08)!important;
+}
+
+html.lucky-light .status-see-all:hover{background:#e3f1fb!important;}
+
+html.lucky-light .status-card.story-card,
+html.lucky-light .status-row .status-card.your-status{
+  background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(239,245,250,.88))!important;
+  border-color:#d5e2ed!important;
+  box-shadow:0 8px 18px rgba(15,23,42,.06),inset 0 1px 0 rgba(255,255,255,.92)!important;
+  color:#122033!important;
+}
+
+html.lucky-light .story-avatar-wrap,
+html.lucky-light .status-row .status-card.your-status .story-avatar-wrap{
+  box-shadow:0 0 0 2px #f7fbff,0 8px 18px rgba(37,99,235,.15)!important;
+}
+
+html.lucky-light .story-card-bottom .status-name,
+html.lucky-light .status-row .status-card.your-status .story-card-bottom .status-name{
+  color:#132033!important;
+}
+
+html.lucky-light .story-card-bottom .status-hint,
+html.lucky-light .status-row .status-card.your-status .story-card-bottom .status-hint{
+  color:#708093!important;
+}
+
+html.lucky-light .status-legend{
+  border-top-color:#dce6ef!important;
+}
+html.lucky-light .status-legend-item,
+html.lucky-light .status-legend-item.status-legend-timing{color:#718094!important;}
+
+html.lucky-light .chat-list{
+  scrollbar-color:#b9cad9 transparent!important;
+}
+
+html.lucky-light .chat-item{
+  background:rgba(255,255,255,.72)!important;
+  border-color:#dbe5ee!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 7px 18px rgba(15,23,42,.04)!important;
+}
+
+html.lucky-light .chat-item:hover{
+  background:rgba(235,246,255,.92)!important;
+  border-color:#c2ddee!important;
+}
+
+html.lucky-light .chat-item.active,
+html.lucky-light .chat-item.is-pinned{
+  background:linear-gradient(135deg,rgba(219,239,252,.96),rgba(238,244,252,.96))!important;
+  border-color:#acd0e8!important;
+}
+
+html.lucky-light .chat-item.active::before{
+  background:linear-gradient(180deg,#38bdf8,#6366f1)!important;
+}
+
+html.lucky-light .avatar{
+  background:#eef4f8!important;
+  border-color:#5eafe3!important;
+  box-shadow:0 0 0 3px rgba(59,130,246,.07),0 7px 18px rgba(15,23,42,.09)!important;
+}
+
+html.lucky-light .chat-name-row h4,
+html.lucky-light .chat-top h4{
+  color:#132033!important;
+}
+
+html.lucky-light .message-preview{color:#637386!important;}
+html.lucky-light .status{color:#708093!important;}
+html.lucky-light .status.online{color:#14915e!important;}
+html.lucky-light .time{color:#718094!important;}
+
+html.lucky-light .badge{
+  background:linear-gradient(145deg,#35c998,#16a576)!important;
+  color:#ffffff!important;
+  box-shadow:0 5px 14px rgba(16,185,129,.18)!important;
+}
+
+html.lucky-light .chat-list-empty{
+  background:rgba(255,255,255,.78)!important;
+  border-color:#dbe5ee!important;
+  color:#728194!important;
+}
+
+html.lucky-light .chat-menu{
+  background:rgba(255,255,255,.98)!important;
+  border-color:#d6e2ec!important;
+  box-shadow:0 18px 45px rgba(15,23,42,.16)!important;
+}
+
+html.lucky-light .chat-menu button{color:#23364b!important;}
+html.lucky-light .chat-menu button:active{background:rgba(59,130,246,.08)!important;}
+
+html.lucky-light .lc-mobile-dock{
+  background:rgba(255,255,255,.88)!important;
+  border-color:#ccdce9!important;
+  box-shadow:0 16px 40px rgba(15,23,42,.14),inset 0 1px 0 rgba(255,255,255,.95)!important;
+}
+
+html.lucky-light .lc-dock-item{color:#6f8296!important;}
+html.lucky-light .lc-dock-item.is-active,
+html.lucky-light .lc-dock-item.active{color:#2385c7!important;}
+
+html.lucky-light .chat{
+  background:
+    radial-gradient(700px 380px at 82% 0%,rgba(59,130,246,.06),transparent 58%),
+    linear-gradient(180deg,#f8fbfd,#edf3f8)!important;
+}
+
+html.lucky-light .chat-header{
+  background:rgba(255,255,255,.84)!important;
+  border-bottom-color:#dbe4ee!important;
+  color:#0f172a!important;
+}
+
+html.lucky-light .header-info h3{color:#132033!important;}
+html.lucky-light .header-info p{color:#14915e!important;}
+
+/* Keep the secondary dark UI from leaking into the base dashboard. */
+html.lucky-light .status-modal,
+html.lucky-light .status-viewer,
+html.lucky-light .status-modal-card{
+  /* Leave rich Status studio/viewer visuals intact until those surfaces
+     receive their own dedicated light-mode pass. */
+}
+
+@media(max-width:768px){
+  html.lucky-light .lc-mobile-dock{
+    background:rgba(255,255,255,.90)!important;
+  }
 }
 </style>
 
