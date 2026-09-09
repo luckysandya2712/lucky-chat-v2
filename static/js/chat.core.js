@@ -1000,7 +1000,11 @@ function saveReactions() {
 
 async function loadMessages() {
 
-    const res = await fetch("/messages/" + friend);
+    const res = await fetch("/messages/" + encodeURIComponent(friend), {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store"
+    });
 
     if (!res.ok) {
         throw new Error("Failed to load messages (HTTP " + res.status + ")");
@@ -1029,7 +1033,10 @@ async function loadMessages() {
             msg.reaction = savedReactions[msg.id];
         }
 
-        if (msg.media_type !== "call") {
+        // Media-only messages have no encrypted text to decrypt.
+        // Render their media immediately instead of passing an empty value
+        // through the crypto layer during history loading.
+        if (msg.media_type !== "call" && typeof msg.text === "string" && msg.text.length > 0) {
             try {
                 msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
             } catch (error) {
@@ -1044,10 +1051,25 @@ async function loadMessages() {
     pinnedMessages = pinnedMessages.filter(id => messageMap[id]);
     savePinnedMessages();
 
-    data.forEach(msg => {
-        if (deletedMessages[msg.id]) {
+    // Render the processed copies from messageMap so decrypted text and
+    // media fields stay together. Previously the raw `data` objects were
+    // rendered again here, discarding the processed message object.
+    data.forEach(rawMsg => {
+        if (deletedMessages[rawMsg.id]) {
             return;
         }
+
+        const msg = messageMap[rawMsg.id] || rawMsg;
+
+        // Normalize media fields once at the render boundary. This makes
+        // image delivery tolerant of harmless casing/whitespace differences.
+        if (msg.media_type != null) {
+            msg.media_type = String(msg.media_type).trim().toLowerCase();
+        }
+        if (msg.media_url != null) {
+            msg.media_url = String(msg.media_url).trim();
+        }
+
         addMessage(msg);
     });
 
@@ -1625,12 +1647,27 @@ async function handleSocketMessage(event) {
             return;
         }
 
-        try {
-            data.text = await LuckyCrypto.decryptMessage(data.text, username);
-        } catch (error) {
-            console.error("LIVE MESSAGE DECRYPTION ERROR:", error, data.id);
-            data.text = "🔒 Unable to decrypt this message";
+        // Preserve media independently of text decryption. A malformed or
+        // undecryptable text field must never prevent an image/video/audio
+        // message from being rendered.
+        const mediaUrl = data.media_url != null
+            ? String(data.media_url).trim()
+            : "";
+        const mediaType = data.media_type != null
+            ? String(data.media_type).trim().toLowerCase()
+            : "";
+
+        if (typeof data.text === "string" && data.text.length > 0) {
+            try {
+                data.text = await LuckyCrypto.decryptMessage(data.text, username);
+            } catch (error) {
+                console.error("LIVE MESSAGE DECRYPTION ERROR:", error, data.id);
+                data.text = "🔒 Unable to decrypt this message";
+            }
         }
+
+        data.media_url = mediaUrl || null;
+        data.media_type = mediaType || null;
 
         addMessage(data);
         playNotificationSound();
@@ -2516,13 +2553,26 @@ function ensureStatusReplyLabel(bubble, msg){
 
 function addMessage(msg){
 
+    if (!msg || typeof msg !== "object") {
+        return;
+    }
+
+    // Normalize media at the final rendering boundary too. Some message
+    // paths call addMessage() directly and therefore do not pass through the
+    // history/live-socket normalization performed elsewhere.
+    if (msg.media_type != null) {
+        msg.media_type = String(msg.media_type).trim().toLowerCase();
+    }
+
+    if (msg.media_url != null) {
+        msg.media_url = String(msg.media_url).trim();
+    }
+
     if (deletedMessages[msg.id]) {
         return;
     }
 
-    if (msg) {
-        msg.forwarded = isForwardedMessage(msg);
-    }
+    msg.forwarded = isForwardedMessage(msg);
 
     if (msg.media_type === "call") {
         messageMap[msg.id] = msg;
@@ -2545,6 +2595,36 @@ function addMessage(msg){
 
         if (existingTime && msg.timestamp != null) {
             existingTime.textContent = formatMessageTimestamp(msg.timestamp);
+        }
+
+        // If a message bubble already exists but its first render did not
+        // contain the media fields, repair the bubble in place. This matters
+        // for reconnect/history races where the same message can be observed
+        // more than once.
+        if (msg.media_url && msg.media_type === "image") {
+            let existingImage = existingBubble.querySelector(".chat-image");
+
+            if (existingImage) {
+                const currentUrl = existingImage.getAttribute("src") || "";
+                if (currentUrl !== msg.media_url) {
+                    existingImage.src = msg.media_url;
+                    existingImage.dataset.photoUrl = msg.media_url;
+                }
+            } else if (existingText) {
+                existingText.insertAdjacentHTML("beforebegin", `
+                    <img
+                        src="${escapeHTML(msg.media_url)}"
+                        class="chat-image"
+                        alt="Image"
+                        loading="eager"
+                        decoding="async"
+                        data-photo-url="${escapeHTML(msg.media_url)}"
+                        role="button"
+                        tabindex="0"
+                        aria-label="Open photo"
+                    >
+                `);
+            }
         }
 
         ensureForwardedLabel(existingBubble, msg);
@@ -2646,7 +2726,8 @@ function addMessage(msg){
                     src="${escapeHTML(msg.media_url)}"
                     class="chat-image"
                     alt="Image"
-                    loading="lazy"
+                    loading="eager"
+                    decoding="async"
                     data-photo-url="${escapeHTML(msg.media_url)}"
                     role="button"
                     tabindex="0"
