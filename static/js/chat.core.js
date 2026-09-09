@@ -2058,31 +2058,6 @@ if (document.readyState === "loading") {
     initChatCore();
 }
 
-let typingTimeout = null;
-let lastTypingSent = 0;
-
-input.addEventListener("input", () => {
-
-    const now = Date.now();
-
-    if (now - lastTypingSent > 800) {
-        sendSocket({
-            type: "typing"
-        });
-
-        lastTypingSent = now;
-    }
-
-    clearTimeout(typingTimeout);
-
-    typingTimeout = setTimeout(() => {
-        sendSocket({
-            type: "stop_typing"
-        });
-    }, 1200);
-
-});
-
 input.addEventListener("keypress",function(e){
 
     if(e.key==="Enter"){
