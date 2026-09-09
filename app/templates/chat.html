@@ -1926,6 +1926,162 @@ a{
 }
 </style>
 
+
+<style id="lucky-reaction-emoji-render-fix-v2">
+/* =========================================================
+   LUCKY CHAT — REACTION BADGE REFINEMENT V2
+   Visual-only. Reaction state/socket logic is unchanged.
+   ========================================================= */
+
+.messages .reaction,
+.messages .reactions,
+.messages .message-reactions{
+    box-sizing:border-box !important;
+    position:absolute !important;
+    left:8px !important;
+    right:auto !important;
+    bottom:-12px !important;
+
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:max-content !important;
+    min-width:0 !important;
+    max-width:calc(100% - 16px) !important;
+    height:30px !important;
+    min-height:30px !important;
+    max-height:30px !important;
+
+    margin:0 !important;
+    padding:2px 8px !important;
+    gap:0 !important;
+    overflow:visible !important;
+    white-space:nowrap !important;
+
+    border-radius:999px !important;
+    background:rgba(15,23,42,.94) !important;
+    border:1px solid rgba(148,163,184,.22) !important;
+    box-shadow:0 6px 16px rgba(0,0,0,.22) !important;
+
+    font-family:
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Noto Color Emoji",
+        "Noto Emoji",
+        sans-serif !important;
+    font-size:19px !important;
+    line-height:1 !important;
+    font-weight:400 !important;
+    font-style:normal !important;
+    font-variant-emoji:emoji !important;
+    letter-spacing:0 !important;
+    text-align:center !important;
+    text-rendering:geometricPrecision !important;
+    -webkit-font-smoothing:antialiased !important;
+    -webkit-text-fill-color:initial !important;
+    z-index:20 !important;
+}
+
+.messages .message-own .reaction,
+.messages .sent .reaction,
+.messages .message-own .reactions,
+.messages .sent .reactions,
+.messages .message-own .message-reactions,
+.messages .sent .message-reactions{
+    left:auto !important;
+    right:8px !important;
+}
+
+/* Keep the reaction badge visually attached to the bubble without
+   stretching across the whole message width. */
+.messages .message-row:has(.reaction),
+.messages .message-row:has(.reactions),
+.messages .message-row:has(.message-reactions){
+    margin-bottom:14px !important;
+}
+
+html.lucky-light .messages .reaction,
+html.lucky-light .messages .reactions,
+html.lucky-light .messages .message-reactions{
+    background:rgba(255,255,255,.98) !important;
+    border-color:#cfe0ee !important;
+    color:#172033 !important;
+    box-shadow:0 7px 18px rgba(15,23,42,.14) !important;
+}
+
+@media(max-width:480px){
+    .messages .reaction,
+    .messages .reactions,
+    .messages .message-reactions{
+        left:7px !important;
+        right:auto !important;
+        bottom:-11px !important;
+        height:29px !important;
+        min-height:29px !important;
+        max-height:29px !important;
+        padding:2px 7px !important;
+        font-size:18px !important;
+    }
+
+    .messages .message-own .reaction,
+    .messages .sent .reaction,
+    .messages .message-own .reactions,
+    .messages .sent .reactions,
+    .messages .message-own .message-reactions,
+    .messages .sent .message-reactions{
+        left:auto !important;
+        right:7px !important;
+    }
+}
+
+/* Reaction picker: compact, evenly spaced touch targets. */
+#reactionPicker{
+    box-sizing:border-box !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:4px !important;
+    padding:7px 8px !important;
+    border-radius:16px !important;
+}
+
+#reactionPicker span{
+    box-sizing:border-box !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:40px !important;
+    min-width:40px !important;
+    height:40px !important;
+    min-height:40px !important;
+    padding:0 !important;
+    margin:0 !important;
+    border:0 !important;
+    border-radius:11px !important;
+    background:transparent !important;
+
+    font-family:
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Noto Color Emoji",
+        "Noto Emoji",
+        sans-serif !important;
+    font-size:24px !important;
+    line-height:1 !important;
+    font-weight:400 !important;
+    font-style:normal !important;
+    font-variant-emoji:emoji !important;
+    letter-spacing:0 !important;
+    text-align:center !important;
+    white-space:nowrap !important;
+    text-rendering:geometricPrecision !important;
+    -webkit-font-smoothing:antialiased !important;
+    cursor:pointer !important;
+    user-select:none !important;
+    -webkit-user-select:none !important;
+    touch-action:manipulation !important;
+}
+</style>
+
 </head>
 
 <body data-chat-friend="{{ friend }}">
