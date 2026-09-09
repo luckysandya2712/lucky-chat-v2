@@ -2067,7 +2067,172 @@ input.addEventListener("keypress",function(e){
 
 });
 
-window.LUCKY_CHAT_CORE_VERSION = "media-video-v2-upload-progress+voice-call-fix-v8-network-recovery";
+
+/* =========================================================
+   Lucky Chat reference UI enhancements
+   Moved from chat.html so DOM behavior stays centralized.
+   ========================================================= */
+function initLuckyReferenceEnhancements(){
+    const friendAvatar = document.querySelector(".header-avatar")?.getAttribute("src") || "/static/profile/default.png";
+
+    function isOwnRow(row){
+        return row.classList.contains("own") || !!row.querySelector(".message-own, .sent");
+    }
+
+    function enhanceIncomingAvatars(){
+        document.querySelectorAll(".messages .message-row").forEach(row => {
+            if (row.classList.contains("call-history-row") || isOwnRow(row)) return;
+            if (row.querySelector(".msg-avatar")) return;
+            const img = document.createElement("img");
+            img.className = "msg-avatar";
+            img.src = friendAvatar;
+            img.alt = "";
+            img.onerror = function(){ this.src = "/static/profile/default.png"; };
+            row.insertBefore(img, row.firstChild);
+        });
+    }
+
+    function enhanceVideos(){
+        document.querySelectorAll(".messages video").forEach(video => {
+            if (video.closest(".lucky-video-shell")) return;
+            const shell = document.createElement("div");
+            shell.className = "lucky-video-shell";
+            video.parentNode.insertBefore(shell, video);
+            shell.appendChild(video);
+            const play = document.createElement("button");
+            play.type = "button";
+            play.className = "lucky-video-play";
+            play.setAttribute("aria-label", "Play video");
+            play.textContent = "▶";
+            play.addEventListener("click", event => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (video.paused) video.play();
+                else video.pause();
+            });
+            video.addEventListener("play", () => play.classList.add("is-hidden"));
+            video.addEventListener("pause", () => play.classList.remove("is-hidden"));
+            shell.appendChild(play);
+        });
+    }
+
+    function enhanceStatusReplyCards(){
+        document.querySelectorAll(".status-reply-card").forEach(card => {
+            if (card.querySelector(".status-reply-copy")) return;
+
+            const thumbSrc = card.getAttribute("data-thumb") ||
+                card.getAttribute("data-media") ||
+                card.querySelector("img")?.getAttribute("src") || "";
+
+            const head = card.querySelector(".status-reply-card-head");
+            const subtitle = card.querySelector(".status-reply-card-subtitle");
+            const icon = card.querySelector(".status-reply-card-icon");
+
+            const copy = document.createElement("div");
+            copy.className = "status-reply-copy";
+            if (head) copy.appendChild(head);
+            if (subtitle) copy.appendChild(subtitle);
+
+            if (thumbSrc && !card.querySelector(".status-reply-thumb")) {
+                const thumb = document.createElement("img");
+                thumb.className = "status-reply-thumb";
+                thumb.alt = "";
+                thumb.src = thumbSrc;
+                card.insertBefore(thumb, card.firstChild);
+                if (icon) icon.remove();
+            } else if (icon && !card.querySelector(".status-reply-thumb")) {
+                card.insertBefore(icon, card.firstChild);
+            }
+
+            if (!card.querySelector(".status-reply-media-label")) {
+                const label = document.createElement("div");
+                label.className = "status-reply-media-label";
+                label.textContent = thumbSrc ? "📷 Photo" : "Status";
+                copy.appendChild(label);
+            }
+            card.appendChild(copy);
+        });
+    }
+
+    function isBareTimeRow(row){
+        const text = (row.querySelector(".msg-text, .message-text, .message-body")?.textContent || "").trim();
+        const raw = (row.textContent || "").replace(/\s+/g, " ").trim();
+        const media = row.querySelector("img:not(.msg-avatar), video, audio, .voice-message, .status-reply-card, .call-history-card");
+        const looksLikeTime = /^(?:\d{1,2}:\d{2}\s?(?:am|pm)?)$/i.test(raw);
+        return !text && !media && looksLikeTime;
+    }
+
+    function polishThread(){
+        const rows = Array.from(document.querySelectorAll(".messages .message-row"));
+        rows.forEach((row, index) => {
+            row.classList.remove("lucky-time-chip-row", "lucky-group-start", "lucky-group-follow");
+            if (row.classList.contains("call-history-row")) return;
+            if (isBareTimeRow(row)) {
+                row.classList.add("lucky-time-chip-row");
+                return;
+            }
+            const own = isOwnRow(row);
+            const prev = rows[index - 1];
+            const prevSame = prev
+                && !prev.classList.contains("call-history-row")
+                && !prev.classList.contains("lucky-time-chip-row")
+                && isOwnRow(prev) === own;
+            row.classList.add(prevSame ? "lucky-group-follow" : "lucky-group-start");
+        });
+    }
+
+    function enhanceAll(){
+        enhanceIncomingAvatars();
+        enhanceVideos();
+        enhanceStatusReplyCards();
+        polishThread();
+    }
+
+    const messages = document.querySelector(".messages");
+    if (messages && typeof MutationObserver === "function") {
+        const observer = new MutationObserver(() => enhanceAll());
+        observer.observe(messages, { childList: true, subtree: true });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", enhanceAll, { once: true });
+    } else {
+        enhanceAll();
+    }
+    setTimeout(enhanceAll, 600);
+    setTimeout(enhanceAll, 1600);
+
+    const emojiBtn = document.getElementById("emojiBtn");
+    const input = document.getElementById("messageInput");
+    const field = document.querySelector(".composer-field");
+    if (emojiBtn && input && field && !document.getElementById("emojiTray")) {
+        const tray = document.createElement("div");
+        tray.id = "emojiTray";
+        ["😀","😁","😎","🥳","👍","🔥","❤️","😂","😮","🎉"].forEach(emoji => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = emoji;
+            button.addEventListener("click", () => {
+                input.value += emoji;
+                input.focus();
+                tray.classList.remove("open");
+            });
+            tray.appendChild(button);
+        });
+        field.appendChild(tray);
+        emojiBtn.addEventListener("click", event => {
+            event.preventDefault();
+            tray.classList.toggle("open");
+        });
+        document.addEventListener("click", event => {
+            if (!field.contains(event.target)) tray.classList.remove("open");
+        });
+    }
+}
+
+initLuckyReferenceEnhancements();
+
+window.LUCKY_CHAT_CORE_VERSION = "reference-ui-migration-v1+media-video-v2-upload-progress+voice-call-fix-v8-network-recovery";
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
 function createOptimisticMessage(text, image, audio, video) {
