@@ -1675,7 +1675,8 @@ async function handleSocketMessage(event) {
         if (typeof window.luckyNotify === "function") {
             window.luckyNotify(
                 data.sender || friend || "Lucky Chat",
-                data.text || "New message"
+                data.text || "New message",
+                window.location.href
             );
         }
 

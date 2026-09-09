@@ -288,7 +288,12 @@
             );
 
             notification.onclick = () => {
-                window.focus();
+                try {
+                    window.focus();
+                    if (target) {
+                        window.location.href = target;
+                    }
+                } catch (_) {}
                 notification.close();
             };
         } catch (_) {}
@@ -298,7 +303,7 @@
         sync,
         unsubscribe,
         getRegistration,
-        diagnosticVersion: "v4"
+        diagnosticVersion: "v5-chat-target"
     };
 
     // Keep the existing chat-core call site working without exposing
