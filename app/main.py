@@ -69,6 +69,26 @@ def _cloudinary_configured() -> bool:
     )
 
 
+def _cloudinary_configuration_error() -> str | None:
+    """Return a safe configuration error when Cloudinary variables are incomplete."""
+    values = {
+        "CLOUDINARY_CLOUD_NAME": CLOUDINARY_CLOUD_NAME,
+        "CLOUDINARY_API_KEY": CLOUDINARY_API_KEY,
+        "CLOUDINARY_API_SECRET": CLOUDINARY_API_SECRET,
+    }
+    present = [name for name, value in values.items() if value]
+    if not present:
+        return None
+
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        return (
+            "Cloudinary configuration is incomplete. Missing Railway variable(s): "
+            + ", ".join(missing)
+        )
+    return None
+
+
 def _cloudinary_upload_image(data: bytes, filename: str) -> str:
     """Upload chat-image bytes to Cloudinary using Basic Auth + Data URI."""
     public_id = Path(filename).stem
@@ -153,6 +173,10 @@ def _cloudinary_upload_image(data: bytes, filename: str) -> str:
 
 async def _store_chat_image(data: bytes, filename: str) -> str:
     """Store a chat image in shared cloud storage or the existing local fallback."""
+    configuration_error = _cloudinary_configuration_error()
+    if configuration_error:
+        raise RuntimeError(configuration_error)
+
     if _cloudinary_configured():
         return await asyncio.to_thread(
             _cloudinary_upload_image,
@@ -160,6 +184,10 @@ async def _store_chat_image(data: bytes, filename: str) -> str:
             filename,
         )
 
+    # No Cloudinary variables at all: preserve the existing local-development
+    # behavior. This fallback is intentionally disabled as soon as any
+    # Cloudinary variable is present but incomplete, preventing silent local
+    # storage on production deployments.
     filepath = UPLOAD_DIR / filename
     with open(filepath, "wb") as buffer:
         buffer.write(data)
@@ -2166,10 +2194,14 @@ async def upload_chat_image(
             "error": str(exc)[:1000]
         }
 
+    storage_backend = "cloudinary" if media_url.startswith("https://res.cloudinary.com/") else "local"
+    print("CHAT IMAGE STORED:", storage_backend, media_url[:200])
+
     return {
         "success": True,
         "url": media_url,
-        "media_type": "image"
+        "media_type": "image",
+        "storage": storage_backend
     }
 
 
