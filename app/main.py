@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import asyncio
 import base64
 import hashlib
+import mimetypes
 import hmac
 import json
 import os
@@ -69,48 +70,42 @@ def _cloudinary_configured() -> bool:
 
 
 def _cloudinary_upload_image(data: bytes, filename: str) -> str:
-    """Upload chat-image bytes to Cloudinary using backend Basic Authentication."""
+    """Upload chat-image bytes to Cloudinary using Basic Auth + Data URI."""
     public_id = Path(filename).stem
     folder = "lucky_chat/chat"
 
-    # Cloudinary documents backend Basic Authentication as the simpler
-    # authenticated Upload API method because it avoids manual signature
-    # generation and timestamp handling.
+    # Cloudinary's REST Upload API supports backend Basic Authentication.
+    # The file parameter may be supplied as a Base64 Data URI, which avoids
+    # multipart framing issues while still using the authenticated server upload.
     credentials = f"{CLOUDINARY_API_KEY}:{CLOUDINARY_API_SECRET}"
     authorization = base64.b64encode(
         credentials.encode("utf-8")
     ).decode("ascii")
 
-    boundary = "----LuckyChatCloudinaryBoundary" + hashlib.sha256(
-        f"{filename}:{time.time_ns()}".encode("utf-8")
-    ).hexdigest()[:24]
-    boundary_bytes = boundary.encode("ascii")
+    suffix = Path(filename).suffix.lower()
+    mime_type = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(suffix)
+
+    if not mime_type:
+        guessed_type, _ = mimetypes.guess_type(filename)
+        mime_type = guessed_type if guessed_type and guessed_type.startswith("image/") else "application/octet-stream"
+
+    file_data_uri = (
+        f"data:{mime_type};base64,"
+        + base64.b64encode(data).decode("ascii")
+    )
 
     fields = {
+        "file": file_data_uri,
         "folder": folder,
         "public_id": public_id,
     }
 
-    body = bytearray()
-
-    for key, value in fields.items():
-        body.extend(b"--" + boundary_bytes + b"\\r\\n")
-        body.extend(
-            f'Content-Disposition: form-data; name="{key}"\\r\\n\\r\\n'.encode("utf-8")
-        )
-        body.extend(str(value).encode("utf-8"))
-        body.extend(b"\\r\\n")
-
-    body.extend(b"--" + boundary_bytes + b"\\r\\n")
-    body.extend(
-        (
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\\r\\n'
-            f"Content-Type: application/octet-stream\\r\\n\\r\\n"
-        ).encode("utf-8")
-    )
-    body.extend(data)
-    body.extend(b"\\r\\n")
-    body.extend(b"--" + boundary_bytes + b"--\\r\\n")
+    body = urllib.parse.urlencode(fields).encode("utf-8")
 
     endpoint = (
         f"https://api.cloudinary.com/v1_1/"
@@ -119,11 +114,11 @@ def _cloudinary_upload_image(data: bytes, filename: str) -> str:
 
     request = urllib.request.Request(
         endpoint,
-        data=bytes(body),
+        data=body,
         method="POST",
         headers={
             "Authorization": f"Basic {authorization}",
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
         },
     )
