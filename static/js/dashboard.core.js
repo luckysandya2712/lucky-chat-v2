@@ -107,6 +107,7 @@ let statusTouchStartY = 0;
 const STATUS_PRIVACY_KEY = "lucky_status_privacy_v30";
 const STATUS_SEEN_KEY = "lucky_status_seen_ids";
 const STATUS_LIKES_KEY = "lucky_status_liked_ids";
+const STATUS_REACTION_STATE_KEY = "lucky_status_reaction_state_v1";
 const STATUS_VIEWERS_KEY = "lucky_status_viewers_by_id_v1";
 const STATUS_LIKERS_KEY = "lucky_status_likers_by_id_v1";
 const STATUS_REPLIES_KEY = "lucky_status_replies_by_id_v1";
@@ -852,8 +853,43 @@ function getLikedStatusIds(){
     }
 }
 
+function getStatusReactionStateMap(){
+    try {
+        const raw = JSON.parse(localStorage.getItem(`${STATUS_REACTION_STATE_KEY}:v1:${String("{{ username }}").trim() || "anonymous"}`) || "{}");
+        return raw && typeof raw === "object" ? raw : {};
+    } catch (_error) {
+        return {};
+    }
+}
+
+function getStoredStatusReaction(id){
+    if (id == null) return null;
+    const key = String(id);
+    const map = getStatusReactionStateMap();
+    if (Object.prototype.hasOwnProperty.call(map, key) && typeof map[key] === "boolean") {
+        return map[key];
+    }
+    // Migrate the older positive-only cache without changing its behavior.
+    return getLikedStatusIds().includes(key) ? true : null;
+}
+
+function rememberStatusReaction(id, liked){
+    if (id == null) return;
+    const key = String(id);
+    const map = getStatusReactionStateMap();
+    map[key] = !!liked;
+    const entries = Object.entries(map);
+    if (entries.length > 300) {
+        const trimmed = entries.slice(-300);
+        localStorage.setItem(`${STATUS_REACTION_STATE_KEY}:v1:${String("{{ username }}").trim() || "anonymous"}`, JSON.stringify(Object.fromEntries(trimmed)));
+    } else {
+        localStorage.setItem(`${STATUS_REACTION_STATE_KEY}:v1:${String("{{ username }}").trim() || "anonymous"}`, JSON.stringify(map));
+    }
+}
+
 function rememberStatusLike(id, liked){
     if (id == null) return;
+    rememberStatusReaction(id, liked);
     const key = String(id);
     const likes = getLikedStatusIds().filter(item => item !== key);
     if (liked) likes.push(key);
@@ -1948,20 +1984,44 @@ async function openStatusViewersSheet(){
     const fetched = await fetchStatusViewers(currentStatus);
     const statusId = currentStatus.id;
 
+    // The owner of a status must never appear as a viewer, liker, or reply
+    // participant in their own engagement panel. Some backend responses may
+    // include the owner as an engagement record, so filter that account here
+    // before building the visible list and counts.
+    const ownerKey = String(CURRENT_DASHBOARD_USER || "").trim().toLowerCase();
+    const isOwnerRecord = person =>
+        String(person?.username || person?.user || "").trim().toLowerCase() === ownerKey;
+
     // The owner engagement panel is server-authoritative.
     // Never merge browser-local viewer/liker caches into this panel because
     // those caches can survive older tests, browser sessions, or old UI state.
-    const viewers = Array.isArray(fetched.viewers)
+    const serverViewers = Array.isArray(fetched.viewers)
         ? fetched.viewers.slice()
         : [];
 
-    const likers = Array.isArray(fetched.likers)
+    const serverLikers = Array.isArray(fetched.likers)
         ? fetched.likers.slice()
         : [];
 
-    const replies = Array.isArray(fetched.repliesList)
+    const serverReplies = Array.isArray(fetched.repliesList)
         ? fetched.repliesList.slice()
         : [];
+
+    const ownerWasViewer = serverViewers.some(isOwnerRecord);
+    const ownerWasLiker = serverLikers.some(isOwnerRecord);
+    const ownerWasReplier = serverReplies.some(isOwnerRecord);
+
+    const viewers = serverViewers.filter(person => !isOwnerRecord(person));
+    const likers = serverLikers.filter(person => !isOwnerRecord(person));
+    const replies = serverReplies.filter(person => !isOwnerRecord(person));
+
+    const serverViewCount = Number(fetched.views) || serverViewers.length;
+    const serverLikeCount = Number(fetched.likes) || serverLikers.length;
+    const serverReplyCount = Number(fetched.replies) || serverReplies.length;
+
+    const displayViewCount = Math.max(0, serverViewCount - (ownerWasViewer ? 1 : 0));
+    const displayLikeCount = Math.max(0, serverLikeCount - (ownerWasLiker ? 1 : 0));
+    const displayReplyCount = Math.max(0, serverReplyCount - (ownerWasReplier ? 1 : 0));
 
     const likedSet = new Set(
         likers
@@ -2040,15 +2100,15 @@ async function openStatusViewersSheet(){
         stats.hidden = false;
         stats.innerHTML = `
             <div class="status-engage-chip">
-                <b>${fetched.fromApi ? Number(fetched.views) : viewers.length}</b>
+                <b>${fetched.fromApi ? displayViewCount : viewers.length}</b>
                 <span>Views</span>
             </div>
             <div class="status-engage-chip">
-                <b>${fetched.fromApi ? Number(fetched.likes) : likers.length}</b>
+                <b>${fetched.fromApi ? displayLikeCount : likers.length}</b>
                 <span>Likes</span>
             </div>
             <div class="status-engage-chip">
-                <b>${fetched.fromApi ? Number(fetched.replies) : replies.length}</b>
+                <b>${fetched.fromApi ? displayReplyCount : replies.length}</b>
                 <span>Replies</span>
             </div>
         `;
@@ -2062,7 +2122,7 @@ async function openStatusViewersSheet(){
 
     paintViewersFab(
         viewers,
-        Number(fetched.views) || viewers.length
+        fetched.fromApi ? displayViewCount : viewers.length
     );
 
     if (!list) return;
@@ -2874,18 +2934,18 @@ function openCurrentStatusViewer(){
         heartButton.style.display = currentStatus.is_mine ? "none" : "flex";
         heartButton.classList.remove("liked","pop");
 
-        // Never trust the browser's cached like state when opening a story.
-        // The server is authoritative for whether THIS account currently
-        // likes THIS status. Start visually unliked, then reconcile from the
-        // engagement endpoint without re-playing the like animation.
-        paintStatusHeart(heartButton, false);
+        // Persist the user's last deliberate reaction (both like AND unlike).
+        // This prevents an engagement response with incomplete/stale liker data
+        // from silently resetting the heart when the same status is reopened.
+        const openedStatusId = getStatusReactionId(currentStatus);
+        const storedReaction = getStoredStatusReaction(openedStatusId);
+        paintStatusHeart(heartButton, storedReaction === true);
 
         if (!heartButton.querySelector("svg")) {
             heartButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 8.6c0 5.2-8.8 11-8.8 11S3.2 13.8 3.2 8.6A4.6 4.6 0 0 1 12 6.7a4.6 4.6 0 0 1 8.8 1.9z"></path></svg>';
         }
 
         if (!currentStatus.is_mine) {
-            const openedStatusId = getStatusReactionId(currentStatus);
             const openedStatus = currentStatus;
 
             void fetchStatusViewers(openedStatus).then(result => {
@@ -2896,21 +2956,75 @@ function openCurrentStatusViewer(){
                 if (!result?.fromApi) return;
 
                 const ownKey = String(CURRENT_DASHBOARD_USER || "").trim().toLowerCase();
-                const serverLiked = (Array.isArray(result.likers) ? result.likers : [])
-                    .some(person =>
-                        String(person?.username || person?.user || "")
-                            .trim()
-                            .toLowerCase() === ownKey
-                    );
+                const likers = Array.isArray(result.likers) ? result.likers : [];
+                const serverIncludesOwnLike = likers.some(person =>
+                    String(person?.username || person?.user || "")
+                        .trim()
+                        .toLowerCase() === ownKey
+                );
 
-                // Reconcile the browser cache with server truth. In
-                // particular, remove a stale cached "liked" flag when the
-                // server says this account is not a liker.
-                rememberStatusLike(openedStatusId, serverLiked);
-                paintStatusHeart(heartButton, serverLiked);
+                // Some server responses expose the current user's state
+                // directly. When that explicit boolean exists, it is safe to
+                // reconcile both directions. Otherwise, do NOT interpret
+                // "my username is absent from likers" as an unlike: older
+                // engagement endpoints may omit the current user from that
+                // list even though the like is stored successfully.
+                const raw = result.raw;
+                const explicitCandidates = [
+                    raw?.liked_by_me,
+                    raw?.likedByMe,
+                    raw?.is_liked,
+                    raw?.isLiked,
+                    raw?.user_liked,
+                    raw?.userLiked,
+                    raw?.my_like,
+                    raw?.myLike,
+                    raw?.viewer_liked,
+                    raw?.viewerLiked,
+                    raw?.current_user?.liked,
+                    raw?.currentUser?.liked,
+                    raw?.viewer?.liked,
+                    raw?.you?.liked
+                ];
+                explicitCandidates.push(
+                    raw?.liked,
+                    raw?.like,
+                    raw?.reacted,
+                    raw?.reaction?.liked,
+                    raw?.engagement?.liked_by_me,
+                    raw?.engagement?.likedByMe,
+                    raw?.engagement?.is_liked
+                );
+                const explicitLike = explicitCandidates.find(value => typeof value === "boolean");
+
+                // A deliberate local reaction is authoritative for this browser
+                // session. Only use the server result when no local state exists.
+                const latestLocalReaction = getStoredStatusReaction(openedStatusId);
+                if (latestLocalReaction !== null) {
+                    paintStatusHeart(heartButton, latestLocalReaction);
+                    return;
+                }
+
+                if (explicitLike !== undefined) {
+                    rememberStatusReaction(openedStatusId, explicitLike);
+                    rememberStatusLike(openedStatusId, explicitLike);
+                    paintStatusHeart(heartButton, explicitLike);
+                    return;
+                }
+
+                if (serverIncludesOwnLike) {
+                    rememberStatusReaction(openedStatusId, true);
+                    rememberStatusLike(openedStatusId, true);
+                    paintStatusHeart(heartButton, true);
+                } else {
+                    // No server confirmation and no local decision: remain unliked.
+                    paintStatusHeart(heartButton, false);
+                }
             }).catch(() => {
-                // Keep the safe unliked visual state when the server cannot
-                // confirm a previous like. A deliberate new tap still works.
+                // Keep the locally persisted like state when the engagement
+                // request cannot confirm the current user's state.
+                const latestLocalReaction = getStoredStatusReaction(openedStatusId);
+                paintStatusHeart(heartButton, latestLocalReaction === true);
             });
         }
     }
