@@ -1642,6 +1642,25 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not payload or not target:
                     continue
 
+                # Confirm the persisted forward to the sending client first.
+                # The dashboard's temporary WebSocket uses this acknowledgement
+                # to decide whether the status forward succeeded. Keeping this
+                # delivery ahead of optional dashboard/push notifications prevents
+                # an unrelated notification failure from looking like a failed forward.
+                current_friend = str(friend or "").strip().casefold()
+                if current_friend and current_friend == str(target).strip().casefold():
+                    await manager.send(username, payload)
+                else:
+                    await manager.send(username, {
+                        "type": "forward_ack",
+                        "id": payload["id"],
+                        "sender": username,
+                        "receiver": target,
+                        "timestamp": payload["timestamp"],
+                        "forwarded": True,
+                        "client_id": data.get("client_id"),
+                    })
+
                 await manager.send_dashboard(
                     target,
                     {
@@ -1672,25 +1691,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             },
                         )
                     )
-
-                # Only echo a renderable "message" event back to the sender
-                # when they are already viewing that recipient's chat.
-                # Otherwise the open conversation (GautAm) would draw a
-                # brand-new outgoing bubble for a message that belongs to
-                # LuckyNova.
-                current_friend = str(friend or "").strip().casefold()
-                if current_friend and current_friend == str(target).strip().casefold():
-                    await manager.send(username, payload)
-                else:
-                    await manager.send(username, {
-                        "type": "forward_ack",
-                        "id": payload["id"],
-                        "sender": username,
-                        "receiver": target,
-                        "timestamp": payload["timestamp"],
-                        "forwarded": True,
-                        "client_id": data.get("client_id"),
-                    })
 
                 continue
 

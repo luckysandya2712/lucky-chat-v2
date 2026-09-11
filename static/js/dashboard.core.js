@@ -1288,13 +1288,17 @@ function openStatusForwardSheet(){
 
 async function forwardStatusTo(username){
     if (!username || !currentStatus) return;
-    const friend = String(username);
-    const mediaUrl = currentStatus.media_url || "";
+
+    const friend = String(username).trim();
+    const mediaUrl = String(currentStatus.media_url || "").trim();
+    const mediaType = mediaUrl ? "image" : "";
     const caption = currentStatus.text || "";
     const fromName = statusOwnerName(currentStatus);
     const forwardText = caption
         ? `Forwarded status from ${fromName}: ${caption}`
         : `Forwarded status from ${fromName}`;
+
+    if (!friend || !forwardText) return;
 
     stashOutgoingChatDraft({
         to: friend,
@@ -1309,17 +1313,108 @@ async function forwardStatusTo(username){
     });
 
     showStatusToast("Forwarding…");
-    const sent = await postChatMessage({
-        username: friend,
-        text: forwardText,
-        mediaUrl,
-        kind: "status-forward"
-    });
+
+    let sent = false;
+    let forwardSocket = null;
+    let watchdog = null;
+
+    try {
+        const cryptoReady = await ensureDashboardCrypto();
+
+        let encryptedText = forwardText;
+        if (
+            cryptoReady &&
+            typeof LuckyCrypto !== "undefined" &&
+            typeof LuckyCrypto.encryptMessage === "function"
+        ) {
+            const sender = String(CURRENT_DASHBOARD_USER || "").trim();
+            if (sender) {
+                encryptedText = await LuckyCrypto.encryptMessage(
+                    forwardText,
+                    friend,
+                    sender
+                );
+            }
+        }
+
+        sent = await new Promise(resolve => {
+            let settled = false;
+
+            const finish = ok => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(watchdog);
+                try { forwardSocket?.close(); } catch (_error) {}
+                resolve(!!ok);
+            };
+
+            const protocol = location.protocol === "https:" ? "wss://" : "ws://";
+            forwardSocket = new WebSocket(
+                protocol +
+                location.host +
+                "/ws?friend=" + encodeURIComponent(friend) +
+                "&page=chat"
+            );
+
+            watchdog = setTimeout(() => finish(false), 10000);
+
+            forwardSocket.onopen = () => {
+                try {
+                    forwardSocket.send(JSON.stringify({
+                        type: "forward_message",
+                        text: encryptedText,
+                        target: friend,
+                        forwarded: true,
+                        media_url: mediaUrl || null,
+                        media_type: mediaType || null,
+                        client_id:
+                            "status-forward-" +
+                            Date.now() +
+                            "-" +
+                            Math.random().toString(36).slice(2)
+                    }));
+                } catch (_error) {
+                    finish(false);
+                }
+            };
+
+            forwardSocket.onmessage = event => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (
+                        data?.type === "message" &&
+                        data?.forwarded === true
+                    ) {
+                        finish(true);
+                        return;
+                    }
+                    if (
+                        data?.type === "forward_ack" &&
+                        data?.forwarded === true
+                    ) {
+                        finish(true);
+                    }
+                } catch (_error) {}
+            };
+
+            forwardSocket.onerror = () => finish(false);
+            forwardSocket.onclose = () => {
+                if (!settled) finish(false);
+            };
+        });
+    } catch (error) {
+        console.error("STATUS FORWARD ERROR:", error);
+        sent = false;
+    }
 
     closeStatusSheets();
     closeStatusViewer();
-    showStatusToast(sent ? "Status forwarded" : "Opening chat to forward");
-    openChatWithDraft(friend, "forward=1&from_status=1");
+
+    if (sent) {
+        showStatusToast("Status forwarded");
+    } else {
+        showStatusToast("Could not forward status", true);
+    }
 }
 
 function readLocalStatusViewMap(){
