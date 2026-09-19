@@ -46,6 +46,8 @@ class Message(Base):
     media_type = Column(String, nullable=True)
     media_duration = Column(Integer, nullable=True, default=0)
     media_waveform = Column(Text, nullable=True)
+    media_name = Column(String, nullable=True)
+    media_size = Column(Integer, nullable=True, default=0)
 
     timestamp = Column(String)
 

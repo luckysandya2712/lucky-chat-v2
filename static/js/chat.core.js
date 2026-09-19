@@ -179,6 +179,12 @@ const videoPreviewName = document.getElementById("videoPreviewName");
 const removeVideoBtn = document.getElementById("removeVideoBtn");
 
 const voiceBtn = document.getElementById("voiceBtn");
+const documentBtn = document.getElementById("documentBtn");
+const documentInput = document.getElementById("documentInput");
+const documentPreview = document.getElementById("documentPreview");
+const documentPreviewName = document.getElementById("documentPreviewName");
+const documentPreviewSize = document.getElementById("documentPreviewSize");
+const removeDocumentBtn = document.getElementById("removeDocumentBtn");
 const audioPreview = document.getElementById("audioPreview");
 const audioPreviewTime = document.getElementById("audioPreviewTime");
 const removeAudioBtn = document.getElementById("removeAudioBtn");
@@ -193,6 +199,10 @@ let socket = null;
 let reconnectTimer = null;
 let socketHeartbeatTimer = null;
 let socketReconnectAttempt = 0;
+let socketLastActivityAt = 0;      // last frame received (incl. heartbeat acks)
+let socketHasOpenedBefore = false; // true after the first successful open
+let socketAllowed = false;         // set once initial history has loaded
+let historyResyncInFlight = false;
 let pendingReadIds = new Set();
 let pendingDeliveredIds = new Set();
 
@@ -1029,6 +1039,8 @@ function renderPinnedBar(){
         ? "🎙️ Voice message"
         : latest.media_type === "call"
         ? "📞 Voice call"
+        : latest.media_type === "document"
+        ? "📄 " + (latest.media_name || "Document")
         : (latest.text || "Message");
 
     text.textContent = sender + ": " + preview;
@@ -1153,19 +1165,89 @@ function saveReactions() {
     );
 }
 
+function isDocumentMessage(msg) {
+    if (!msg || typeof msg !== "object") return false;
+
+    const type = String(msg.media_type || "").trim().toLowerCase();
+    if (type === "document") return true;
+
+    const url = String(
+        msg.media_url || msg.document_url || msg.file_url || msg.url || ""
+    ).trim();
+    if (/\.(pdf|docx?|txt|csv|xlsx?|pptx?|zip|rtf)(?:$|\?)/i.test(url)) {
+        return true;
+    }
+
+    const name = String(
+        msg.media_name || msg.document_name || msg.file_name || msg.name || ""
+    ).trim();
+    if (name && !["image", "video", "audio", "call"].includes(type)) {
+        return true;
+    }
+
+    const text = String(msg.text || "");
+    return text.startsWith("LDOC:") || text.startsWith("📄 ");
+}
+
+function normalizeDocumentMessage(msg) {
+    if (!msg || typeof msg !== "object") return msg;
+
+    if (isDocumentMessage(msg)) {
+        msg.media_type = "document";
+        msg.media_url = String(
+            msg.media_url || msg.document_url || msg.file_url || msg.url || ""
+        ).trim();
+        msg.media_name = String(
+            msg.media_name || msg.document_name || msg.file_name || msg.name || "Document"
+        ).trim() || "Document";
+        msg.media_size = Number(
+            msg.media_size ?? msg.document_size ?? msg.file_size ?? msg.size ?? 0
+        ) || 0;
+
+        const text = String(msg.text || "").trim();
+        if (!text || text.startsWith("LDOC:")) {
+            msg.text = "📄 " + (msg.media_name || "Document");
+        }
+    }
+
+    return msg;
+}
+
 async function loadMessages() {
 
-    const res = await fetch("/messages/" + encodeURIComponent(friend), {
-        method: "GET",
+    let res = await fetch("/messages/" + encodeURIComponent(friend) + "/sync?_=" + Date.now(), {
+        method: "POST",
         credentials: "same-origin",
-        cache: "no-store"
+        cache: "no-store",
+        headers: {
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache"
+        }
     });
+    if (!res.ok) {
+        res = await fetch("/messages/" + encodeURIComponent(friend) + "?_=" + Date.now(), {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache"
+            }
+        });
+    }
 
     if (!res.ok) {
         throw new Error("Failed to load messages (HTTP " + res.status + ")");
     }
 
-    const data = await res.json();
+    const rawHistory = await res.json();
+    const data = Array.isArray(rawHistory)
+        ? rawHistory
+        : (Array.isArray(rawHistory && rawHistory.messages) ? rawHistory.messages : []);
+
+    if (!Array.isArray(data)) {
+        throw new Error("Failed to load messages (invalid history payload)");
+    }
 
     // Initial history loading can take noticeable time because messages are
     // decrypted one-by-one. Preserve any outgoing bubbles created while that
@@ -1188,10 +1270,22 @@ async function loadMessages() {
             msg.reaction = savedReactions[msg.id];
         }
 
-        // Media-only messages have no encrypted text to decrypt.
-        // Render their media immediately instead of passing an empty value
-        // through the crypto layer during history loading.
-        if (msg.media_type !== "call" && typeof msg.text === "string" && msg.text.length > 0) {
+        normalizeDocumentMessage(msg);
+
+        // Documents have no encrypted text to decrypt, so nothing here waits
+        // on them. They are deliberately NOT rendered in this loop: doing so
+        // put every document above all text messages (addMessage appends, and
+        // the text messages are only rendered in the id-ordered pass below),
+        // so a document sat at the very top of the thread instead of at its
+        // place in the conversation.
+
+        if (
+            msg.media_type !== "call" &&
+            !isDocumentMessage(msg) &&
+            typeof msg.text === "string" &&
+            msg.text.length > 0 &&
+            (msg.text.startsWith("LCE1:") || msg.text.startsWith("LCE2:"))
+        ) {
             try {
                 msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
             } catch (error) {
@@ -1228,6 +1322,18 @@ async function loadMessages() {
         addMessage(msg);
     });
 
+    // Documents must survive history reload even if an earlier render path
+    // skipped them. Re-apply any persisted document that is still missing.
+    data.forEach(rawMsg => {
+        const msg = messageMap[rawMsg.id] || rawMsg;
+        const type = String(msg.media_type || "").trim().toLowerCase();
+        const url = String(msg.media_url || msg.document_url || msg.file_url || "").trim();
+        if ((!isDocumentMessage(msg) && type !== "document") || msg.id == null) return;
+        if (!document.querySelector(`[data-msg="${msg.id}"]`)) {
+            addMessage(msg);
+        }
+    });
+
     // Restore any optimistic outgoing messages that were created while the
     // history request/decryption was still running.
     pendingOptimistic.forEach(msg => {
@@ -1237,17 +1343,36 @@ async function loadMessages() {
     });
 
     // Queue delivery/read acknowledgements until the WebSocket is connected.
+    // Only acknowledge what the server still has as undelivered/unread.
+    // Re-acknowledging the whole history on every open made the server
+    // commit and echo hundreds of redundant events per page load/reconnect.
     data.forEach(msg => {
         if (msg.sender !== username && !deletedMessages[msg.id]) {
-            pendingDeliveredIds.add(Number(msg.id));
+            if (!msg.delivered) {
+                pendingDeliveredIds.add(Number(msg.id));
+            }
 
-            if (isReadReceiptsEnabled()) {
+            if (isReadReceiptsEnabled() && !msg.read) {
                 pendingReadIds.add(Number(msg.id));
             }
         }
     });
 
     flushPendingReceiptAcknowledgements();
+
+    const embedded = Array.isArray(window.LUCKY_EMBEDDED_DOCUMENTS)
+        ? window.LUCKY_EMBEDDED_DOCUMENTS
+        : [];
+    embedded.concat(data).forEach((msg) => {
+        if (!msg || msg.id == null) return;
+        if (typeof isDocumentMessage === "function" && isDocumentMessage(msg)) {
+            addMessage(msg);
+        }
+    });
+
+    try {
+        window.dispatchEvent(new CustomEvent("lucky-history-loaded"));
+    } catch (_) {}
 }
 
 function flushPendingReceiptAcknowledgements() {
@@ -1570,6 +1695,16 @@ document.getElementById("editModalOverlay")
     });
 
 
+const SOCKET_HEARTBEAT_MS = 20000;
+// The server answers every heartbeat, so ~2.5 missed intervals of total
+// silence means a half-open socket (sleep, network switch, dead proxy).
+const SOCKET_STALE_MS = 55000;
+
+function setSocketStatus(html){
+    const label = document.getElementById("online-users");
+    if(label) label.innerHTML = html;
+}
+
 function stopSocketHeartbeat(){
     clearInterval(socketHeartbeatTimer);
     socketHeartbeatTimer=null;
@@ -1584,6 +1719,12 @@ function startSocketHeartbeat(ws){
             return;
         }
 
+        if(Date.now() - socketLastActivityAt > SOCKET_STALE_MS){
+            console.warn("WEBSOCKET STALE - forcing reconnect");
+            abandonSocket(ws, 4000);
+            return;
+        }
+
         try{
             ws.send(JSON.stringify({
                 type:"ws_heartbeat",
@@ -1592,7 +1733,7 @@ function startSocketHeartbeat(ws){
         }catch(error){
             console.debug("WEBSOCKET HEARTBEAT SEND FAILED:",error);
         }
-    },20000);
+    },SOCKET_HEARTBEAT_MS);
 }
 
 function scheduleSocketReconnect(){
@@ -1614,36 +1755,145 @@ function scheduleSocketReconnect(){
     },delay);
 }
 
+// Single place that reacts to a socket ending, whether the browser told us
+// (onclose) or we gave up on it (stale heartbeat / failed probe).
+function handleSocketClosed(ws, code){
+    if(ws !== socket) return;
+
+    console.log("Chat WebSocket closed", code);
+    stopSocketHeartbeat();
+    socket = null;
+
+    if(code === 4001){
+        // The server replaced this connection with a newer one for the same
+        // account (another tab or device). Reconnecting right away would
+        // kick that connection out in turn and the two would take over from
+        // each other in a loop. Wait for the user to come back to this tab.
+        setSocketStatus("⚠️ Open in another tab");
+        return;
+    }
+
+    if(code === 1008){
+        // Closed by the server as a policy violation (auth); retrying with
+        // the same credentials cannot succeed.
+        setSocketStatus("🔒 Session expired");
+        return;
+    }
+
+    setSocketStatus("🔴 Disconnected");
+    scheduleSocketReconnect();
+}
+
+// Drop a socket we no longer trust without waiting for the browser's own
+// close timeout, which can take a long time on a half-open connection.
+function abandonSocket(ws, code){
+    ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+    try{ ws.close(); }catch(_){}
+    handleSocketClosed(ws, code);
+}
+
+// After a reconnect, render whatever the page missed while the socket was
+// down. Unlike loadMessages() this never clears the thread, so it is safe to
+// run while the user is reading or typing. Own messages are skipped: the ones
+// sent from this page are already on screen (or reconcile via client_id).
+async function resyncMissedMessages(){
+    if(historyResyncInFlight) return;
+    historyResyncInFlight = true;
+
+    try{
+        const res = await fetch("/messages/" + encodeURIComponent(friend) + "/sync?_=" + Date.now(), {
+            method: "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache"
+            }
+        });
+        if(!res.ok) return;
+
+        const raw = await res.json();
+        const history = Array.isArray(raw)
+            ? raw
+            : (Array.isArray(raw && raw.messages) ? raw.messages : []);
+
+        for(const msg of history){
+            if(!msg || msg.id == null || msg.sender === username) continue;
+            if(deletedMessages[msg.id]) continue;
+            if(document.querySelector(`[data-msg="${msg.id}"]`)) continue;
+
+            normalizeDocumentMessage(msg);
+
+            if(
+                msg.media_type !== "call" &&
+                !isDocumentMessage(msg) &&
+                typeof msg.text === "string" &&
+                (msg.text.startsWith("LCE1:") || msg.text.startsWith("LCE2:"))
+            ){
+                try{
+                    msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
+                }catch(error){
+                    console.error("RESYNC DECRYPTION ERROR:", error, msg.id);
+                    msg.text = "🔒 Unable to decrypt this message";
+                }
+            }
+
+            addMessage(msg);
+
+            if(!msg.delivered){
+                pendingDeliveredIds.add(Number(msg.id));
+            }
+            // Never report "read" for a message the user has not seen.
+            if(!document.hidden && isReadReceiptsEnabled() && !msg.read){
+                pendingReadIds.add(Number(msg.id));
+            }
+        }
+
+        flushPendingReceiptAcknowledgements();
+    }catch(error){
+        console.warn("RESYNC AFTER RECONNECT FAILED:", error);
+    }finally{
+        historyResyncInFlight = false;
+    }
+}
+
 function connectSocket() {
 
-document.getElementById("online-users").innerHTML =
-    "🔄 Connecting...";
-
-console.log("CONNECT SOCKET STARTED");
-console.log("WebSocket URL:",
-    (location.protocol === "https:" ? "wss://" : "ws://") +
-    location.host +
-    "/ws?friend=" + encodeURIComponent(friend) +
-    "&page=chat"
-);
-
+    // Guard first: callers use this as "make sure we are connected", and an
+    // already-open socket must not have its status label reset.
     if (socket && socket.readyState === WebSocket.OPEN) {
-    return;
-}
+        return;
+    }
 
     if (socket && socket.readyState === WebSocket.CONNECTING) {
         console.log("Socket is still connecting...");
         return;
-}
+    }
 
-    console.log("Connecting chat WebSocket...");
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
 
-    socket = new WebSocket(
+    setSocketStatus("🔄 Connecting...");
+
+    const wsUrl =
         (location.protocol === "https:" ? "wss://" : "ws://") +
         location.host +
         "/ws?friend=" + encodeURIComponent(friend) +
-        "&page=chat"
-    );
+        "&page=chat";
+
+    console.log("Connecting chat WebSocket:", wsUrl);
+
+    try {
+        socket = new WebSocket(wsUrl);
+    } catch (error) {
+        console.error("WebSocket construction failed:", error);
+        socket = null;
+        setSocketStatus("🔴 Disconnected");
+        scheduleSocketReconnect();
+        return;
+    }
+
+    socketLastActivityAt = Date.now();
 
     const ws = socket;
 
@@ -1653,10 +1903,19 @@ console.log("WebSocket URL:",
 
     console.log("Chat WebSocket connected");
     socketReconnectAttempt=0;
+    socketLastActivityAt=Date.now();
     startSocketHeartbeat(ws);
 
     updateFriendStatus();
     flushPendingReceiptAcknowledgements();
+
+    // The first open follows a full loadMessages(). Any later open means the
+    // socket was down, so catch up on what arrived in the meantime.
+    const isReconnect = socketHasOpenedBefore;
+    socketHasOpenedBefore = true;
+    if(isReconnect){
+        void resyncMissedMessages();
+    }
 
     // Messages created while the socket was still connecting must be sent
     // immediately after the connection opens. Start each send in a separate
@@ -1681,6 +1940,12 @@ console.log("WebSocket URL:",
                     item.message.media_type === "video" ? {
                         url: item.message.media_url,
                         media_type: item.message.media_type
+                    } : null,
+                    item.message.media_type === "document" ? {
+                        url: item.message.media_url,
+                        media_type: item.message.media_type,
+                        name: item.message.media_name || "Document",
+                        size: item.message.media_size || 0
                     } : null
                 );
             }, 0);
@@ -1693,6 +1958,8 @@ console.log("WebSocket URL:",
 
     ws.onmessage = async (event) => {
         if(ws !== socket) return;
+
+        socketLastActivityAt = Date.now();
 
         // Do not log every WebSocket receipt/read event.
         // The chat can receive hundreds of acknowledgements and excessive
@@ -1715,24 +1982,58 @@ console.log("WebSocket URL:",
 
         console.error("Chat WebSocket error:", error);
 
-        document.getElementById("online-users").innerHTML =
-            "🔴 Connection error";
+        setSocketStatus("🔴 Connection error");
     };
 
-    ws.onclose = () => {
-        if(ws !== socket) return;
-
-        console.log("Chat WebSocket closed");
-        stopSocketHeartbeat();
-
-        document.getElementById("online-users").innerHTML =
-            "🔴 Disconnected";
-
-        socket = null;
-        scheduleSocketReconnect();
+    ws.onclose = (event) => {
+        handleSocketClosed(ws, event && event.code);
     };
 
 }
+
+// Bring the socket back promptly when the page returns to the foreground or
+// the network comes back. Mobile browsers freeze timers in the background, so
+// the backoff timer alone can leave the chat disconnected for a long time.
+function reviveSocketIfNeeded(){
+    if(!socketAllowed) return;
+
+    if(socket && socket.readyState === WebSocket.OPEN){
+        // "Open" can be a lie after sleep or a network switch. Probe it: any
+        // frame back (the heartbeat ack) proves it is alive.
+        const ws = socket;
+        const probeStart = Date.now();
+
+        try{
+            ws.send(JSON.stringify({ type:"ws_heartbeat", ts:probeStart }));
+        }catch(_){
+            abandonSocket(ws, 4000);
+            return;
+        }
+
+        setTimeout(()=>{
+            if(ws === socket && socketLastActivityAt <= probeStart){
+                console.warn("WEBSOCKET PROBE FAILED - forcing reconnect");
+                abandonSocket(ws, 4000);
+            }
+        },6000);
+        return;
+    }
+
+    if(socket && socket.readyState === WebSocket.CONNECTING) return;
+
+    socketReconnectAttempt = 0;
+    connectSocket();
+}
+
+document.addEventListener("visibilitychange",()=>{
+    if(!document.hidden) reviveSocketIfNeeded();
+});
+
+window.addEventListener("online",reviveSocketIfNeeded);
+
+window.addEventListener("pageshow",event=>{
+    if(event.persisted) reviveSocketIfNeeded();
+});
 
 window.addEventListener("beforeunload",()=>{
     stopSocketHeartbeat();
@@ -1773,7 +2074,21 @@ async function handleSocketMessage(event) {
         return;
     }
 
-    if (data.type === "message") {
+    if (data.type === "message" || data.type === "document_message") {
+        normalizeDocumentMessage(data);
+
+        const peerName = String(friend || "").trim().toLowerCase();
+        const liveSender = String(data.sender || "").trim().toLowerCase();
+        const liveReceiver = String(data.receiver || "").trim().toLowerCase();
+        const meName = String(username || "").trim().toLowerCase();
+        if (peerName && (liveSender || liveReceiver)) {
+            const mentionsPeer = liveSender === peerName || liveReceiver === peerName;
+            const mentionsMe = !meName || liveSender === meName || liveReceiver === meName;
+            if (!mentionsPeer || !mentionsMe) {
+                return;
+            }
+        }
+
         // Outgoing messages are already rendered locally. Never make the
         // sender's own message wait for another encryption/decryption cycle.
         // The old flow decrypted the echoed ciphertext before reconciling it,
@@ -1786,6 +2101,10 @@ async function handleSocketMessage(event) {
 
             // Older backend: it may not echo client_id. Decrypt the echoed
             // ciphertext and then retry reconciliation using plaintext.
+            if (isDocumentMessage(data)) {
+                addMessage(data);
+                return;
+            }
             try {
                 data.text = await LuckyCrypto.decryptMessage(data.text, username);
             } catch (error) {
@@ -1812,7 +2131,22 @@ async function handleSocketMessage(event) {
             ? String(data.media_type).trim().toLowerCase()
             : "";
 
-        if (typeof data.text === "string" && data.text.length > 0) {
+        data.media_url = mediaUrl || null;
+        data.media_type = mediaType || null;
+
+        // Render attachment messages before attempting text decryption. A
+        // document card must never depend on crypto succeeding, especially on
+        // the recipient device. Text is updated in the same bubble afterwards.
+        if (data.media_type === "document" || isDocumentMessage(data)) {
+            addMessage(data);
+        }
+
+        if (
+            !isDocumentMessage(data) &&
+            typeof data.text === "string" &&
+            data.text.length > 0 &&
+            (data.text.startsWith("LCE1:") || data.text.startsWith("LCE2:"))
+        ) {
             try {
                 data.text = await LuckyCrypto.decryptMessage(data.text, username);
             } catch (error) {
@@ -1820,9 +2154,6 @@ async function handleSocketMessage(event) {
                 data.text = "🔒 Unable to decrypt this message";
             }
         }
-
-        data.media_url = mediaUrl || null;
-        data.media_type = mediaType || null;
 
         addMessage(data);
         playNotificationSound();
@@ -2043,15 +2374,18 @@ async function initChatCore() {
         console.warn("⚠️ LuckyCrypto unavailable:", error);
     }
 
-    // Open the live socket before loading/decrypting history so the first
-    // outgoing message is never stranded waiting for a later connection.
-    connectSocket();
-
+    // Load the authoritative database history before opening the live socket.
+    // This prevents a document delivered by the socket during startup from
+    // being rendered first and then erased when loadMessages() clears the
+    // message container.
     try {
         await loadMessages();
     } catch (error) {
         console.error("Initial message load failed:", error);
     }
+
+    socketAllowed = true;
+    connectSocket();
 
     updateFriendStatus();
     bindImageAndSendControls();
@@ -2089,6 +2423,19 @@ function bindImageAndSendControls() {
         });
     }
 
+    if (documentBtn && documentInput) {
+        documentBtn.addEventListener("click", () => {
+            documentInput.click();
+        });
+    }
+
+    if (documentInput) {
+        documentInput.addEventListener("change", async () => {
+            await uploadChatDocument();
+        });
+    }
+
+    removeDocumentBtn?.addEventListener("click", clearDocumentPreview);
     removeVideoBtn?.addEventListener("click", clearVideoPreview);
 
     // Remove selected image / audio preview
@@ -2435,8 +2782,9 @@ function initLuckyReferenceEnhancements(){
     function isBareTimeRow(row){
         const text = (row.querySelector(".msg-text, .message-text, .message-body")?.textContent || "").trim();
         const raw = (row.textContent || "").replace(/\s+/g, " ").trim();
-        const media = row.querySelector("img:not(.msg-avatar), video, audio, .voice-message, .status-reply-card, .call-history-card");
+        const media = row.querySelector("img:not(.msg-avatar), video, audio, .voice-message, .document-message, .status-reply-card, .call-history-card");
         const looksLikeTime = /^(?:\d{1,2}:\d{2}\s?(?:am|pm)?)$/i.test(raw);
+        if (text.indexOf("📄") === 0 || /requirements|gitignore|\.txt|\.pdf/i.test(text)) return false;
         return !text && !media && looksLikeTime;
     }
 
@@ -2510,10 +2858,12 @@ function initLuckyReferenceEnhancements(){
 
 initLuckyReferenceEnhancements();
 
-window.LUCKY_CHAT_CORE_VERSION = "reference-ui-migration-v1+media-video-v2-upload-progress+voice-call-fix-v8-network-recovery";
+window.LUCKY_CHAT_CORE_VERSION = "document-sharing-v14-visible-docs";
+window.addMessage = addMessage;
+window.addMessage = addMessage;
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
 
-function createOptimisticMessage(text, image, audio, video) {
+function createOptimisticMessage(text, image, audio, video, documentFile) {
     const tempId = -Date.now() - Math.floor(Math.random() * 1000);
     const clientId =
         (window.crypto && typeof window.crypto.randomUUID === "function")
@@ -2527,10 +2877,12 @@ function createOptimisticMessage(text, image, audio, video) {
         text: text || "",
         timestamp: new Date().toISOString(),
         reply_to: replyToId,
-        media_url: image?.url || audio?.url || video?.url || null,
-        media_type: image?.media_type || audio?.media_type || video?.media_type || null,
+        media_url: image?.url || audio?.url || video?.url || documentFile?.url || null,
+        media_type: image?.media_type || audio?.media_type || video?.media_type || documentFile?.media_type || null,
         media_duration: audio?.duration || 0,
         media_waveform: audio?.waveform?.length ? JSON.stringify(audio.waveform) : null,
+        media_name: documentFile?.name || null,
+        media_size: documentFile?.size || 0,
         delivered: 0,
         read: 0,
         _optimistic: true
@@ -2648,6 +3000,22 @@ function reconcileOutgoingMessage(msg) {
         optimistic.delivered = msg.delivered || 0;
         optimistic.read = msg.read || 0;
         optimistic.forwarded = isForwardedMessage(msg) || isForwardedMessage(optimistic);
+
+        // Reconcile every server-side media field as well as the message id.
+        // This is important for document messages because the server is the
+        // authoritative source for the persisted URL/name/size.
+        if (msg.media_url != null) {
+            optimistic.media_url = String(msg.media_url).trim();
+        }
+        if (msg.media_type != null) {
+            optimistic.media_type = String(msg.media_type).trim().toLowerCase();
+        }
+        if (msg.media_name != null) {
+            optimistic.media_name = msg.media_name;
+        }
+        if (msg.media_size != null) {
+            optimistic.media_size = Number(msg.media_size) || 0;
+        }
         optimistic._optimistic = false;
         messageMap[msg.id] = optimistic;
 
@@ -2671,16 +3039,17 @@ async function sendMessage() {
     const image = window.selectedChatImage;
     const audio = window.selectedChatAudio;
     const video = window.selectedChatVideo;
+    const documentFile = window.selectedChatDocument;
 
-    // Don't send anything if there is neither text nor image/audio/video.
-    if (text === "" && !image && !audio && !video) {
+    // Don't send anything if there is neither text nor an attachment.
+    if (text === "" && !image && !audio && !video && !documentFile) {
         return;
     }
 
     // Render the outgoing bubble first. Network/crypto work is deliberately
     // deferred to a later task so Android Chrome can paint this bubble before
     // anything else occupies the main thread.
-    const optimisticMessage = createOptimisticMessage(text, image, audio, video);
+    const optimisticMessage = createOptimisticMessage(text, image, audio, video, documentFile);
     queueOptimisticMessage(optimisticMessage);
 
     // Clear the composer immediately so the UI is responsive.
@@ -2688,6 +3057,7 @@ async function sendMessage() {
     window.selectedChatImage = null;
     window.selectedChatAudio = null;
     window.selectedChatVideo = null;
+    window.selectedChatDocument = null;
 
     const imagePreview = document.getElementById("imagePreview");
     const previewImage = document.getElementById("previewImage");
@@ -2697,12 +3067,19 @@ async function sendMessage() {
     if (previewImage) previewImage.src = "";
     clearAudioPreview();
     clearVideoPreview();
+    clearDocumentPreview();
 
     replyToId = null;
     if (replyPreviewEl) replyPreviewEl.style.display = "none";
 
     const sendLater = () => {
-        void sendOptimisticMessage(optimisticMessage, image, audio, video);
+        void sendOptimisticMessage(
+            optimisticMessage,
+            image,
+            audio,
+            video,
+            documentFile
+        );
     };
 
     // The optimistic message is already in the DOM. Give the browser a
@@ -2718,13 +3095,17 @@ async function sendMessage() {
     }
 }
 
-async function sendOptimisticMessage(optimisticMessage, image, audio, video) {
+async function sendOptimisticMessage(optimisticMessage, image, audio, video, documentFile) {
     try {
         const pending = pendingOutgoingMessages.find(
             item => item.tempId === optimisticMessage.id
         );
 
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
+        const isDocumentForHttp =
+            optimisticMessage.media_type === "document" &&
+            !!optimisticMessage.media_url;
+
+        if (!isDocumentForHttp && (!socket || socket.readyState !== WebSocket.OPEN)) {
             connectSocket();
             return;
         }
@@ -2733,10 +3114,71 @@ async function sendOptimisticMessage(optimisticMessage, image, audio, video) {
             return;
         }
 
-        await LuckyCrypto.ensureReady();
+        // Documents use the authenticated HTTP persistence endpoint. This removes
+        // the chat WebSocket connection as a prerequisite for saving an attachment.
+        // The server commits the document first and returns the authoritative
+        // message, which is then reconciled with the optimistic bubble.
+        if (
+            optimisticMessage.media_type === "document" &&
+            optimisticMessage.media_url
+        ) {
+            // The document send uses HTTP, not the chat WebSocket. Mark it
+            // attempted before the request starts so a socket opening during
+            // the POST cannot launch a second concurrent document save.
+            if (pending) {
+                pending.attempted = true;
+            }
 
-        let encryptedText = optimisticMessage.text;
+            const response = await fetch("/send-chat-document", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    receiver: friend,
+                    media_url: optimisticMessage.media_url,
+                    media_type: "document",
+                    media_name: optimisticMessage.media_name || documentFile?.name || "Document",
+                    media_size: Number(
+                        optimisticMessage.media_size ||
+                        documentFile?.size ||
+                        0
+                    ),
+                    reply_to: optimisticMessage.reply_to,
+                    client_id: optimisticMessage.client_id
+                })
+            });
+
+            let result = null;
+            try {
+                result = await response.json();
+            } catch (error) {
+                // Keep the original HTTP failure below so the user gets a clear
+                // send error instead of a JSON parsing exception.
+            }
+
+            if (!response.ok || !result?.success || !result?.message) {
+                throw new Error(
+                    result?.error || "Could not save document message"
+                );
+            }
+
+            if (!reconcileOutgoingMessage(result.message)) {
+                addMessage(result.message);
+            }
+
+            return;
+        }
+
+        // Media-only messages (documents, images, audio, video) do not need
+        // crypto initialization when they have no text payload. Requiring the
+        // crypto layer here could block an otherwise valid attachment from
+        // reaching the WebSocket and being persisted. Text messages still use
+        // the existing end-to-end encryption path unchanged.
+        let encryptedText = optimisticMessage.text || "";
         if (optimisticMessage.text) {
+            await LuckyCrypto.ensureReady();
             encryptedText = await LuckyCrypto.encryptMessage(
                 optimisticMessage.text,
                 friend,
@@ -2744,12 +3186,20 @@ async function sendOptimisticMessage(optimisticMessage, image, audio, video) {
             );
         }
 
+        const isDocumentMessage =
+            optimisticMessage.media_type === "document" &&
+            !!optimisticMessage.media_url;
+
         const payload = {
-            type: "message",
+            type: isDocumentMessage ? "document_message" : "message",
             text: encryptedText,
             reply_to: optimisticMessage.reply_to,
             client_id: optimisticMessage.client_id
         };
+
+        if (isDocumentMessage) {
+            payload.receiver = friend;
+        }
 
         if (image) {
             payload.media_url = image.url;
@@ -2768,6 +3218,13 @@ async function sendOptimisticMessage(optimisticMessage, image, audio, video) {
         if (video) {
             payload.media_url = video.url;
             payload.media_type = video.media_type;
+        }
+
+        if (documentFile) {
+            payload.media_url = documentFile.url;
+            payload.media_type = documentFile.media_type;
+            payload.media_name = documentFile.name || "Document";
+            payload.media_size = Number(documentFile.size || 0);
         }
 
         if (!sendSocket(payload)) {
@@ -2970,11 +3427,88 @@ function ensureStatusReplyLabel(bubble, msg){
     bubble.insertAdjacentHTML("afterbegin", statusReplyHtml(msg));
 }
 
+function formatDocumentSize(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024) return `${Math.max(1, Math.round(value))} B`;
+    if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+    if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function renderDocumentMessageHtml(msg) {
+    if (!msg) return "";
+
+    // Accept the canonical backend fields first, while tolerating common
+    // attachment aliases from older/reconnected clients. This keeps document
+    // rendering independent from the text/crypto portion of a message.
+    const rawUrl =
+        msg.media_url ??
+        msg.document_url ??
+        msg.file_url ??
+        msg.url ??
+        "";
+    const rawName =
+        msg.media_name ??
+        msg.document_name ??
+        msg.file_name ??
+        msg.name ??
+        "Document";
+    const rawSize =
+        msg.media_size ??
+        msg.document_size ??
+        msg.file_size ??
+        msg.size ??
+        0;
+
+    const url = String(rawUrl || "").trim();
+    const safeUrl = escapeHTML(url);
+    const safeName = escapeHTML(String(rawName || "Document"));
+    const safeSize = escapeHTML(formatDocumentSize(rawSize));
+    const download = url
+        ? `<a class="document-message-download" href="${safeUrl}" target="_blank" rel="noopener" download="${safeName}" aria-label="Open document">↗</a>`
+        : "";
+
+    return `
+        <div class="document-message" data-document-url="${safeUrl}">
+            <div class="document-message-icon" aria-hidden="true">📄</div>
+            <div class="document-message-info">
+                <div class="document-message-name" title="${safeName}">${safeName}</div>
+                <div class="document-message-meta">Document • ${safeSize}</div>
+            </div>
+            ${download}
+        </div>
+    `;
+}
+
+// Documents render as a card. The "📄 name" preview text exists for dashboard
+// and reply previews and must never be repeated under the card. Returns null
+// for non-documents so callers keep their normal text handling.
+function documentCaptionText(msg) {
+    if (!isDocumentMessage(msg)) return null;
+
+    const text = String(msg.text || "").trim();
+    const name = String(msg.media_name || "").trim();
+
+    if (
+        !text ||
+        text.startsWith("📄") ||
+        text.startsWith("LDOC:") ||
+        text === name ||
+        text.indexOf("Unable to decrypt") !== -1
+    ) {
+        return "";
+    }
+
+    return String(msg.text);
+}
+
 function addMessage(msg){
 
     if (!msg || typeof msg !== "object") {
         return;
     }
+
+    normalizeDocumentMessage(msg);
 
     // Normalize media at the final rendering boundary too. Some message
     // paths call addMessage() directly and therefore do not pass through the
@@ -2985,6 +3519,17 @@ function addMessage(msg){
 
     if (msg.media_url != null) {
         msg.media_url = String(msg.media_url).trim();
+    } else if (msg.document_url != null || msg.file_url != null || msg.url != null) {
+        msg.media_url = String(msg.document_url ?? msg.file_url ?? msg.url).trim();
+    }
+
+    if (!msg.media_type && (msg.document_url || msg.file_url || msg.document_name || msg.file_name)) {
+        msg.media_type = "document";
+    }
+
+    if (msg.media_type === "document") {
+        msg.media_name = msg.media_name ?? msg.document_name ?? msg.file_name ?? msg.name ?? "Document";
+        msg.media_size = Number(msg.media_size ?? msg.document_size ?? msg.file_size ?? msg.size ?? 0) || 0;
     }
 
     if (deletedMessages[msg.id]) {
@@ -3009,7 +3554,10 @@ function addMessage(msg){
         const existingTime = existingBubble.querySelector(".msg-time");
 
         if (existingText && msg.text != null) {
-            existingText.textContent = msg.text;
+            const documentCaption = documentCaptionText(msg);
+            existingText.textContent = documentCaption !== null
+                ? documentCaption
+                : msg.text;
         }
 
         if (existingTime && msg.timestamp != null) {
@@ -3043,6 +3591,39 @@ function addMessage(msg){
                         aria-label="Open photo"
                     >
                 `);
+            }
+        }
+
+        if (msg.media_url && msg.media_type === "document") {
+            const existingDocument = existingBubble.querySelector(".document-message");
+            const documentHtml = renderDocumentMessageHtml(msg);
+
+            if (existingDocument) {
+                const currentUrl = existingDocument.getAttribute("data-document-url") || "";
+                if (currentUrl !== msg.media_url && documentHtml) {
+                    existingDocument.outerHTML = documentHtml;
+                } else {
+                    const nameNode = existingDocument.querySelector(".document-message-name");
+                    const metaNode = existingDocument.querySelector(".document-message-meta");
+                    const downloadNode = existingDocument.querySelector(".document-message-download");
+                    if (nameNode) {
+                        nameNode.textContent = String(msg.media_name || "Document");
+                        nameNode.title = String(msg.media_name || "Document");
+                    }
+                    if (metaNode) {
+                        metaNode.textContent = "Document • " + formatDocumentSize(msg.media_size);
+                    }
+                    if (downloadNode) {
+                        downloadNode.href = msg.media_url;
+                        downloadNode.setAttribute("download", String(msg.media_name || "Document"));
+                    }
+                }
+            } else if (documentHtml) {
+                if (existingText) {
+                    existingText.insertAdjacentHTML("beforebegin", documentHtml);
+                } else {
+                    existingBubble.insertAdjacentHTML("afterbegin", documentHtml);
+                }
             }
         }
 
@@ -3200,8 +3781,9 @@ function addMessage(msg){
                     ></audio>
                 </div>
             `;
-}
-
+        } else if (msg.media_type === "document" || isDocumentMessage(msg)) {
+            mediaHtml = renderDocumentMessageHtml(msg);
+        }
 
         if (msg.sender === username) {
 
@@ -3265,6 +3847,13 @@ function addMessage(msg){
 
     messages.appendChild(row);
 
+    if (isDocumentMessage(msg)) {
+        const caption = row.querySelector(".msg-text");
+        if (caption) {
+            caption.textContent = documentCaptionText(msg) ?? "";
+        }
+    }
+
     const voiceAudio = row.querySelector("audio[data-voice-audio='1']");
     if (voiceAudio) {
         bindVoicePlayback(row);
@@ -3295,6 +3884,8 @@ function addMessage(msg){
     renderPinnedBar();
     messages.scrollTop = messages.scrollHeight;
 }
+
+window.addMessage = addMessage;
 
 
 let pressStartX = 0;
@@ -3690,7 +4281,25 @@ async function sendForward(target){
         );
     } catch (error) {
         console.error("FORWARD ENCRYPTION ERROR:", error);
-        alert(error.message || "Could not encrypt forwarded message");
+
+        const usersBox = document.getElementById("forwardUsers");
+        if (usersBox) {
+            const message = String(error?.message || "Could not encrypt forwarded message");
+            usersBox.innerHTML = `
+                <div style="padding:20px 16px;color:#fca5a5;text-align:center;line-height:1.5;">
+                    <div style="font-size:22px;margin-bottom:8px;">🔐</div>
+                    <div style="font-weight:700;margin-bottom:4px;">Forward unavailable</div>
+                    <div style="font-size:13px;color:#cbd5e1;">${escapeHTML(message)}</div>
+                    <button type="button" class="forward-retry-btn"
+                            style="margin-top:14px;padding:9px 14px;border:1px solid rgba(148,163,184,.22);border-radius:10px;background:rgba(30,41,59,.8);color:#e2e8f0;cursor:pointer;">
+                        Choose another chat
+                    </button>
+                </div>
+            `;
+            usersBox.querySelector(".forward-retry-btn")?.addEventListener("click", () => {
+                forwardMessage();
+            });
+        }
         return;
     }
 
@@ -3917,6 +4526,69 @@ function clearVideoPreview() {
     if (uploadStatus) uploadStatus.remove();
     if (videoPreview) videoPreview.style.display = "none";
     if (videoPreviewName) videoPreviewName.textContent = "Video";
+}
+
+async function uploadChatDocument() {
+    const file = documentInput?.files?.[0];
+    if (!file) return;
+
+    const allowedExtensions = new Set(["pdf","doc","docx","txt","csv","rtf","xls","xlsx","ppt","pptx","zip"]);
+    const extension = String((file.name || "").split(".").pop() || "").toLowerCase();
+    const maxSize = 20 * 1024 * 1024;
+
+    if (!allowedExtensions.has(extension)) {
+        alert("Only PDF, Word, text, CSV, RTF, Excel, PowerPoint, and ZIP files are allowed");
+        if (documentInput) documentInput.value = "";
+        return;
+    }
+
+    if (file.size > maxSize) {
+        alert("Document is too large. Maximum size is 20 MB");
+        if (documentInput) documentInput.value = "";
+        return;
+    }
+
+    window.selectedChatDocument = null;
+    if (documentPreview) documentPreview.style.display = "flex";
+    if (documentPreviewName) documentPreviewName.textContent = file.name || "Document";
+    if (documentPreviewSize) documentPreviewSize.textContent = formatDocumentSize(file.size);
+
+    try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/upload-chat-document", {
+            method: "POST",
+            credentials: "same-origin",
+            body: formData
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || "Document upload failed");
+        }
+
+        window.selectedChatDocument = {
+            url: result.url,
+            media_type: result.media_type,
+            name: result.name || file.name || "Document",
+            size: Number(result.size || file.size)
+        };
+        console.log("DOCUMENT UPLOADED:", result);
+    } catch (error) {
+        console.error("DOCUMENT UPLOAD ERROR:", error);
+        clearDocumentPreview();
+        alert(error.message || "Could not upload document");
+    } finally {
+        if (documentInput) documentInput.value = "";
+    }
+}
+
+function clearDocumentPreview() {
+    window.selectedChatDocument = null;
+    if (documentPreview) documentPreview.style.display = "none";
+    if (documentPreviewName) documentPreviewName.textContent = "Document";
+    if (documentPreviewSize) documentPreviewSize.textContent = "";
+    if (documentInput) documentInput.value = "";
 }
 
 async function uploadChatImage() {
@@ -4232,6 +4904,10 @@ function chooseReaction(emoji) {
             const text = (msg.text || "").trim();
             return text ? "🎬 " + text : "🎬 Video";
         }
+        if (msg.media_type === "document" && msg.media_url) {
+            const text = (msg.text || "").trim();
+            return text ? "📄 " + text : "📄 " + (msg.media_name || "Document");
+        }
         return (msg.text || "").trim() || "Message";
     }
 
@@ -4268,6 +4944,9 @@ function chooseReaction(emoji) {
         }
         if (msg.media_type === "audio" && msg.media_url) {
             return { icon: "🎙️", label: "Voice", className: "audio" };
+        }
+        if (msg.media_type === "document" && msg.media_url) {
+            return { icon: "📄", label: "Document", className: "document" };
         }
         return { icon: "💬", label: "Message", className: "text" };
     }

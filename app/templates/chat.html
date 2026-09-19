@@ -4,6 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lucky Chat</title>
+<script>
+(function () {
+    try {
+        if (navigator.serviceWorker) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+                regs.forEach(function (reg) { reg.unregister(); });
+            });
+        }
+        if (window.caches && caches.keys) {
+            caches.keys().then(function (keys) {
+                keys.forEach(function (key) { caches.delete(key); });
+            });
+        }
+    } catch (_) {}
+})();
+</script>
 
 <link rel="stylesheet" href="/static/css/chat.css?v=20260830-light-premium-v3">
 
@@ -2363,6 +2379,8 @@ Welcome to Lucky Chat 🚀
 
     <button id="voiceBtn" type="button" aria-label="Record voice message">🎙️</button>
 
+    <button id="documentBtn" type="button" aria-label="Attach document" title="Attach document">📎</button>
+
     <input
         type="file"
         id="imageInput"
@@ -2374,6 +2392,13 @@ Welcome to Lucky Chat 🚀
         type="file"
         id="videoInput"
         accept="video/mp4,video/webm,video/ogg"
+        style="display:none;"
+    >
+
+    <input
+        type="file"
+        id="documentInput"
+        accept=".pdf,.doc,.docx,.txt,.csv,.rtf,.xls,.xlsx,.ppt,.pptx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/zip"
         style="display:none;"
     >
 
@@ -2410,7 +2435,85 @@ Welcome to Lucky Chat 🚀
 </div>
 
 
+<div id="documentPreview" class="document-preview" aria-live="polite">
+    <div class="document-preview-icon">📄</div>
+    <div class="document-preview-info">
+        <strong>Document ready</strong>
+        <span id="documentPreviewName">Document</span>
+        <small id="documentPreviewSize"></small>
+    </div>
+    <button type="button" id="removeDocumentBtn" aria-label="Remove document">✕</button>
+</div>
+
 <style>
+/* ---------- Document sharing ---------- */
+#documentBtn{
+    width:48px; min-width:48px; height:48px; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:14px; cursor:pointer;
+    background:#1e293b;
+    color:#e2e8f0;
+    border:1px solid rgba(148,163,184,.14);
+    font-size:19px;
+}
+#documentBtn:hover{filter:brightness(1.08)}
+.document-preview{
+    display:none; align-items:center; gap:12px;
+    margin:0 12px 8px; padding:10px 12px; border-radius:14px;
+    background:rgba(30,41,59,.92); border:1px solid rgba(148,163,184,.16);
+}
+.document-preview-icon{
+    width:40px;height:40px;flex:0 0 40px;display:flex;align-items:center;justify-content:center;
+    border-radius:11px;background:rgba(59,130,246,.16);font-size:20px;
+}
+.document-preview-info{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.document-preview-info strong{font-size:12px}
+.document-preview-info span{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.document-preview-info small{font-size:11px;color:#94a3b8}
+.document-preview button{border:0;background:transparent;color:#cbd5e1;font-size:18px;cursor:pointer}
+.document-message{
+    display:flex;align-items:center;gap:11px;width:min(320px,72vw);padding:10px 11px;
+    border-radius:14px;background:rgba(15,23,42,.12);border:1px solid rgba(148,163,184,.16);
+}
+.document-message-icon{
+    width:42px;height:42px;min-width:42px;display:flex;align-items:center;justify-content:center;
+    border-radius:12px;background:rgba(59,130,246,.18);font-size:21px;
+}
+.document-message-info{min-width:0;flex:1}
+.document-message-name{font-weight:750;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.document-message-meta{margin-top:3px;font-size:11px;opacity:.75}
+.document-message-download{
+    width:34px;height:34px;min-width:34px;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;text-decoration:none;background:rgba(59,130,246,.2);color:inherit;font-size:17px;
+}
+.message .msg-text:empty{
+    display:none !important;
+    margin:0 !important;
+    padding:0 !important;
+    height:0 !important;
+}
+.messages .message-row:has(.document-message),
+.messages .document-message,
+.messages .message:has(.document-message){
+    display:flex !important;
+    visibility:visible !important;
+    opacity:1 !important;
+}
+html.lucky-light #documentBtn{
+    background:linear-gradient(145deg,#f3f7fb,#e3ebf3);
+    color:#27435f;
+    border-color:#d2dde8;
+}
+html.lucky-light .document-message{background:rgba(255,255,255,.65);border-color:#cddae6}
+html.lucky-light .document-message-icon{background:#e2ecf8}
+html.lucky-light .document-message-download{background:#dbeafe;color:#1d4ed8}
+html.lucky-light .document-preview{background:rgba(255,255,255,.96);border-color:#d8e2ec;color:#0f172a}
+html.lucky-light .document-preview-info small{color:#64748b}
+@media(max-width:480px){
+    #documentBtn{width:42px;min-width:42px;height:42px;border-radius:13px}
+    .document-message{width:min(290px,78vw)}
+}
+
 /* =========================================================
    LUCKY CHAT — VOICE MESSAGES
    Recording UI + audio message bubbles.
@@ -3536,7 +3639,7 @@ Welcome to Lucky Chat 🚀
 
 <script src="/static/js/crypto.core.js?v=20260907-crypto-receive-v1"></script>
 <script src="/static/js/notification.js?v=20260909-chat-target-v5"></script>
-<script src="/static/js/chat.core.js?v=20260910-theme-wallpaper-v2"></script>
+<script src="/static/js/chat.core.js?v=20260919-reconnect-v2"></script>
 
 <style>
 
@@ -4195,11 +4298,22 @@ body{
     justify-content:center !important;
     margin:12px 0 !important;
 }
-.messages .message-row.lucky-time-chip-row .msg-avatar,
-.messages .message-row.lucky-time-chip-row .message,
-.messages .message-row.lucky-time-chip-row .message-own,
-.messages .message-row.lucky-time-chip-row .message-other{
+.messages .message-row.lucky-time-chip-row:not(:has(.document-message)) .msg-avatar,
+.messages .message-row.lucky-time-chip-row:not(:has(.document-message)) .message,
+.messages .message-row.lucky-time-chip-row:not(:has(.document-message)) .message-own,
+.messages .message-row.lucky-time-chip-row:not(:has(.document-message)) .message-other{
     display:none !important;
+}
+.messages .message-row.lucky-time-chip-row:has(.document-message){
+    justify-content:flex-start !important;
+}
+.messages .message-row.lucky-time-chip-row:has(.document-message) .message,
+.messages .message-row.lucky-time-chip-row:has(.document-message) .message-own,
+.messages .message-row.lucky-time-chip-row:has(.document-message) .message-other,
+.messages .message-row.lucky-time-chip-row:has(.document-message) .document-message{
+    display:flex !important;
+    visibility:visible !important;
+    opacity:1 !important;
 }
 .messages .message-row.lucky-time-chip-row .msg-time,
 .messages .message-row.lucky-time-chip-row .message-meta{
@@ -4243,6 +4357,21 @@ body::after{
     opacity:0 !important;
 }
 </style>
+
+
+<script type="application/json" id="luckyEmbeddedDocuments">{{ embedded_documents | default([]) | tojson }}</script>
+<script>
+try {
+    window.LUCKY_EMBEDDED_DOCUMENTS = JSON.parse(
+        document.getElementById("luckyEmbeddedDocuments").textContent || "[]"
+    );
+    if (!Array.isArray(window.LUCKY_EMBEDDED_DOCUMENTS)) {
+        window.LUCKY_EMBEDDED_DOCUMENTS = [];
+    }
+} catch (_) {
+    window.LUCKY_EMBEDDED_DOCUMENTS = [];
+}
+</script>
 
 </body>
 </html>

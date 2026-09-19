@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -237,12 +237,22 @@ def _ensure_message_media_columns():
                 "ALTER TABLE messages ADD COLUMN media_waveform TEXT"
             )
 
+        if "media_name" not in columns:
+            statements.append(
+                "ALTER TABLE messages ADD COLUMN media_name VARCHAR"
+            )
+
+        if "media_size" not in columns:
+            statements.append(
+                "ALTER TABLE messages ADD COLUMN media_size INTEGER DEFAULT 0"
+            )
+
         if statements:
             with engine.begin() as connection:
                 for statement in statements:
                     connection.execute(sqlalchemy_text(statement))
 
-            print("MESSAGE MEDIA SCHEMA: voice metadata columns added")
+            print("MESSAGE MEDIA SCHEMA: media metadata columns added")
     except Exception as exc:
         print("MESSAGE MEDIA SCHEMA ERROR:", exc)
         traceback.print_exc()
@@ -480,6 +490,111 @@ def _payload_is_forward(data):
         if value is True or value == 1 or str(value).strip().lower() in {"true", "1", "yes"}:
             return True
     return False
+
+
+def _chat_preview_text(message) -> str:
+    """Dashboard/chat list preview that works for media-only messages."""
+    if message is None:
+        return ""
+
+    media_type = str(getattr(message, "media_type", "") or "").strip().lower()
+    media_name = str(getattr(message, "media_name", "") or "").strip()
+    text = str(getattr(message, "text", "") or "")
+
+    if media_type == "document" or media_name:
+        return "📄 " + (media_name or "Document")
+    if media_type == "image":
+        return "📷 Photo"
+    if media_type == "video":
+        return "🎬 Video"
+    if media_type == "audio":
+        return "🎙️ Voice message"
+    if media_type == "call":
+        return "📞 Voice call"
+    if text.startswith("LCE1:") or text.startswith("LCE2:"):
+        return "New message"
+    return text
+
+
+def _serialize_chat_message(m) -> dict:
+    """JSON shape used by /messages and the chat-page bootstrap payload."""
+    media_type = str(getattr(m, "media_type", "") or "").strip().lower()
+    media_url = getattr(m, "media_url", None)
+    media_name = getattr(m, "media_name", None)
+    is_document = media_type == "document" or bool(media_name)
+    preview = _chat_preview_text(m)
+    text = str(getattr(m, "text", "") or "").strip() or preview
+    return {
+        "id": m.id,
+        "sender": m.sender,
+        "receiver": m.receiver,
+        "text": text,
+        "timestamp": m.timestamp,
+        "delivered": m.delivered,
+        "read": m.read,
+        "reply_to": m.reply_to,
+        "media_url": media_url,
+        "media_type": "document" if is_document and media_type not in {"image", "video", "audio", "call"} else (media_type or None),
+        "media_duration": getattr(m, "media_duration", 0) or 0,
+        "media_waveform": getattr(m, "media_waveform", None),
+        "media_name": media_name,
+        "media_size": getattr(m, "media_size", 0) or 0,
+        "document_url": media_url if is_document else None,
+        "document_name": media_name if is_document else None,
+        "file_name": media_name if is_document else None,
+        "edited": getattr(m, "edited", 0),
+        "reaction": getattr(m, "reaction", ""),
+        "forwarded": bool(int(getattr(m, "forwarded", 0) or 0)),
+        "status_reply": bool(int(getattr(m, "status_reply", 0) or 0)),
+        "status_reply_status_id": getattr(m, "status_reply_status_id", None),
+        "status_reply_owner": getattr(m, "status_reply_owner", None),
+        "preview": preview,
+    }
+
+
+def _conversation_messages(db, username: str, friend: str):
+    """Load every message in a 1:1 chat, including document rows."""
+    current_user = resolve_user_by_username(db, username)
+    friend_user = resolve_user_by_username(db, friend)
+
+    names_me = []
+    names_friend = []
+    for value in (
+        username,
+        getattr(current_user, "username", None),
+    ):
+        clean = str(value or "").strip()
+        if clean and clean not in names_me:
+            names_me.append(clean)
+    for value in (
+        friend,
+        getattr(friend_user, "username", None),
+    ):
+        clean = str(value or "").strip()
+        if clean and clean not in names_friend:
+            names_friend.append(clean)
+
+    me_fold = {name.casefold() for name in names_me}
+    friend_fold = {name.casefold() for name in names_friend}
+
+    rows = db.query(Message).filter(
+        or_(
+            Message.sender.in_(names_me + names_friend),
+            Message.receiver.in_(names_me + names_friend),
+        )
+    ).order_by(Message.id.asc()).all()
+
+    msgs_by_id = {}
+    for row in rows:
+        sender_norm = str(row.sender or "").strip().casefold()
+        receiver_norm = str(row.receiver or "").strip().casefold()
+        if (
+            sender_norm in me_fold and receiver_norm in friend_fold
+        ) or (
+            sender_norm in friend_fold and receiver_norm in me_fold
+        ):
+            msgs_by_id[row.id] = row
+    return [msgs_by_id[key] for key in sorted(msgs_by_id)]
 
 
 templates = Jinja2Templates(directory="app/templates")
@@ -1012,18 +1127,43 @@ async def chat(friend: str, request: Request):
 
     user = resolve_user_by_username(db, friend)
     canonical_friend = user.username if user else friend
+    embedded_documents = []
+    try:
+        # Redirect before loading the conversation: the ?lc=14 hop throws this
+        # response away, so the full-history query would just run twice.
+        if str(request.query_params.get("lc") or "") != "14":
+            return RedirectResponse(
+                url="/chat/" + urllib.parse.quote(str(canonical_friend)) + "?lc=14",
+                status_code=302,
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+            )
 
-    db.close()
+        conversation = _conversation_messages(db, current_username, canonical_friend)
+        embedded_documents = [
+            _serialize_chat_message(row)
+            for row in conversation
+            if str(getattr(row, "media_type", "") or "").strip().lower() == "document"
+            or getattr(row, "media_name", None)
+        ]
+    except Exception as exc:
+        print("EMBEDDED DOCUMENT LOOKUP ERROR:", exc)
+        traceback.print_exc()
+    finally:
+        db.close()
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="chat.html",
         context={
             "request": request,
             "friend": canonical_friend,
-            "friend_user": user
+            "friend_user": user,
+            "embedded_documents": embedded_documents,
         }
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.post("/login")
@@ -1114,12 +1254,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.receive_text()
 
         except WebSocketDisconnect:
-            manager.dashboard_connections.pop(username, None)
+            if manager.dashboard_connections.get(username) is websocket:
+                manager.dashboard_connections.pop(username, None)
             print(f"{username} dashboard disconnected")
 
         return
 
-    await manager.connect(username, websocket)
+    await manager.connect(username, websocket, friend=friend)
 
     print(f"{username} connected from chat")
 
@@ -1598,6 +1739,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         media_type=data.get("media_type"),
                         media_duration=int(data.get("media_duration") or 0),
                         media_waveform=data.get("media_waveform"),
+                        media_name=data.get("media_name"),
+                        media_size=int(data.get("media_size") or 0),
                     )
 
                     db.add(message)
@@ -1628,6 +1771,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "media_type": message.media_type,
                         "media_duration": message.media_duration or 0,
                         "media_waveform": message.media_waveform,
+                        "media_name": getattr(message, "media_name", None),
+                        "media_size": getattr(message, "media_size", 0) or 0,
                         "forwarded": True,
                         "client_id": data.get("client_id"),
                     }
@@ -1719,6 +1864,144 @@ async def websocket_endpoint(websocket: WebSocket):
                 db.close()
                 continue
 
+            if data.get("type") == "document_message":
+                # Documents use a dedicated wire type so attachment-only messages
+                # cannot be confused with ordinary encrypted text.
+                requested_target = str(
+                    data.get("receiver") or friend or ""
+                ).strip()
+
+                if not requested_target:
+                    print("DOCUMENT MESSAGE MISSING TARGET")
+                    continue
+
+                document_url = str(data.get("media_url") or "").strip()
+                document_name = str(
+                    data.get("media_name") or data.get("document_name")
+                    or data.get("file_name") or "Document"
+                ).strip()[:255]
+                document_size = int(data.get("media_size") or 0)
+
+                if not document_url:
+                    print("DOCUMENT MESSAGE MISSING URL")
+                    continue
+
+                db = SessionLocal()
+                try:
+                    target_user = resolve_user_by_username(db, requested_target)
+                    receiver_name = (
+                        target_user.username
+                        if target_user
+                        else requested_target
+                    )
+
+                    if not receiver_name:
+                        continue
+
+                    preview_text = "📄 " + (document_name or "Document")
+                    message = Message(
+                        sender=username,
+                        receiver=receiver_name,
+                        text=preview_text,
+                        timestamp=utc_now_iso(),
+                        unread=1,
+                        seen_in_chat=0,
+                        forwarded=0,
+                        reply_to=data.get("reply_to"),
+                        media_url=document_url,
+                        media_type="document",
+                        media_duration=0,
+                        media_waveform=None,
+                        media_name=document_name,
+                        media_size=document_size,
+                    )
+
+                    db.add(message)
+                    db.commit()
+                    db.refresh(message)
+
+                    # Deliver documents as the normal chat "message" wire type.
+                    # The payload still carries media_type="document" plus all
+                    # document metadata. Using the standard message type keeps
+                    # delivery compatible with clients that only recognize the
+                    # normal chat message event.
+                    payload = {
+                        "type": "message",
+                        "id": message.id,
+                        "sender": username,
+                        "receiver": receiver_name,
+                        "text": preview_text,
+                        "timestamp": message.timestamp,
+                        "delivered": message.delivered,
+                        "read": message.read,
+                        "reply_to": message.reply_to,
+                        "media_url": message.media_url,
+                        "media_type": "document",
+                        "media_duration": 0,
+                        "media_waveform": None,
+                        "media_name": getattr(message, "media_name", None),
+                        "media_size": getattr(message, "media_size", 0) or 0,
+                        "client_id": data.get("client_id"),
+                        "forwarded": False,
+                        "document_url": message.media_url,
+                        "document_name": getattr(message, "media_name", None),
+                        "file_name": getattr(message, "media_name", None),
+                        "name": getattr(message, "media_name", None),
+                    }
+
+                    print(
+                        "DOCUMENT MESSAGE SAVED:",
+                        message.id,
+                        username,
+                        "->",
+                        receiver_name,
+                        document_name,
+                        document_size,
+                    )
+
+                    await manager.send(username, payload)
+
+                    if receiver_name != username:
+                        delivered = await manager.deliver_or_queue(
+                            receiver_name,
+                            username,
+                            payload,
+                        )
+                        if delivered:
+                            message.delivered = 1
+                            db.commit()
+                            db.refresh(message)
+                            payload["delivered"] = message.delivered
+                        asyncio.create_task(
+                            send_push_to_user(
+                                receiver_name,
+                                {
+                                    "type": "message",
+                                    "sender": username,
+                                    "title": username,
+                                    "body": "You have a new document.",
+                                },
+                            )
+                        )
+
+                    await manager.send_dashboard(
+                        receiver_name,
+                        {"type": "dashboard_update", "from": username},
+                    )
+                    await manager.send_dashboard(
+                        username,
+                        {"type": "dashboard_update", "from": receiver_name},
+                    )
+
+                except Exception as e:
+                    db.rollback()
+                    print("DOCUMENT MESSAGE ERROR:", e)
+                    traceback.print_exc()
+                finally:
+                    db.close()
+
+                continue
+
             if data.get("type") == "message":
 
                 if not friend:
@@ -1790,6 +2073,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         media_type=media_type,
                         media_duration=int(data.get("media_duration") or 0),
                         media_waveform=data.get("media_waveform"),
+                        media_name=data.get("media_name"),
+                        media_size=int(data.get("media_size") or 0),
                     )
 
                     db.add(message)
@@ -1822,6 +2107,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "media_type": message.media_type,
                         "media_duration": message.media_duration or 0,
                         "media_waveform": message.media_waveform,
+                        "media_name": getattr(message, "media_name", None),
+                        "media_size": getattr(message, "media_size", 0) or 0,
                         "client_id": data.get("client_id"),
                         "forwarded": True if is_forward else False,
                     }
@@ -1888,8 +2175,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
     except WebSocketDisconnect:
-            print(f"{username} disconnected")
-            await manager.disconnect(username, websocket)
+        print(f"{username} disconnected")
+    except Exception as exc:
+        print(f"CHAT WS ERROR ({username}):", exc)
+        traceback.print_exc()
+    finally:
+        # Guarded in the manager: a socket that was already replaced by a
+        # newer connection for this user is ignored. Without this, any
+        # non-disconnect exception left a dead socket registered as "online".
+        await manager.disconnect(username, websocket)
 
 @app.websocket("/dashboard_ws")
 async def dashboard_ws(websocket: WebSocket):
@@ -1915,7 +2209,11 @@ async def dashboard_ws(websocket: WebSocket):
 
     finally:
 
-        manager.dashboard_connections.pop(username, None)
+        # Only remove our own registration. A reload/reconnect registers the
+        # new socket before the old one finishes closing, and an unguarded
+        # pop() evicted the live one (no more dashboard updates).
+        if manager.dashboard_connections.get(username) is websocket:
+            manager.dashboard_connections.pop(username, None)
 
         print("Dashboard disconnected:", username)
 
@@ -1924,117 +2222,71 @@ async def get_messages(friend: str, request: Request):
 
     username = get_authenticated_username(request)
     if not username:
-        return {"success": False, "error": "Not logged in", "messages": []}
+        return JSONResponse(
+            content={"success": False, "error": "Not logged in", "messages": []},
+            headers={"Cache-Control": "no-store"},
+        )
 
     db = SessionLocal()
 
-    # Resolve both participants to their canonical database usernames first.
-    # This prevents case/whitespace differences from making an existing
-    # conversation appear empty on only one account.
-    current_user = resolve_user_by_username(db, username)
-    friend_user = resolve_user_by_username(db, friend)
+    try:
+        current_user = resolve_user_by_username(db, username)
+        friend_user = resolve_user_by_username(db, friend)
+        canonical_username = current_user.username if current_user else str(username or "").strip()
+        canonical_friend = friend_user.username if friend_user else str(friend or "").strip()
 
-    canonical_username = current_user.username if current_user else str(username or "").strip()
-    canonical_friend = friend_user.username if friend_user else str(friend or "").strip()
+        print("COOKIE USERNAME =", username, "FRIEND =", friend)
+        print("CANONICAL USERNAME =", canonical_username)
+        print("CANONICAL FRIEND =", canonical_friend)
 
-    print("COOKIE USERNAME =", username, "FRIEND =", friend)
-    print("CANONICAL USERNAME =", canonical_username)
-    print("CANONICAL FRIEND =", canonical_friend)
-
-    # Also normalize the stored Message values so legacy messages saved with
-    # different username casing/whitespace remain visible to both participants.
-    normalized_username = canonical_username.strip().casefold()
-    normalized_friend = canonical_friend.strip().casefold()
-
-    # First try a normal SQL lookup using the canonical names.
-    msgs = db.query(Message).filter(
-        or_(
-            and_(
-                Message.sender == canonical_username,
-                Message.receiver == canonical_friend
-            ),
-            and_(
-                Message.sender == canonical_friend,
-                Message.receiver == canonical_username
-            )
+        msgs = _conversation_messages(db, username, friend)
+        print("USERNAME:", canonical_username)
+        print("FRIEND:", canonical_friend)
+        print("FOUND MESSAGES:", len(msgs))
+        print(
+            "FOUND DOCUMENTS:",
+            sum(1 for m in msgs if str(getattr(m, "media_type", "") or "").lower() == "document"),
         )
-    ).order_by(Message.id.asc()).all()
 
-    # Legacy-safe fallback: some older rows may contain different casing or
-    # surrounding whitespace. Read only the conversation's candidate rows and
-    # normalize them in Python, avoiding SQL-dialect-specific string functions.
-    if not msgs:
-        candidate_rows = db.query(Message).filter(
+        result = [_serialize_chat_message(m) for m in msgs]
+
+        normalized_username = canonical_username.strip().casefold()
+        normalized_friend = canonical_friend.strip().casefold()
+        unread_candidates = db.query(Message).filter(
+            Message.unread == 1,
             or_(
-                Message.sender.in_([canonical_username, canonical_friend]),
-                Message.receiver.in_([canonical_username, canonical_friend])
+                Message.sender.in_([canonical_friend, canonical_username, friend, username]),
+                Message.receiver.in_([canonical_friend, canonical_username, friend, username])
             )
-        ).order_by(Message.id.asc()).all()
+        ).all()
 
-        msgs = [
-            m for m in candidate_rows
+        for unread_message in unread_candidates:
+            sender_norm = str(unread_message.sender or "").strip().casefold()
+            receiver_norm = str(unread_message.receiver or "").strip().casefold()
             if (
-                str(m.sender or "").strip().casefold() == normalized_username
-                and str(m.receiver or "").strip().casefold() == normalized_friend
-            )
-            or (
-                str(m.sender or "").strip().casefold() == normalized_friend
-                and str(m.receiver or "").strip().casefold() == normalized_username
-            )
-        ]
+                sender_norm == normalized_friend
+                and receiver_norm == normalized_username
+            ):
+                unread_message.unread = 0
+                unread_message.seen_in_chat = 1
 
-    print("USERNAME:", canonical_username)
-    print("FRIEND:", canonical_friend)
-    print("FOUND MESSAGES:", len(msgs))
+        db.commit()
+    finally:
+        db.close()
 
-    result=[]
+    return JSONResponse(
+        content=result,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
 
-    for m in msgs:
 
-        result.append({
-            "id": m.id,
-            "sender": m.sender,
-            "receiver": m.receiver,
-            "text": m.text,
-            "timestamp": m.timestamp,
-            "delivered": m.delivered,
-            "read": m.read,
-            "reply_to": m.reply_to,
-            "media_url": m.media_url,
-            "media_type": m.media_type,
-            "media_duration": getattr(m, "media_duration", 0) or 0,
-            "media_waveform": getattr(m, "media_waveform", None),
-            "edited": m.edited,
-            "reaction": getattr(m, "reaction", ""),
-            "forwarded": bool(int(getattr(m, "forwarded", 0) or 0)),
-            "status_reply": bool(int(getattr(m, "status_reply", 0) or 0)),
-            "status_reply_status_id": getattr(m, "status_reply_status_id", None),
-            "status_reply_owner": getattr(m, "status_reply_owner", None),
-        })
-
-    unread_candidates = db.query(Message).filter(
-        Message.unread == 1,
-        or_(
-            Message.sender.in_([canonical_friend, canonical_username]),
-            Message.receiver.in_([canonical_friend, canonical_username])
-        )
-    ).all()
-
-    for unread_message in unread_candidates:
-        sender_norm = str(unread_message.sender or "").strip().casefold()
-        receiver_norm = str(unread_message.receiver or "").strip().casefold()
-
-        if (
-            sender_norm == normalized_friend
-            and receiver_norm == normalized_username
-        ):
-            unread_message.unread = 0
-            unread_message.seen_in_chat = 1
-
-    db.commit()
-    db.close()
-
-    return result
+@app.post("/messages/{friend}/sync")
+async def sync_messages(friend: str, request: Request):
+    """Same history as GET /messages, but POST avoids stale service-worker caches."""
+    return await get_messages(friend, request)
 
 @app.get("/dashboard-data")
 async def dashboard_data(request: Request):
@@ -2107,12 +2359,13 @@ async def dashboard_data(request: Request):
                 "display_name": user.display_name or user.username,
                 "profile": user.profile_picture,
                 "unread": unread_by_user.get(user.username, 0),
-                "last": last.text if last else "",
+                "last": _chat_preview_text(last) if last else "",
                 "sender": last.sender if last else "",
                 "time": last.timestamp if last else "",
                 "id": last.id if last else 0,
                 "media_url": last.media_url if last else None,
-                "media_type": last.media_type if last else None
+                "media_type": last.media_type if last else None,
+                "media_name": getattr(last, "media_name", None) if last else None
             })
 
         result.sort(key=lambda item: item["id"], reverse=True)
@@ -2203,6 +2456,261 @@ async def upload_chat_image(
         "media_type": "image",
         "storage": storage_backend
     }
+
+
+@app.post("/send-chat-document")
+async def send_chat_document(request: Request):
+    """
+    Persist and deliver an already-uploaded chat document.
+
+    This endpoint deliberately does not depend on the browser chat WebSocket
+    being open on the sender. The document is committed first, then live
+    delivery is attempted for the recipient. History therefore remains the
+    source of truth even when either chat socket is temporarily unavailable.
+    """
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    try:
+        data = await request.json()
+    except Exception:
+        return {"success": False, "error": "Invalid document message"}
+
+    requested_target = str(
+        data.get("receiver") or data.get("target") or ""
+    ).strip()
+    document_url = str(
+        data.get("media_url") or data.get("document_url")
+        or data.get("file_url") or data.get("url") or ""
+    ).strip()
+    document_name = str(
+        data.get("media_name") or data.get("document_name")
+        or data.get("file_name") or data.get("name") or "Document"
+    ).strip()[:255]
+
+    try:
+        document_size = int(
+            data.get("media_size") or data.get("document_size")
+            or data.get("file_size") or data.get("size") or 0
+        )
+    except (TypeError, ValueError):
+        document_size = 0
+
+    if not requested_target:
+        return {"success": False, "error": "Missing recipient"}
+
+    if not document_url:
+        return {"success": False, "error": "Missing document URL"}
+
+    db = SessionLocal()
+    try:
+        target_user = resolve_user_by_username(db, requested_target)
+        if not target_user:
+            return {"success": False, "error": "Recipient not found"}
+
+        receiver_name = target_user.username
+
+        preview_text = "📄 " + (document_name or "Document")
+        message = Message(
+            sender=username,
+            receiver=receiver_name,
+            text=preview_text,
+            timestamp=utc_now_iso(),
+            unread=1,
+            seen_in_chat=0,
+            forwarded=0,
+            reply_to=data.get("reply_to"),
+            media_url=document_url,
+            media_type="document",
+            media_duration=0,
+            media_waveform=None,
+            media_name=document_name,
+            media_size=document_size,
+        )
+
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+
+        payload = {
+            "type": "message",
+            "id": message.id,
+            "sender": message.sender,
+            "receiver": message.receiver,
+            "text": preview_text,
+            "timestamp": message.timestamp,
+            "delivered": message.delivered,
+            "read": message.read,
+            "reply_to": message.reply_to,
+            "media_url": message.media_url,
+            "media_type": "document",
+            "media_duration": 0,
+            "media_waveform": None,
+            "media_name": getattr(message, "media_name", None),
+            "media_size": getattr(message, "media_size", 0) or 0,
+            "client_id": data.get("client_id"),
+            "forwarded": False,
+            "document_url": message.media_url,
+            "document_name": getattr(message, "media_name", None),
+            "file_name": getattr(message, "media_name", None),
+            "name": getattr(message, "media_name", None),
+        }
+
+        print(
+            "DOCUMENT MESSAGE SAVED:",
+            message.id,
+            username,
+            "->",
+            receiver_name,
+            document_name,
+            document_size,
+        )
+
+        # The sender is authenticated over this HTTP request, so the response
+        # below is the authoritative reconciliation source for the sender.
+        delivered = False
+        if receiver_name != username:
+            delivered = await manager.deliver_or_queue(
+                receiver_name,
+                username,
+                payload,
+            )
+            if delivered:
+                message.delivered = 1
+                db.commit()
+                db.refresh(message)
+                payload["delivered"] = message.delivered
+
+            asyncio.create_task(
+                send_push_to_user(
+                    receiver_name,
+                    {
+                        "type": "message",
+                        "sender": username,
+                        "title": username,
+                        "body": "You have a new document.",
+                    },
+                )
+            )
+
+        await manager.send_dashboard(
+            receiver_name,
+            {"type": "dashboard_update", "from": username},
+        )
+        if receiver_name != username:
+            await manager.send_dashboard(
+                username,
+                {"type": "dashboard_update", "from": receiver_name},
+            )
+
+        return {
+            "success": True,
+            "message": payload,
+            "delivered": bool(delivered),
+        }
+
+    except Exception as exc:
+        db.rollback()
+        print("DOCUMENT HTTP SEND ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save document message"}
+    finally:
+        db.close()
+
+
+@app.post("/upload-chat-document")
+async def upload_chat_document(
+    request: Request,
+    file: UploadFile = File(...)
+):
+    """Store an attached chat document in the existing chat upload directory."""
+    username = request.session.get("username")
+
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    allowed_types = {
+        "application/pdf": ".pdf",
+        "application/msword": ".doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "text/plain": ".txt",
+        "text/csv": ".csv",
+        "application/rtf": ".rtf",
+        "application/vnd.ms-excel": ".xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/vnd.ms-powerpoint": ".ppt",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+        "application/zip": ".zip",
+    }
+    extension_types = {suffix: mime for mime, suffix in allowed_types.items()}
+
+    original_name = Path(file.filename or "document").name.strip() or "document"
+    original_name = original_name[:255]
+    suffix = Path(original_name).suffix.lower()
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+
+    # Some Android browsers provide an empty/generic MIME type; the extension
+    # remains a safe second signal because the server chooses the stored suffix.
+    if content_type not in allowed_types and suffix in extension_types:
+        content_type = extension_types[suffix]
+
+    if content_type not in allowed_types:
+        return {
+            "success": False,
+            "error": "Only PDF, Word, text, CSV, RTF, Excel, PowerPoint, and ZIP files are allowed"
+        }
+
+    extension = allowed_types[content_type]
+    max_size = 20 * 1024 * 1024
+    filename = (
+        f"{_storage_user_key(username)}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        f"{extension}"
+    )
+    filepath = UPLOAD_DIR / filename
+    total = 0
+
+    try:
+        with open(filepath, "wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_size:
+                    raise ValueError("Document is too large. Maximum size is 20 MB")
+                buffer.write(chunk)
+
+        if total == 0:
+            raise ValueError("Empty document file")
+
+        return {
+            "success": True,
+            "url": "/static/uploads/chat/" + filename,
+            "media_type": "document",
+            "name": original_name,
+            "size": total,
+            "mime_type": content_type,
+        }
+    except ValueError as exc:
+        try:
+            filepath.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return {"success": False, "error": str(exc)}
+    except Exception as exc:
+        try:
+            filepath.unlink(missing_ok=True)
+        except Exception:
+            pass
+        print("DOCUMENT UPLOAD ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save document"}
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            pass
 
 
 @app.post("/upload-chat-video")
