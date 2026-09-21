@@ -9395,3 +9395,2217 @@ html.lucky-light .messages .message-row:not(.call-history-row):not(:has(.message
         font-weight:700 !important;
     }
 }
+
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V3 TOKENS / FALLBACK LAYER
+   The final override lives in chat.html because this file already
+   contains many late/inline compatibility rules. Keeping the same
+   tokenized layer here gives the standalone stylesheet the new visual
+   language too, without touching messaging behavior.
+   ========================================================= */
+:root{
+    --lc3-bg:#06101d;
+    --lc3-surface:#0b1727;
+    --lc3-surface-2:#0f1e31;
+    --lc3-border:rgba(120,166,220,.18);
+    --lc3-border-strong:rgba(96,165,250,.30);
+    --lc3-text:#edf5ff;
+    --lc3-muted:#8fa3bd;
+    --lc3-blue:#3b82f6;
+    --lc3-blue-2:#2563eb;
+}
+
+@media(max-width:480px){
+    .message{border-radius:18px 18px 6px 18px;}
+    .message-other,.received{border-bottom-left-radius:6px;}
+    .message-own,.sent{border-bottom-right-radius:6px;}
+}
+
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V4
+   Standalone stylesheet counterpart.
+   ========================================================= */
+:root{
+    --lc4-bg:#050b14;
+    --lc4-panel:rgba(8,20,36,.78);
+    --lc4-border:rgba(126,180,245,.18);
+    --lc4-blue:#3182f6;
+    --lc4-blue2:#1f6fe5;
+    --lc4-cyan:#47c7ff;
+}
+
+/* The authoritative V4 overrides are also included inline in chat.html so
+   they win over legacy compatibility layers. This block keeps chat.css
+   visually aligned when used independently. */
+@media(max-width:480px){
+    .message{border-radius:18px 18px 18px 7px !important;}
+    .message.message-own,.message.sent{border-radius:18px 18px 7px 18px !important;}
+}
+
+
+/* =========================================================
+   LUCKY CHAT — COMPACT ATTACHMENT TRAY V1
+   One compact attachment launcher replaces the four visible
+   media buttons. Original controls remain available to
+   chat.core.js and are programmatically triggered.
+   ========================================================= */
+
+.attachment-menu-btn{
+    position:relative !important;
+    flex:0 0 46px !important;
+    width:46px !important;
+    min-width:46px !important;
+    max-width:46px !important;
+    height:46px !important;
+    min-height:46px !important;
+    padding:0 !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    border-radius:16px !important;
+    background:linear-gradient(145deg,rgba(33,78,132,.98),rgba(16,43,76,.98)) !important;
+    border:1px solid rgba(122,188,250,.24) !important;
+    color:#dff1ff !important;
+    font-size:20px !important;
+    box-shadow:0 10px 22px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.08) !important;
+    cursor:pointer !important;
+    transition:transform .16s ease,box-shadow .18s ease,filter .18s ease !important;
+    z-index:20 !important;
+}
+
+.attachment-menu-btn:hover{filter:brightness(1.07);}
+.attachment-menu-btn:active,
+.attachment-menu-btn.is-open{transform:scale(.94) !important;}
+
+.attachment-menu-btn.is-open{
+    box-shadow:0 0 0 4px rgba(59,130,246,.10),0 12px 24px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.10) !important;
+}
+
+.attachment-tray{
+    position:absolute;
+    left:2px;
+    bottom:calc(100% + 10px);
+    width:min(286px,calc(100vw - 20px));
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:8px;
+    padding:10px;
+    border-radius:20px;
+    background:linear-gradient(160deg,rgba(10,27,47,.985),rgba(6,18,32,.985));
+    border:1px solid rgba(112,180,239,.20);
+    box-shadow:0 22px 48px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.045);
+    backdrop-filter:blur(22px) saturate(150%);
+    -webkit-backdrop-filter:blur(22px) saturate(150%);
+    opacity:0;
+    visibility:hidden;
+    pointer-events:none;
+    transform:translateY(8px) scale(.97);
+    transform-origin:left bottom;
+    transition:opacity .16s ease,transform .18s ease,visibility .16s ease;
+    z-index:100005;
+}
+
+.attachment-tray::after{
+    content:"";
+    position:absolute;
+    left:18px;
+    bottom:-7px;
+    width:14px;
+    height:14px;
+    background:#091a2d;
+    border-right:1px solid rgba(112,180,239,.20);
+    border-bottom:1px solid rgba(112,180,239,.20);
+    transform:rotate(45deg);
+}
+
+.attachment-tray.is-open{
+    opacity:1;
+    visibility:visible;
+    pointer-events:auto;
+    transform:translateY(0) scale(1);
+}
+
+.attachment-option{
+    min-width:0 !important;
+    min-height:78px !important;
+    height:auto !important;
+    padding:9px 5px 8px !important;
+    border-radius:15px !important;
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:6px !important;
+    background:rgba(17,40,67,.86) !important;
+    border:1px solid rgba(124,184,237,.14) !important;
+    color:#e6f2ff !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03) !important;
+    cursor:pointer !important;
+    transition:transform .15s ease,background .18s ease,border-color .18s ease !important;
+}
+
+.attachment-option:hover{
+    background:rgba(27,57,91,.96) !important;
+    border-color:rgba(132,196,249,.26) !important;
+}
+
+.attachment-option:active{transform:scale(.94) !important;}
+
+.attachment-option-icon{
+    width:40px;
+    height:40px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:13px;
+    font-size:19px;
+    background:rgba(59,130,246,.14);
+    border:1px solid rgba(126,193,247,.13);
+}
+
+.attachment-option-image .attachment-option-icon{background:rgba(59,130,246,.16);}
+.attachment-option-video .attachment-option-icon{background:rgba(168,85,247,.16);}
+.attachment-option-voice .attachment-option-icon{background:rgba(34,197,94,.13);}
+.attachment-option-document .attachment-option-icon{background:rgba(245,158,11,.13);}
+
+.attachment-option-label{
+    max-width:100%;
+    color:#a9bfd5;
+    font-size:10.5px;
+    font-weight:750;
+    line-height:1.1;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+/* Hide only the original visible buttons; their DOM and IDs remain. */
+.input-area > #imageBtn,
+.input-area > #videoBtn,
+.input-area > #voiceBtn,
+.input-area > #documentBtn{
+    display:none !important;
+    position:absolute !important;
+    width:1px !important;
+    min-width:1px !important;
+    height:1px !important;
+    padding:0 !important;
+    margin:0 !important;
+    opacity:0 !important;
+    pointer-events:none !important;
+    overflow:hidden !important;
+}
+
+.input-area{position:fixed !important;overflow:visible !important;}
+
+@media(max-width:480px){
+    .attachment-menu-btn{
+        flex-basis:40px !important;
+        width:40px !important;
+        min-width:40px !important;
+        max-width:40px !important;
+        height:40px !important;
+        min-height:40px !important;
+        border-radius:13px !important;
+        font-size:18px !important;
+    }
+
+    .attachment-tray{
+        left:0;
+        width:min(274px,calc(100vw - 16px));
+        gap:7px;
+        padding:9px;
+        border-radius:18px;
+    }
+
+    .attachment-option{
+        min-height:72px !important;
+        border-radius:14px !important;
+    }
+
+    .attachment-option-icon{
+        width:36px;
+        height:36px;
+        border-radius:12px;
+        font-size:18px;
+    }
+
+    .attachment-option-label{font-size:10px;}
+}
+
+html.lucky-light .attachment-menu-btn{
+    background:linear-gradient(145deg,#e0efff,#cfe3f7) !important;
+    border-color:#c4d9ea !important;
+    color:#205991 !important;
+    box-shadow:0 10px 24px rgba(15,23,42,.10) !important;
+}
+
+html.lucky-light .attachment-tray{
+    background:linear-gradient(160deg,rgba(255,255,255,.985),rgba(241,247,251,.985));
+    border-color:#d1dfe9;
+    box-shadow:0 22px 48px rgba(15,23,42,.16),inset 0 1px 0 rgba(255,255,255,.90);
+}
+
+html.lucky-light .attachment-tray::after{
+    background:#f2f7fb;
+    border-right-color:#d1dfe9;
+    border-bottom-color:#d1dfe9;
+}
+
+html.lucky-light .attachment-option{
+    background:linear-gradient(145deg,#f5f9fc,#eaf2f7) !important;
+    border-color:#d7e2eb !important;
+    color:#20364d !important;
+}
+
+html.lucky-light .attachment-option:hover{
+    background:#ffffff !important;
+    border-color:#bfd1df !important;
+}
+
+html.lucky-light .attachment-option-label{color:#60758a;}
+html.lucky-light .attachment-option-icon{
+    background:#e4eef6;
+    border-color:#d1e0ea;
+}
+
+
+
+/* LUCKY CHAT — IN-CHAT UI V6 */
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V6
+   Compact document cards, tighter message rhythm, and a
+   cleaner attachment tray. UI only; messaging logic untouched.
+   ========================================================= */
+
+/* ---- Conversation rhythm ---- */
+.messages{
+    gap:7px !important;
+    padding-left:11px !important;
+    padding-right:11px !important;
+}
+
+.message-row{
+    gap:7px !important;
+}
+
+.message-row.lucky-group-start{
+    margin-top:3px !important;
+}
+
+.message-row.lucky-group-follow{
+    margin-top:-4px !important;
+}
+
+.message-row.lucky-group-follow .message{
+    box-shadow:0 4px 12px rgba(0,0,0,.13),inset 0 1px 0 rgba(255,255,255,.02) !important;
+}
+
+/* ---- Compact document messages ---- */
+.message:has(.document-message){
+    max-width:min(82%, 340px) !important;
+    padding:8px 9px 7px !important;
+}
+
+.message:has(.document-message) .document-message{
+    width:100% !important;
+    max-width:none !important;
+    min-height:58px !important;
+    margin:0 !important;
+    padding:7px 8px !important;
+    gap:9px !important;
+    border-radius:14px !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 5px 14px rgba(0,0,0,.12) !important;
+}
+
+.document-message-icon{
+    width:38px !important;
+    height:38px !important;
+    min-width:38px !important;
+    border-radius:11px !important;
+    font-size:19px !important;
+}
+
+.document-message-name{
+    font-size:13px !important;
+    line-height:1.2 !important;
+    font-weight:800 !important;
+}
+
+.document-message-meta{
+    margin-top:2px !important;
+    font-size:10px !important;
+    line-height:1.15 !important;
+}
+
+.document-message-download{
+    width:31px !important;
+    height:31px !important;
+    min-width:31px !important;
+    border-radius:10px !important;
+    font-size:16px !important;
+}
+
+/* Keep document timestamps close to the card rather than adding bulk. */
+.message:has(.document-message) .msg-meta{
+    margin-top:4px !important;
+}
+
+/* ---- Cleaner media proportions ---- */
+.message:has(.chat-image),
+.message:has(.video-message),
+.message:has(.lucky-video-shell){
+    padding:8px !important;
+}
+
+.message:has(.chat-image) .msg-text:empty,
+.message:has(.video-message) .msg-text:empty,
+.message:has(.lucky-video-shell) .msg-text:empty{
+    display:none !important;
+}
+
+/* ---- Attachment tray ---- */
+.attachment-tray{
+    left:0 !important;
+    bottom:calc(100% + 15px) !important;
+    width:min(292px, calc(100vw - 18px)) !important;
+    gap:7px !important;
+    padding:8px !important;
+    border-radius:19px !important;
+    transform:translateY(10px) scale(.965) !important;
+    transform-origin:left bottom !important;
+    background:linear-gradient(160deg,rgba(8,25,43,.985),rgba(4,14,25,.99)) !important;
+    border:1px solid rgba(122,188,250,.22) !important;
+    box-shadow:0 24px 54px rgba(0,0,0,.46),inset 0 1px 0 rgba(255,255,255,.055) !important;
+}
+
+.attachment-tray.is-open{
+    transform:translateY(0) scale(1) !important;
+}
+
+.attachment-tray::after{
+    left:15px !important;
+    width:12px !important;
+    height:12px !important;
+}
+
+.attachment-option{
+    min-height:70px !important;
+    padding:8px 4px 7px !important;
+    border-radius:14px !important;
+    gap:5px !important;
+    background:linear-gradient(145deg,rgba(19,47,77,.88),rgba(12,31,52,.88)) !important;
+}
+
+.attachment-option-icon{
+    width:34px !important;
+    height:34px !important;
+    min-width:34px !important;
+    border-radius:11px !important;
+    font-size:17px !important;
+}
+
+.attachment-option-label{
+    font-size:9.5px !important;
+    letter-spacing:.1px !important;
+}
+
+/* ---- Composer ---- */
+.input-area{
+    gap:6px !important;
+    padding-left:8px !important;
+    padding-right:8px !important;
+    background:linear-gradient(180deg,rgba(5,14,25,.88),rgba(3,10,18,.985)) !important;
+    border-top-color:rgba(111,183,245,.16) !important;
+}
+
+.attachment-menu-btn{
+    flex-basis:41px !important;
+    width:41px !important;
+    min-width:41px !important;
+    max-width:41px !important;
+    height:41px !important;
+    min-height:41px !important;
+    border-radius:13px !important;
+}
+
+#messageInput,.composer-field #messageInput{
+    height:45px !important;
+    min-height:45px !important;
+    border-radius:17px !important;
+}
+
+#sendBtn{
+    flex-basis:47px !important;
+    width:47px !important;
+    min-width:47px !important;
+    max-width:47px !important;
+    height:47px !important;
+    min-height:47px !important;
+    border-radius:16px !important;
+}
+
+/* ---- Light mode ---- */
+html.lucky-light .attachment-tray{
+    background:linear-gradient(160deg,rgba(255,255,255,.99),rgba(241,247,251,.99)) !important;
+    border-color:#d0dfea !important;
+    box-shadow:0 24px 54px rgba(15,23,42,.17),inset 0 1px 0 rgba(255,255,255,.95) !important;
+}
+
+html.lucky-light .attachment-tray::after{
+    background:#f2f7fb !important;
+    border-right-color:#d0dfea !important;
+    border-bottom-color:#d0dfea !important;
+}
+
+html.lucky-light .attachment-option{
+    background:linear-gradient(145deg,#f7fafc,#e9f1f6) !important;
+    border-color:#d4e0e9 !important;
+}
+
+html.lucky-light .message:has(.document-message) .document-message{
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 5px 14px rgba(15,23,42,.06) !important;
+}
+
+@media(max-width:480px){
+    .messages{
+        gap:6px !important;
+        padding-left:8px !important;
+        padding-right:8px !important;
+        padding-bottom:112px !important;
+    }
+
+    .message-row.lucky-group-start{
+        margin-top:2px !important;
+    }
+
+    .message-row.lucky-group-follow{
+        margin-top:-5px !important;
+    }
+
+    .message:has(.document-message){
+        max-width:88% !important;
+        padding:7px 8px 6px !important;
+    }
+
+    .message:has(.document-message) .document-message{
+        min-height:54px !important;
+        padding:6px 7px !important;
+        gap:8px !important;
+        border-radius:13px !important;
+    }
+
+    .document-message-icon{
+        width:36px !important;
+        height:36px !important;
+        min-width:36px !important;
+        border-radius:10px !important;
+        font-size:18px !important;
+    }
+
+    .document-message-name{
+        font-size:12.5px !important;
+    }
+
+    .document-message-meta{
+        font-size:9.5px !important;
+    }
+
+    .document-message-download{
+        width:30px !important;
+        height:30px !important;
+        min-width:30px !important;
+    }
+
+    .attachment-tray{
+        width:min(276px,calc(100vw - 16px)) !important;
+        bottom:calc(100% + 13px) !important;
+        gap:6px !important;
+        padding:8px !important;
+        border-radius:18px !important;
+    }
+
+    .attachment-option{
+        min-height:66px !important;
+        border-radius:13px !important;
+    }
+
+    .attachment-option-icon{
+        width:32px !important;
+        height:32px !important;
+        min-width:32px !important;
+        border-radius:10px !important;
+        font-size:16px !important;
+    }
+
+    .attachment-option-label{
+        font-size:9.2px !important;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V7
+   Mobile-first visual refinement based on the current
+   localhost screenshot. UI/CSS only; no messaging logic.
+   ========================================================= */
+
+/* ---------- Typography / surface ---------- */
+:root{
+    --lc-surface-0:#06111d;
+    --lc-surface-1:#0a1828;
+    --lc-surface-2:#10243a;
+    --lc-border:rgba(137,194,242,.16);
+    --lc-soft-border:rgba(137,194,242,.10);
+    --lc-text:#f7fbff;
+    --lc-muted:#91a8bf;
+    --lc-accent:#4f8cff;
+}
+
+.header,
+.messages,
+.input-area,
+.message,
+.document-message,
+.attachment-tray,
+.attachment-option{
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important;
+}
+
+/* ---------- Header: compact floating glass bar ---------- */
+.header{
+    height:72px !important;
+    min-height:72px !important;
+    flex:0 0 72px !important;
+    margin:9px 10px 0 !important;
+    padding:8px 9px !important;
+    gap:9px !important;
+    border:1px solid var(--lc-border) !important;
+    border-radius:24px !important;
+    background:linear-gradient(145deg,rgba(6,18,31,.94),rgba(7,20,34,.90)) !important;
+    box-shadow:
+        0 16px 38px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.045) !important;
+    backdrop-filter:blur(20px) saturate(145%) !important;
+    -webkit-backdrop-filter:blur(20px) saturate(145%) !important;
+    position:relative !important;
+    top:auto !important;
+    z-index:100 !important;
+}
+
+.back-btn,
+.chat-search-btn,
+.voice-call-btn,
+.chat-media-gallery-btn{
+    width:42px !important;
+    height:42px !important;
+    min-width:42px !important;
+    min-height:42px !important;
+    border-radius:14px !important;
+    border:1px solid rgba(129,188,241,.13) !important;
+    background:linear-gradient(145deg,rgba(18,43,69,.88),rgba(9,27,45,.92)) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.035),
+        0 7px 18px rgba(0,0,0,.17) !important;
+}
+
+.header-avatar{
+    width:48px !important;
+    height:48px !important;
+    min-width:48px !important;
+    border-width:2px !important;
+    box-shadow:
+        0 0 0 3px rgba(64,153,255,.12),
+        0 8px 20px rgba(0,0,0,.25) !important;
+}
+
+.header-name{
+    font-family:Inter,ui-sans-serif,system-ui,sans-serif !important;
+    font-size:18px !important;
+    font-weight:800 !important;
+    letter-spacing:-.2px !important;
+}
+
+#online-users{
+    margin-top:2px !important;
+    font-size:11.5px !important;
+    font-weight:700 !important;
+    color:#70d7a5 !important;
+}
+
+/* ---------- Message canvas ---------- */
+.messages{
+    gap:6px !important;
+    padding:10px 10px 112px !important;
+    padding-top:86px !important;
+    scroll-padding-top:90px !important;
+}
+
+.message-row{
+    gap:6px !important;
+}
+
+.msg-avatar{
+    width:34px !important;
+    height:34px !important;
+    min-width:34px !important;
+    border-width:2px !important;
+}
+
+.message{
+    max-width:min(78%, 410px) !important;
+    padding:10px 12px 8px !important;
+    margin-bottom:1px !important;
+    border-radius:18px !important;
+    box-shadow:
+        0 7px 18px rgba(0,0,0,.16),
+        inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+
+.message-own{
+    border-radius:18px 18px 6px 18px !important;
+    background:linear-gradient(145deg,#347cf0,#3f8bff) !important;
+}
+
+.message-other{
+    border-radius:18px 18px 18px 6px !important;
+    background:linear-gradient(145deg,#142b43,#1b344e) !important;
+    border:1px solid rgba(137,194,242,.08) !important;
+}
+
+.msg-text{
+    font-size:15px !important;
+    line-height:1.38 !important;
+    letter-spacing:-.05px !important;
+}
+
+.msg-meta{
+    margin-top:4px !important;
+    gap:4px !important;
+}
+
+.msg-time{
+    font-size:10.5px !important;
+    font-weight:650 !important;
+}
+
+/* ---------- Group rhythm ---------- */
+.message-row.lucky-group-start{
+    margin-top:5px !important;
+}
+
+.message-row.lucky-group-follow{
+    margin-top:-3px !important;
+}
+
+/* ---------- Document messages: single-row compact card ---------- */
+.message:has(.document-message){
+    max-width:min(84%, 340px) !important;
+    padding:6px !important;
+    border-radius:17px !important;
+}
+
+.message:has(.document-message) .document-message{
+    min-height:50px !important;
+    height:50px !important;
+    padding:6px 7px !important;
+    gap:8px !important;
+    border-radius:13px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.045),
+        0 5px 13px rgba(0,0,0,.10) !important;
+}
+
+.message-own:has(.document-message) .document-message{
+    background:rgba(24,80,165,.30) !important;
+    border:1px solid rgba(176,216,255,.16) !important;
+}
+
+.message-other:has(.document-message) .document-message{
+    background:rgba(5,18,31,.72) !important;
+    border:1px solid rgba(136,190,235,.10) !important;
+}
+
+.document-message-icon{
+    width:34px !important;
+    height:34px !important;
+    min-width:34px !important;
+    border-radius:10px !important;
+    font-size:17px !important;
+}
+
+.document-message-info{
+    gap:1px !important;
+}
+
+.document-message-name{
+    max-width:190px !important;
+    font-family:Inter,ui-sans-serif,system-ui,sans-serif !important;
+    font-size:12.5px !important;
+    line-height:1.15 !important;
+    font-weight:750 !important;
+    letter-spacing:-.05px !important;
+}
+
+.document-message-meta{
+    font-size:9.5px !important;
+    line-height:1.15 !important;
+    color:#a1b5c9 !important;
+}
+
+.document-message-download{
+    width:29px !important;
+    height:29px !important;
+    min-width:29px !important;
+    border-radius:9px !important;
+    font-size:15px !important;
+}
+
+/* Document timestamp becomes part of the bubble's lower rhythm */
+.message:has(.document-message) .msg-meta{
+    margin-top:3px !important;
+}
+
+/* ---------- Media cards ---------- */
+.message:has(.chat-image),
+.message:has(.video-message),
+.message:has(.lucky-video-shell),
+.message:has(.voice-message){
+    padding:7px !important;
+}
+
+.chat-image{
+    border-radius:13px !important;
+}
+
+.video-message{
+    border-radius:13px !important;
+}
+
+.voice-message{
+    min-height:54px !important;
+    border-radius:13px !important;
+}
+
+/* ---------- Composer ---------- */
+.input-area{
+    gap:7px !important;
+    padding:8px 9px 10px !important;
+    background:linear-gradient(180deg,rgba(4,14,25,.90),rgba(3,10,18,.99)) !important;
+    border-top:1px solid rgba(112,181,238,.13) !important;
+    box-shadow:0 -14px 30px rgba(0,0,0,.28) !important;
+    backdrop-filter:blur(20px) saturate(145%) !important;
+    -webkit-backdrop-filter:blur(20px) saturate(145%) !important;
+}
+
+.attachment-menu-btn{
+    width:42px !important;
+    min-width:42px !important;
+    max-width:42px !important;
+    flex:0 0 42px !important;
+    height:42px !important;
+    min-height:42px !important;
+    border-radius:14px !important;
+    border:1px solid rgba(123,186,240,.14) !important;
+    background:linear-gradient(145deg,#122e4b,#0b2035) !important;
+    color:#b9daf7 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.035),
+        0 7px 18px rgba(0,0,0,.18) !important;
+}
+
+.attachment-menu-btn.is-open{
+    background:linear-gradient(145deg,#1a4a78,#14385d) !important;
+    border-color:rgba(120,194,255,.28) !important;
+    box-shadow:
+        0 0 0 3px rgba(62,145,235,.09),
+        0 8px 20px rgba(0,0,0,.22) !important;
+}
+
+.composer-field{
+    min-width:0 !important;
+}
+
+#messageInput,
+.composer-field #messageInput{
+    height:46px !important;
+    min-height:46px !important;
+    border-radius:16px !important;
+    padding:0 14px !important;
+    background:linear-gradient(180deg,rgba(15,33,53,.95),rgba(10,25,42,.96)) !important;
+    border:1px solid rgba(125,186,238,.13) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.028),
+        0 6px 18px rgba(0,0,0,.15) !important;
+    color:#edf6ff !important;
+}
+
+#messageInput::placeholder{
+    color:#7890a8 !important;
+}
+
+#messageInput:focus{
+    border-color:rgba(89,164,244,.36) !important;
+    box-shadow:
+        0 0 0 3px rgba(61,142,230,.08),
+        inset 0 1px 0 rgba(255,255,255,.03) !important;
+}
+
+#emojiBtn{
+    right:7px !important;
+    width:28px !important;
+    height:28px !important;
+    min-width:28px !important;
+}
+
+#sendBtn{
+    width:48px !important;
+    min-width:48px !important;
+    max-width:48px !important;
+    flex:0 0 48px !important;
+    height:48px !important;
+    min-height:48px !important;
+    border-radius:16px !important;
+    background:linear-gradient(145deg,#3282f5,#4f9bff) !important;
+    border:1px solid rgba(163,216,255,.18) !important;
+    box-shadow:
+        0 9px 22px rgba(39,125,238,.27),
+        inset 0 1px 0 rgba(255,255,255,.14) !important;
+    font-size:21px !important;
+}
+
+/* ---------- Attachment tray: 2x2 launcher panel ---------- */
+.attachment-tray{
+    left:0 !important;
+    bottom:calc(100% + 11px) !important;
+    width:236px !important;
+    max-width:calc(100vw - 14px) !important;
+    display:grid !important;
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:7px !important;
+    padding:8px !important;
+    border-radius:18px !important;
+    transform:translateY(8px) scale(.96) !important;
+    transform-origin:left bottom !important;
+    background:linear-gradient(155deg,rgba(7,23,39,.985),rgba(3,13,24,.99)) !important;
+    border:1px solid rgba(126,192,245,.19) !important;
+    box-shadow:
+        0 25px 55px rgba(0,0,0,.48),
+        inset 0 1px 0 rgba(255,255,255,.045) !important;
+    backdrop-filter:blur(22px) saturate(155%) !important;
+    -webkit-backdrop-filter:blur(22px) saturate(155%) !important;
+}
+
+.attachment-tray.is-open{
+    transform:translateY(0) scale(1) !important;
+}
+
+.attachment-tray::after{
+    left:13px !important;
+    bottom:-7px !important;
+    width:12px !important;
+    height:12px !important;
+    background:#081b2e !important;
+    border-right:1px solid rgba(126,192,245,.19) !important;
+    border-bottom:1px solid rgba(126,192,245,.19) !important;
+}
+
+.attachment-option{
+    min-height:64px !important;
+    height:64px !important;
+    padding:7px 4px !important;
+    border-radius:13px !important;
+    gap:4px !important;
+    background:linear-gradient(145deg,rgba(17,43,70,.90),rgba(9,29,49,.92)) !important;
+    border:1px solid rgba(126,192,245,.12) !important;
+}
+
+.attachment-option-icon{
+    width:31px !important;
+    height:31px !important;
+    min-width:31px !important;
+    border-radius:10px !important;
+    font-size:16px !important;
+}
+
+.attachment-option-label{
+    font-size:9.5px !important;
+    line-height:1 !important;
+    color:#aac2d9 !important;
+}
+
+/* ---------- Light mode ---------- */
+html.lucky-light .header{
+    background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(246,250,253,.92)) !important;
+    border-color:#d4e0ea !important;
+    box-shadow:0 14px 34px rgba(15,23,42,.08),inset 0 1px 0 #fff !important;
+}
+
+html.lucky-light .back-btn,
+html.lucky-light .chat-search-btn,
+html.lucky-light .voice-call-btn,
+html.lucky-light .chat-media-gallery-btn{
+    background:linear-gradient(145deg,#f5f9fc,#e8f0f6) !important;
+    border-color:#d1dee8 !important;
+}
+
+html.lucky-light .messages{
+    background:
+        radial-gradient(circle at 100% 0%,rgba(59,130,246,.06),transparent 28%),
+        linear-gradient(180deg,#f7fafd,#edf3f8) !important;
+}
+
+html.lucky-light .message-other{
+    background:linear-gradient(145deg,#ffffff,#e9f1f7) !important;
+    border-color:#d2dfe9 !important;
+    color:#172033 !important;
+}
+
+html.lucky-light .message-own{
+    background:linear-gradient(145deg,#4a8ff6,#367bea) !important;
+}
+
+html.lucky-light .message-own:has(.document-message) .document-message{
+    background:rgba(255,255,255,.13) !important;
+    border-color:rgba(255,255,255,.24) !important;
+}
+
+html.lucky-light .message-other:has(.document-message) .document-message{
+    background:rgba(241,247,251,.95) !important;
+    border-color:#d3e0ea !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 5px 13px rgba(15,23,42,.05) !important;
+}
+
+html.lucky-light .document-message-meta{
+    color:#667b8f !important;
+}
+
+html.lucky-light .input-area{
+    background:linear-gradient(180deg,rgba(255,255,255,.93),rgba(247,250,253,.97)) !important;
+    border-top-color:#d7e2eb !important;
+    box-shadow:0 -14px 30px rgba(15,23,42,.07) !important;
+}
+
+html.lucky-light #messageInput{
+    background:linear-gradient(180deg,#f8fbfd,#eef4f8) !important;
+    border-color:#d2dee8 !important;
+    color:#102033 !important;
+}
+
+html.lucky-light #messageInput::placeholder{
+    color:#7a8da0 !important;
+}
+
+html.lucky-light .attachment-menu-btn{
+    background:linear-gradient(145deg,#eaf3fa,#dbeaf5) !important;
+    color:#285a86 !important;
+    border-color:#cbdbe7 !important;
+}
+
+html.lucky-light .attachment-tray{
+    background:linear-gradient(155deg,rgba(255,255,255,.99),rgba(239,246,250,.99)) !important;
+    border-color:#d0dce6 !important;
+    box-shadow:0 25px 55px rgba(15,23,42,.17),inset 0 1px 0 #fff !important;
+}
+
+html.lucky-light .attachment-tray::after{
+    background:#eff6fa !important;
+    border-right-color:#d0dce6 !important;
+    border-bottom-color:#d0dce6 !important;
+}
+
+html.lucky-light .attachment-option{
+    background:linear-gradient(145deg,#f7fafc,#e9f1f6) !important;
+    border-color:#d2dfe8 !important;
+    color:#29425a !important;
+}
+
+html.lucky-light .attachment-option-label{
+    color:#5e7489 !important;
+}
+
+@media(max-width:480px){
+    .header{
+        margin:8px 9px 0 !important;
+        height:70px !important;
+        min-height:70px !important;
+        flex-basis:70px !important;
+        padding:7px 8px !important;
+        border-radius:22px !important;
+    }
+
+    .header-avatar{
+        width:46px !important;
+        height:46px !important;
+        min-width:46px !important;
+    }
+
+    .header-name{font-size:17px !important;}
+
+    .back-btn,
+    .chat-search-btn,
+    .voice-call-btn,
+    .chat-media-gallery-btn{
+        width:40px !important;
+        height:40px !important;
+        min-width:40px !important;
+        min-height:40px !important;
+        border-radius:13px !important;
+    }
+
+    .chat-header-actions{
+        gap:4px !important;
+    }
+
+    .messages{
+        gap:5px !important;
+        padding-left:8px !important;
+        padding-right:8px !important;
+        padding-bottom:108px !important;
+    }
+
+    .message{
+        max-width:80% !important;
+        padding:9px 11px 7px !important;
+    }
+
+    .message:has(.document-message){
+        max-width:86% !important;
+        padding:5px !important;
+    }
+
+    .message:has(.document-message) .document-message{
+        height:48px !important;
+        min-height:48px !important;
+        padding:5px 6px !important;
+        gap:7px !important;
+    }
+
+    .document-message-icon{
+        width:32px !important;
+        height:32px !important;
+        min-width:32px !important;
+        font-size:16px !important;
+    }
+
+    .document-message-name{
+        max-width:155px !important;
+        font-size:12px !important;
+    }
+
+    .document-message-meta{
+        font-size:9px !important;
+    }
+
+    .document-message-download{
+        width:28px !important;
+        height:28px !important;
+        min-width:28px !important;
+    }
+
+    .input-area{
+        gap:6px !important;
+        padding:7px 8px 9px !important;
+    }
+
+    .attachment-menu-btn{
+        width:41px !important;
+        min-width:41px !important;
+        max-width:41px !important;
+        flex-basis:41px !important;
+        height:41px !important;
+        min-height:41px !important;
+    }
+
+    #messageInput,
+    .composer-field #messageInput{
+        height:45px !important;
+        min-height:45px !important;
+        padding:0 12px !important;
+    }
+
+    #sendBtn{
+        width:46px !important;
+        min-width:46px !important;
+        max-width:46px !important;
+        flex-basis:46px !important;
+        height:46px !important;
+        min-height:46px !important;
+        border-radius:15px !important;
+    }
+
+    .attachment-tray{
+        width:226px !important;
+        max-width:calc(100vw - 14px) !important;
+        gap:6px !important;
+        padding:7px !important;
+        border-radius:17px !important;
+    }
+
+    .attachment-option{
+        min-height:61px !important;
+        height:61px !important;
+        border-radius:12px !important;
+    }
+
+    .attachment-option-icon{
+        width:30px !important;
+        height:30px !important;
+        min-width:30px !important;
+        font-size:15px !important;
+    }
+
+    .attachment-option-label{
+        font-size:9px !important;
+    }
+}
+
+/* =========================================================
+   LUCKY CHAT — MOBILE VIEWPORT / COMPOSER CLEARANCE FIX
+   Keeps the fixed composer from covering the newest message.
+   ========================================================= */
+
+html, body{
+    min-height:100%;
+}
+
+body{
+    min-height:100dvh;
+    height:100dvh;
+}
+
+.messages{
+    /*
+      The fixed composer sits above the message canvas. The JS runtime
+      updates --lucky-composer-height whenever the composer/viewport changes.
+      Keep a safe minimum even before the first measurement.
+    */
+    padding-bottom:max(
+        132px,
+        calc(var(--lucky-composer-clearance, var(--lucky-composer-height, 0px) + 52px) + env(safe-area-inset-bottom))
+    ) !important;
+    scroll-padding-bottom:max(
+        132px,
+        calc(var(--lucky-composer-clearance, var(--lucky-composer-height, 0px) + 52px) + env(safe-area-inset-bottom))
+    ) !important;
+}
+
+.messages::after{
+    content:"";
+    display:block;
+    flex:0 0 max(
+        18px,
+        calc(var(--lucky-composer-height, 0px) * .15)
+    );
+    min-height:18px;
+}
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V8
+   Visual-only refinement layer.
+   Existing DOM IDs and messaging logic are preserved.
+   ========================================================= */
+
+/* ---------- Message rhythm ---------- */
+.message-row.lucky-group-follow{
+    margin-top:-5px !important;
+}
+
+.message-row.lucky-group-start{
+    margin-top:1px !important;
+}
+
+.message-row.lucky-group-follow .message{
+    box-shadow:0 5px 15px rgba(0,0,0,.14),inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+
+/* Consecutive document messages should read like a compact file stack. */
+.message-row:has(.document-message) .message{
+    padding:6px 7px 5px !important;
+}
+
+.message-row:has(.document-message) .msg-meta{
+    margin-top:3px !important;
+}
+
+.message:has(.document-message) .document-message{
+    min-height:54px !important;
+    height:54px !important;
+    padding:6px 7px !important;
+    gap:8px !important;
+    margin:0 !important;
+    border-radius:13px !important;
+}
+
+.document-message-icon{
+    width:34px !important;
+    height:34px !important;
+    min-width:34px !important;
+    border-radius:10px !important;
+    font-size:17px !important;
+}
+
+.document-message-name{
+    font-size:12.5px !important;
+    line-height:1.15 !important;
+    font-weight:800 !important;
+}
+
+.document-message-meta{
+    margin-top:2px !important;
+    font-size:9.5px !important;
+    line-height:1 !important;
+}
+
+.document-message-download{
+    width:29px !important;
+    height:29px !important;
+    min-width:29px !important;
+    border-radius:10px !important;
+    font-size:15px !important;
+}
+
+/* ---------- Media cards ---------- */
+.message:has(.chat-image),
+.message:has(.video-message),
+.message:has(.lucky-video-shell){
+    padding:7px !important;
+}
+
+.chat-image{
+    margin:0 0 5px !important;
+    border-radius:15px !important;
+}
+
+/* ---------- Attachment tray: 2 × 2 native-style grid ---------- */
+.attachment-tray{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    width:min(252px,calc(100vw - 18px)) !important;
+    gap:7px !important;
+    padding:8px !important;
+    border-radius:18px !important;
+    bottom:calc(100% + 12px) !important;
+    transform-origin:left bottom !important;
+}
+
+.attachment-option{
+    min-height:64px !important;
+    height:64px !important;
+    padding:7px 5px !important;
+    gap:5px !important;
+    border-radius:13px !important;
+}
+
+.attachment-option-icon{
+    width:32px !important;
+    height:32px !important;
+    min-width:32px !important;
+    border-radius:10px !important;
+    font-size:16px !important;
+}
+
+.attachment-option-label{
+    font-size:9.5px !important;
+    font-weight:800 !important;
+}
+
+.attachment-menu-btn{
+    transition:transform .16s ease,box-shadow .18s ease,filter .18s ease !important;
+}
+
+.attachment-menu-btn.is-open{
+    transform:rotate(45deg) scale(.95) !important;
+}
+
+/* ---------- Composer balance ---------- */
+.input-area{
+    gap:7px !important;
+    padding-left:8px !important;
+    padding-right:8px !important;
+}
+
+.attachment-menu-btn{
+    flex-basis:42px !important;
+    width:42px !important;
+    min-width:42px !important;
+    max-width:42px !important;
+    height:42px !important;
+    min-height:42px !important;
+    border-radius:14px !important;
+}
+
+#messageInput,
+.composer-field #messageInput{
+    height:46px !important;
+    min-height:46px !important;
+    border-radius:18px !important;
+}
+
+#sendBtn{
+    flex-basis:48px !important;
+    width:48px !important;
+    min-width:48px !important;
+    max-width:48px !important;
+    height:48px !important;
+    min-height:48px !important;
+    border-radius:16px !important;
+}
+
+/* ---------- Header refinement ---------- */
+.header{
+    box-shadow:0 16px 36px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+.header .back-btn,
+.header .chat-search-btn,
+.header .voice-call-btn,
+.header .chat-media-gallery-btn{
+    transition:transform .15s ease,background .18s ease,border-color .18s ease,box-shadow .18s ease !important;
+}
+
+/* ---------- Light mode ---------- */
+html.lucky-light .attachment-tray{
+    background:linear-gradient(155deg,rgba(255,255,255,.995),rgba(240,247,251,.995)) !important;
+    border-color:#cddce7 !important;
+}
+
+html.lucky-light .attachment-option{
+    background:linear-gradient(145deg,#f8fbfd,#eaf2f7) !important;
+    border-color:#d1dee8 !important;
+}
+
+html.lucky-light .message:has(.document-message) .document-message{
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.90),0 4px 12px rgba(15,23,42,.055) !important;
+}
+
+@media(max-width:480px){
+    .message-row.lucky-group-follow{
+        margin-top:-4px !important;
+    }
+
+    .message:has(.document-message){
+        max-width:86% !important;
+        padding:6px 7px 5px !important;
+    }
+
+    .message:has(.document-message) .document-message{
+        height:50px !important;
+        min-height:50px !important;
+        border-radius:12px !important;
+    }
+
+    .document-message-icon{
+        width:32px !important;
+        height:32px !important;
+        min-width:32px !important;
+    }
+
+    .document-message-download{
+        width:28px !important;
+        height:28px !important;
+        min-width:28px !important;
+    }
+
+    .attachment-tray{
+        width:min(248px,calc(100vw - 14px)) !important;
+        gap:6px !important;
+        padding:7px !important;
+        bottom:calc(100% + 11px) !important;
+    }
+
+    .attachment-option{
+        min-height:61px !important;
+        height:61px !important;
+    }
+
+    .attachment-menu-btn{
+        flex-basis:40px !important;
+        width:40px !important;
+        min-width:40px !important;
+        max-width:40px !important;
+        height:40px !important;
+        min-height:40px !important;
+    }
+
+    #messageInput,
+    .composer-field #messageInput{
+        height:44px !important;
+        min-height:44px !important;
+        border-radius:17px !important;
+    }
+
+    #sendBtn{
+        flex-basis:46px !important;
+        width:46px !important;
+        min-width:46px !important;
+        max-width:46px !important;
+        height:46px !important;
+        min-height:46px !important;
+    }
+}
+
+
+/* =========================================================
+   LUCKY CHAT — V8 FINAL LATEST-MESSAGE VISIBILITY FIX
+   The newest bubble must always clear the fixed composer.
+   ========================================================= */
+
+.input-area{
+    bottom:0 !important;
+    padding-bottom:max(8px, env(safe-area-inset-bottom)) !important;
+}
+
+@media(max-width:480px){
+    .messages{
+        padding-bottom:max(
+            132px,
+            calc(var(--lucky-composer-clearance, var(--lucky-composer-height, 0px) + 52px) + env(safe-area-inset-bottom))
+        ) !important;
+        scroll-padding-bottom:max(
+            132px,
+            calc(var(--lucky-composer-clearance, var(--lucky-composer-height, 0px) + 52px) + env(safe-area-inset-bottom))
+        ) !important;
+    }
+}
+
+/* =========================================================
+   LUCKY CHAT — V10 BOTTOM MESSAGE VISIBILITY FIX
+   The fixed composer must never cover the newest message.
+   Uses a real flex spacer; existing message layout is preserved.
+   ========================================================= */
+
+.messages{
+    /* The actual clearance is supplied by .lucky-composer-spacer. */
+    padding-bottom:24px !important;
+    scroll-padding-bottom:24px !important;
+}
+
+.messages::after{
+    /* Keep the legacy pseudo-spacer harmless; the runtime spacer is real. */
+    flex:0 0 0 !important;
+    min-height:0 !important;
+    height:0 !important;
+    pointer-events:none !important;
+}
+
+.lucky-composer-spacer{
+    display:block !important;
+    width:100% !important;
+    flex:0 0 var(--lucky-composer-clearance, 132px) !important;
+    min-height:var(--lucky-composer-clearance, 132px) !important;
+    height:var(--lucky-composer-clearance, 132px) !important;
+    padding:0 !important;
+    margin:0 !important;
+    border:0 !important;
+    pointer-events:none !important;
+    visibility:hidden !important;
+}
+
+@media(max-width:480px){
+    .messages{
+        padding-bottom:20px !important;
+        scroll-padding-bottom:20px !important;
+    }
+
+    .lucky-composer-spacer{
+        flex-basis:var(--lucky-composer-clearance, 132px) !important;
+        min-height:var(--lucky-composer-clearance, 132px) !important;
+        height:var(--lucky-composer-clearance, 132px) !important;
+    }
+}
+
+/* =========================================================
+   LUCKY CHAT — V12 COMPOSER GAP REFINEMENT
+   CSS-only: reduce excess empty space below the newest message
+   while keeping the fixed composer fully clear.
+   ========================================================= */
+
+.lucky-composer-spacer{
+    flex-basis:max(
+        88px,
+        calc(var(--lucky-composer-height, 80px) + 18px + env(safe-area-inset-bottom))
+    ) !important;
+    min-height:max(
+        88px,
+        calc(var(--lucky-composer-height, 80px) + 18px + env(safe-area-inset-bottom))
+    ) !important;
+    height:max(
+        88px,
+        calc(var(--lucky-composer-height, 80px) + 18px + env(safe-area-inset-bottom))
+    ) !important;
+}
+
+@media (max-width:480px){
+    .lucky-composer-spacer{
+        flex-basis:max(
+            84px,
+            calc(var(--lucky-composer-height, 80px) + 14px + env(safe-area-inset-bottom))
+        ) !important;
+        min-height:max(
+            84px,
+            calc(var(--lucky-composer-height, 80px) + 14px + env(safe-area-inset-bottom))
+        ) !important;
+        height:max(
+            84px,
+            calc(var(--lucky-composer-height, 80px) + 14px + env(safe-area-inset-bottom))
+        ) !important;
+    }
+}
+
+.messages{
+    scroll-padding-bottom:20px !important;
+}
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V13
+   Mobile viewport polish: keep media clear of the floating
+   header and reduce the excessive gap before the composer.
+   CSS-only; existing DOM and JS behavior are preserved.
+   ========================================================= */
+
+/* Media that is brought into view should stop below the floating header. */
+.message:has(.chat-image),
+.message:has(.video-message),
+.message:has(.lucky-video-shell),
+.message:has(.voice-message),
+.message:has(.document-message){
+    scroll-margin-top:18px !important;
+}
+
+/* The sticky/floating header already consumes layout space. Keep the
+   conversation's own top inset modest so tall media does not feel buried. */
+.messages{
+    scroll-padding-top:18px !important;
+}
+
+/* Let the real runtime spacer do just enough work to clear the composer,
+   without leaving a large visual void after the newest bubble. */
+.lucky-composer-spacer{
+    flex-basis:max(
+        28px,
+        calc(var(--lucky-composer-height, 70px) + 6px)
+    ) !important;
+    min-height:max(
+        28px,
+        calc(var(--lucky-composer-height, 70px) + 6px)
+    ) !important;
+    height:max(
+        28px,
+        calc(var(--lucky-composer-height, 70px) + 6px)
+    ) !important;
+}
+
+.messages{
+    padding-bottom:14px !important;
+    scroll-padding-bottom:14px !important;
+}
+
+@media(max-width:480px){
+    .messages{
+        padding-top:78px !important;
+        padding-bottom:12px !important;
+        scroll-padding-top:12px !important;
+        scroll-padding-bottom:12px !important;
+    }
+
+    .lucky-composer-spacer{
+        flex-basis:max(
+            26px,
+            calc(var(--lucky-composer-height, 66px) + 5px)
+        ) !important;
+        min-height:max(
+            26px,
+            calc(var(--lucky-composer-height, 66px) + 5px)
+        ) !important;
+        height:max(
+            26px,
+            calc(var(--lucky-composer-height, 66px) + 5px)
+        ) !important;
+    }
+
+    /* Give tall media a small visual breathing room under the header. */
+    .message:has(.video-message),
+    .message:has(.lucky-video-shell),
+    .message:has(.chat-image){
+        scroll-margin-top:10px !important;
+    }
+}
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V14
+   Focus: compact modern messenger grouping + smaller composer gap.
+   CSS-only. Existing DOM and JS behavior are preserved.
+   ========================================================= */
+
+/* ---------- Modern glass conversation rhythm ---------- */
+.messages{
+    gap:8px !important;
+    scroll-padding-top:78px !important;
+    scroll-padding-bottom:8px !important;
+}
+
+.message{
+    max-width:min(80%, 430px) !important;
+    padding:10px 13px !important;
+    border-radius:18px !important;
+    box-shadow:
+        0 7px 20px rgba(0,0,0,.16),
+        inset 0 1px 0 rgba(255,255,255,.045) !important;
+}
+
+.message-own{
+    background:
+        linear-gradient(145deg,rgba(59,130,246,.98),rgba(37,99,235,.98)) !important;
+    border-radius:19px 19px 7px 19px !important;
+    box-shadow:
+        0 9px 24px rgba(37,99,235,.20),
+        inset 0 1px 0 rgba(255,255,255,.14) !important;
+}
+
+.message-other{
+    background:
+        linear-gradient(145deg,rgba(30,48,73,.98),rgba(24,38,59,.98)) !important;
+    border-radius:19px 19px 19px 7px !important;
+    border:1px solid rgba(148,163,184,.10) !important;
+    box-shadow:
+        0 8px 22px rgba(0,0,0,.19),
+        inset 0 1px 0 rgba(255,255,255,.045) !important;
+}
+
+.msg-text{
+    font-size:15.5px !important;
+    line-height:1.36 !important;
+}
+
+.msg-meta{
+    margin-top:4px !important;
+    gap:5px !important;
+}
+
+.msg-time{
+    font-size:10.5px !important;
+}
+
+/* ---------- Compact grouped-message language ---------- */
+.message-row{
+    gap:8px !important;
+}
+
+.message-row.lucky-group-follow{
+    margin-top:-6px !important;
+}
+
+.message-row.lucky-group-follow .message-own{
+    border-top-right-radius:13px !important;
+}
+
+.message-row.lucky-group-follow .message-other{
+    border-top-left-radius:13px !important;
+}
+
+.message-row.lucky-group-follow .msg-avatar{
+    opacity:0 !important;
+    pointer-events:none !important;
+}
+
+/* ---------- Refined document card ---------- */
+.message:has(.document-message){
+    padding:6px !important;
+    border-radius:16px !important;
+    max-width:min(82%, 430px) !important;
+}
+
+.message:has(.document-message) .document-message{
+    min-height:52px !important;
+    height:52px !important;
+    padding:6px 7px !important;
+    gap:8px !important;
+    border-radius:13px !important;
+}
+
+.document-message-icon{
+    width:34px !important;
+    height:34px !important;
+    min-width:34px !important;
+    border-radius:10px !important;
+}
+
+.document-message-name{
+    font-size:12.5px !important;
+    font-weight:800 !important;
+}
+
+.document-message-meta{
+    font-size:9.5px !important;
+}
+
+.document-message-download{
+    width:29px !important;
+    height:29px !important;
+    min-width:29px !important;
+    border-radius:10px !important;
+}
+
+/* ---------- Media cards ---------- */
+.message:has(.chat-image),
+.message:has(.video-message),
+.message:has(.lucky-video-shell),
+.message:has(.voice-message){
+    padding:7px !important;
+    border-radius:17px !important;
+}
+
+.chat-image{
+    border-radius:14px !important;
+    margin:0 0 5px !important;
+}
+
+/* ---------- Composer: clean floating control rail ---------- */
+.input-area{
+    padding:8px 9px max(8px, env(safe-area-inset-bottom)) !important;
+    gap:7px !important;
+    background:
+        linear-gradient(180deg,rgba(7,17,31,.96),rgba(7,16,29,.985)) !important;
+    border-top:1px solid rgba(96,165,250,.10) !important;
+    box-shadow:
+        0 -10px 28px rgba(0,0,0,.26),
+        inset 0 1px 0 rgba(255,255,255,.025) !important;
+    backdrop-filter:blur(18px) !important;
+    -webkit-backdrop-filter:blur(18px) !important;
+}
+
+.attachment-menu-btn{
+    width:42px !important;
+    min-width:42px !important;
+    height:42px !important;
+    min-height:42px !important;
+    border-radius:14px !important;
+}
+
+#messageInput,
+.composer-field #messageInput{
+    height:44px !important;
+    min-height:44px !important;
+    border-radius:17px !important;
+}
+
+#sendBtn{
+    width:46px !important;
+    min-width:46px !important;
+    height:46px !important;
+    min-height:46px !important;
+    border-radius:16px !important;
+}
+
+/* ---------- Critical: only a small real bottom spacer ----------
+   The composer itself is fixed, so the spacer should represent only
+   the desired breathing room above it — not the full composer height.
+   This keeps the newest bubble visible without a large empty area. */
+.lucky-composer-spacer{
+    flex-basis:max(
+        24px,
+        calc(var(--lucky-composer-height,80px) - 48px)
+    ) !important;
+    min-height:max(
+        24px,
+        calc(var(--lucky-composer-height,80px) - 48px)
+    ) !important;
+    height:max(
+        24px,
+        calc(var(--lucky-composer-height,80px) - 48px)
+    ) !important;
+}
+
+@media(max-width:480px){
+    .messages{
+        gap:7px !important;
+        padding-top:78px !important;
+        padding-bottom:7px !important;
+        scroll-padding-top:76px !important;
+        scroll-padding-bottom:7px !important;
+    }
+
+    .message{
+        max-width:82% !important;
+        padding:10px 12px !important;
+        border-radius:17px !important;
+    }
+
+    .message-row{
+        gap:7px !important;
+    }
+
+    .message-row.lucky-group-follow{
+        margin-top:-6px !important;
+    }
+
+    .message:has(.document-message){
+        max-width:84% !important;
+        padding:5px 6px 4px !important;
+    }
+
+    .message:has(.document-message) .document-message{
+        height:50px !important;
+        min-height:50px !important;
+        border-radius:12px !important;
+    }
+
+    .document-message-icon{
+        width:32px !important;
+        height:32px !important;
+        min-width:32px !important;
+    }
+
+    .document-message-download{
+        width:28px !important;
+        height:28px !important;
+        min-width:28px !important;
+    }
+
+    .msg-text{
+        font-size:15.5px !important;
+    }
+
+    .input-area{
+        padding-left:8px !important;
+        padding-right:8px !important;
+    }
+
+    .lucky-composer-spacer{
+        flex-basis:max(
+            22px,
+            calc(var(--lucky-composer-height,78px) - 50px)
+        ) !important;
+        min-height:max(
+            22px,
+            calc(var(--lucky-composer-height,78px) - 50px)
+        ) !important;
+        height:max(
+            22px,
+            calc(var(--lucky-composer-height,78px) - 50px)
+        ) !important;
+    }
+}
+
+/* ---------- Light-mode counterparts ---------- */
+html.lucky-light .input-area{
+    background:
+        linear-gradient(180deg,rgba(255,255,255,.96),rgba(246,250,253,.985)) !important;
+    border-top-color:#dce6ef !important;
+    box-shadow:
+        0 -10px 28px rgba(15,23,42,.08),
+        inset 0 1px 0 rgba(255,255,255,.9) !important;
+}
+
+html.lucky-light .message-other,
+html.lucky-light .received{
+    background:linear-gradient(145deg,#f8fbfe,#e7eef5) !important;
+    border-color:#d1deea !important;
+    box-shadow:
+        0 8px 22px rgba(15,23,42,.065),
+        inset 0 1px 0 rgba(255,255,255,.94) !important;
+}
+
+html.lucky-light .message-own,
+html.lucky-light .sent{
+    background:linear-gradient(145deg,#3b82f6,#2563eb) !important;
+    box-shadow:
+        0 9px 24px rgba(37,99,235,.17),
+        inset 0 1px 0 rgba(255,255,255,.16) !important;
+}
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V15
+   Focus: polished layered conversation surface, safer media
+   framing, and a smaller but reliable composer gap.
+   CSS-only; existing DOM and JS behavior are preserved.
+   ========================================================= */
+
+/* ---------- Layered conversation surface ---------- */
+.messages{
+    position:relative !important;
+    isolation:isolate !important;
+    gap:7px !important;
+    padding-top:86px !important;
+    scroll-padding-top:84px !important;
+    scroll-padding-bottom:8px !important;
+}
+
+.messages::before{
+    content:"" !important;
+    position:absolute !important;
+    inset:0 0 auto 0 !important;
+    height:78px !important;
+    pointer-events:none !important;
+    z-index:0 !important;
+    background:linear-gradient(
+        180deg,
+        rgba(5,17,30,.38),
+        rgba(5,17,30,0)
+    ) !important;
+}
+
+.message-row,
+.message{
+    position:relative !important;
+    z-index:1 !important;
+}
+
+/* ---------- Cleaner grouped-message rhythm ---------- */
+.message-row{
+    margin-bottom:0 !important;
+}
+
+.message-row.lucky-group-start{
+    margin-top:3px !important;
+}
+
+.message-row.lucky-group-follow{
+    margin-top:-5px !important;
+}
+
+.message-row.lucky-group-follow .message{
+    box-shadow:
+        0 5px 14px rgba(0,0,0,.13),
+        inset 0 1px 0 rgba(255,255,255,.03) !important;
+}
+
+.message-row.lucky-group-follow .message-own{
+    border-top-right-radius:11px !important;
+}
+
+.message-row.lucky-group-follow .message-other{
+    border-top-left-radius:11px !important;
+}
+
+/* ---------- Modern message surfaces ---------- */
+.message{
+    backdrop-filter:blur(10px) saturate(118%) !important;
+    -webkit-backdrop-filter:blur(10px) saturate(118%) !important;
+    transition:
+        transform .15s ease,
+        box-shadow .18s ease,
+        filter .18s ease !important;
+}
+
+.message:active{
+    filter:brightness(1.035) !important;
+}
+
+.message-own{
+    background:
+        linear-gradient(145deg,rgba(67,139,255,.98),rgba(37,99,235,.98)) !important;
+}
+
+.message-other{
+    background:
+        linear-gradient(145deg,rgba(25,46,70,.98),rgba(18,34,53,.98)) !important;
+}
+
+/* ---------- Media framing ---------- */
+.message:has(.chat-image),
+.message:has(.video-message),
+.message:has(.lucky-video-shell),
+.message:has(.voice-message){
+    width:fit-content !important;
+    max-width:min(82%, 350px) !important;
+    padding:7px !important;
+    border-radius:18px !important;
+}
+
+.video-message{
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 0 5px !important;
+    border-radius:15px !important;
+    overflow:hidden !important;
+    background:#06111d !important;
+    border:1px solid rgba(155,205,249,.10) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.035),
+        0 8px 20px rgba(0,0,0,.20) !important;
+}
+
+.chat-video{
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    height:auto !important;
+    max-height:340px !important;
+    object-fit:contain !important;
+    border-radius:14px !important;
+    background:#000 !important;
+}
+
+.chat-image{
+    width:100% !important;
+    max-width:100% !important;
+    max-height:360px !important;
+    object-fit:cover !important;
+}
+
+/* ---------- Media scroll framing ----------
+   When JS brings a media message into view, leave a clear visual
+   buffer beneath the header rather than aligning it at the very top. */
+.message:has(.chat-image),
+.message:has(.video-message),
+.message:has(.lucky-video-shell),
+.message:has(.voice-message),
+.message:has(.document-message){
+    scroll-margin-top:84px !important;
+}
+
+/* ---------- Smaller, reliable composer gap ---------- */
+.lucky-composer-spacer{
+    flex-basis:max(
+        16px,
+        calc(var(--lucky-composer-height,78px) - 56px)
+    ) !important;
+    min-height:max(
+        16px,
+        calc(var(--lucky-composer-height,78px) - 56px)
+    ) !important;
+    height:max(
+        16px,
+        calc(var(--lucky-composer-height,78px) - 56px)
+    ) !important;
+}
+
+.messages{
+    padding-bottom:8px !important;
+    scroll-padding-bottom:8px !important;
+}
+
+/* ---------- Compact document stack ---------- */
+.message:has(.document-message){
+    max-width:min(84%, 350px) !important;
+    padding:5px !important;
+}
+
+.message:has(.document-message) .document-message{
+    height:50px !important;
+    min-height:50px !important;
+    border-radius:13px !important;
+}
+
+.document-message-name{
+    font-size:12.5px !important;
+    font-weight:800 !important;
+}
+
+.document-message-download{
+    border-radius:9px !important;
+}
+
+/* ---------- Attachment tray polish ---------- */
+.attachment-tray{
+    border-radius:19px !important;
+    box-shadow:
+        0 22px 48px rgba(0,0,0,.44),
+        inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
+.attachment-option{
+    transition:
+        transform .14s ease,
+        filter .14s ease,
+        border-color .16s ease !important;
+}
+
+.attachment-option:active{
+    transform:scale(.97) !important;
+    filter:brightness(1.04) !important;
+}
+
+/* ---------- Mobile refinements ---------- */
+@media(max-width:480px){
+    .messages{
+        gap:6px !important;
+        padding-top:78px !important;
+        padding-bottom:6px !important;
+        scroll-padding-top:74px !important;
+        scroll-padding-bottom:6px !important;
+    }
+
+    .messages::before{
+        height:68px !important;
+    }
+
+    .message-row.lucky-group-follow{
+        margin-top:-5px !important;
+    }
+
+    .message{
+        max-width:82% !important;
+    }
+
+    .message:has(.chat-image),
+    .message:has(.video-message),
+    .message:has(.lucky-video-shell),
+    .message:has(.voice-message){
+        max-width:84% !important;
+        padding:6px !important;
+        border-radius:17px !important;
+    }
+
+    .video-message{
+        border-radius:14px !important;
+    }
+
+    .chat-video{
+        max-width:100% !important;
+        max-height:330px !important;
+        border-radius:13px !important;
+    }
+
+    .chat-image{
+        max-height:330px !important;
+        border-radius:13px !important;
+    }
+
+    .message:has(.chat-image),
+    .message:has(.video-message),
+    .message:has(.lucky-video-shell),
+    .message:has(.voice-message),
+    .message:has(.document-message){
+        scroll-margin-top:76px !important;
+    }
+
+    .lucky-composer-spacer{
+        flex-basis:max(
+            14px,
+            calc(var(--lucky-composer-height,78px) - 58px)
+        ) !important;
+        min-height:max(
+            14px,
+            calc(var(--lucky-composer-height,78px) - 58px)
+        ) !important;
+        height:max(
+            14px,
+            calc(var(--lucky-composer-height,78px) - 58px)
+        ) !important;
+    }
+
+    .attachment-tray{
+        width:224px !important;
+        border-radius:18px !important;
+    }
+}
+
+/* ---------- Light mode ---------- */
+html.lucky-light .messages::before{
+    background:linear-gradient(
+        180deg,
+        rgba(247,250,253,.72),
+        rgba(247,250,253,0)
+    ) !important;
+}
+
+html.lucky-light .video-message{
+    background:#e7eef4 !important;
+    border-color:#d2dee8 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.95),
+        0 8px 20px rgba(15,23,42,.07) !important;
+}

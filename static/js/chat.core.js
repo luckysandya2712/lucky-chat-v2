@@ -41,6 +41,300 @@ const friend = document.body.dataset.chatFriend;
 const messages=document.querySelector(".messages");
 
 /* =========================================================
+   LUCKY CHAT — V11 COMPOSER CLEARANCE / MEDIA-AWARE SCROLL
+   Keeps the newest message fully above the fixed composer.
+   Handles late image/video/audio layout changes on Android.
+   ========================================================= */
+
+let luckyComposerResizeObserver = null;
+let luckyComposerSpacerObserver = null;
+let luckyMessageResizeObserver = null;
+let luckyViewportResizeBound = false;
+let luckyScrollBound = false;
+let luckyScrollFrame = null;
+let luckyUserNearBottom = true;
+
+function isLuckyChatNearBottom(threshold = 120) {
+    if (!messages) return false;
+    const distance =
+        messages.scrollHeight - messages.scrollTop - messages.clientHeight;
+    return distance <= threshold;
+}
+
+function getLuckyComposerClearance() {
+    const composer = document.querySelector(".input-area");
+    if (!composer) return 136;
+
+    const rect = composer.getBoundingClientRect();
+    const viewportHeight =
+        window.visualViewport?.height ||
+        window.innerHeight ||
+        document.documentElement.clientHeight ||
+        rect.bottom;
+
+    // Measure the actual visible overlap between the composer and the
+    // viewport, then add a small breathing room so the last bubble never
+    // touches or disappears underneath the composer.
+    const visibleComposerHeight = Math.max(
+        0,
+        Math.ceil(
+            Math.min(
+                Math.max(rect.bottom, 0),
+                viewportHeight
+            ) - Math.max(rect.top, 0)
+        )
+    );
+
+    const safeArea =
+        parseFloat(
+            getComputedStyle(document.documentElement)
+                .getPropertyValue("padding-bottom")
+        ) || 0;
+
+    return Math.max(
+        136,
+        visibleComposerHeight + 36 + Math.ceil(safeArea)
+    );
+}
+
+function ensureLuckyComposerSpacer(clearance) {
+    if (!messages) return null;
+
+    let spacer = messages.querySelector(
+        "[data-lucky-composer-spacer='1']"
+    );
+
+    if (!spacer) {
+        spacer = document.createElement("div");
+        spacer.dataset.luckyComposerSpacer = "1";
+        spacer.setAttribute("aria-hidden", "true");
+        spacer.className = "lucky-composer-spacer";
+    }
+
+    const size = Math.max(136, Math.ceil(clearance));
+
+    spacer.style.height = `${size}px`;
+    spacer.style.minHeight = `${size}px`;
+    spacer.style.flex = `0 0 ${size}px`;
+
+    // The spacer must always remain the final child, including after a
+    // message/media render path appends another DOM node.
+    if (messages.lastElementChild !== spacer) {
+        messages.appendChild(spacer);
+    }
+
+    return spacer;
+}
+
+function scrollLuckyToLatestNow() {
+    if (!messages) return;
+
+    const clearance = getLuckyComposerClearance();
+    ensureLuckyComposerSpacer(clearance);
+
+    // Scroll to the mathematical end of the scroll container. The real
+    // spacer gives the newest message a guaranteed clear area above the
+    // fixed composer.
+    messages.scrollTop = Math.max(
+        0,
+        messages.scrollHeight - messages.clientHeight
+    );
+}
+
+function scheduleLuckyLatestScroll(force = false) {
+    if (!messages) return;
+    if (!force && !luckyUserNearBottom) return;
+
+    if (luckyScrollFrame) {
+        cancelAnimationFrame(luckyScrollFrame);
+    }
+
+    // Wait for browser layout/media sizing to settle. A single RAF can occur
+    // before an image/video has contributed its final height.
+    luckyScrollFrame = requestAnimationFrame(() => {
+        luckyScrollFrame = null;
+        scrollLuckyToLatestNow();
+
+        requestAnimationFrame(() => {
+            if (force || luckyUserNearBottom) {
+                scrollLuckyToLatestNow();
+
+                requestAnimationFrame(() => {
+                    if (force || luckyUserNearBottom) {
+                        scrollLuckyToLatestNow();
+                    }
+                });
+            }
+        });
+    });
+}
+
+function updateLuckyComposerClearance(scrollToBottom = false) {
+    if (!messages) return;
+
+    const clearance = getLuckyComposerClearance();
+
+    messages.style.setProperty(
+        "--lucky-composer-height",
+        `${Math.max(0, clearance - 36)}px`
+    );
+    messages.style.setProperty(
+        "--lucky-composer-clearance",
+        `${clearance}px`
+    );
+
+    messages.style.scrollPaddingBottom = `${clearance}px`;
+
+    ensureLuckyComposerSpacer(clearance);
+
+    if (scrollToBottom) {
+        luckyUserNearBottom = true;
+        scheduleLuckyLatestScroll(true);
+    }
+}
+
+function observeLuckyMessageRows() {
+    if (!messages || !luckyMessageResizeObserver) return;
+
+    messages.querySelectorAll(":scope > .message-row").forEach(row => {
+        if (row.dataset.luckyResizeObserved === "1") return;
+
+        row.dataset.luckyResizeObserved = "1";
+        luckyMessageResizeObserver.observe(row);
+
+        row.querySelectorAll("img, video, audio").forEach(media => {
+            if (media.dataset.luckyResizeObserved === "1") return;
+            media.dataset.luckyResizeObserved = "1";
+            luckyMessageResizeObserver.observe(media);
+        });
+    });
+}
+
+function bindLuckyComposerClearance() {
+    const composer = document.querySelector(".input-area");
+    if (
+        !messages ||
+        !composer ||
+        luckyViewportResizeBound
+    ) {
+        return;
+    }
+
+    luckyViewportResizeBound = true;
+
+    if (!luckyScrollBound) {
+        luckyScrollBound = true;
+
+        messages.addEventListener(
+            "scroll",
+            () => {
+                luckyUserNearBottom = isLuckyChatNearBottom(120);
+            },
+            { passive: true }
+        );
+    }
+
+    if (typeof ResizeObserver === "function") {
+        luckyMessageResizeObserver = new ResizeObserver(() => {
+            // The message was already in view before the media/layout resize.
+            // If the user is still at the conversation bottom, preserve that
+            // state and restore the latest-message position after layout.
+            if (luckyUserNearBottom) {
+                updateLuckyComposerClearance(false);
+                scheduleLuckyLatestScroll(false);
+            }
+        });
+
+        observeLuckyMessageRows();
+    }
+
+    if (typeof MutationObserver === "function") {
+        luckyComposerSpacerObserver = new MutationObserver(() => {
+            const clearance = getLuckyComposerClearance();
+            ensureLuckyComposerSpacer(clearance);
+            observeLuckyMessageRows();
+
+            if (luckyUserNearBottom) {
+                scheduleLuckyLatestScroll(false);
+            }
+        });
+
+        luckyComposerSpacerObserver.observe(
+            messages,
+            { childList: true }
+        );
+    }
+
+    if (typeof ResizeObserver === "function") {
+        luckyComposerResizeObserver = new ResizeObserver(() => {
+            const keepBottom = isLuckyChatNearBottom(180);
+            luckyUserNearBottom = keepBottom;
+
+            updateLuckyComposerClearance(false);
+
+            if (keepBottom) {
+                scheduleLuckyLatestScroll(false);
+            }
+        });
+
+        luckyComposerResizeObserver.observe(composer);
+    }
+
+    // Capture media loading events even when a media element's box size
+    // changes too late for the row observer to catch the transition.
+    const mediaLoadHandler = () => {
+        if (!luckyUserNearBottom) return;
+        updateLuckyComposerClearance(false);
+        scheduleLuckyLatestScroll(false);
+    };
+
+    messages.addEventListener("load", mediaLoadHandler, true);
+    messages.addEventListener("loadedmetadata", mediaLoadHandler, true);
+    messages.addEventListener("canplay", mediaLoadHandler, true);
+
+    window.addEventListener(
+        "resize",
+        () => {
+            const keepBottom = isLuckyChatNearBottom(180);
+            luckyUserNearBottom = keepBottom;
+            updateLuckyComposerClearance(false);
+
+            if (keepBottom) {
+                scheduleLuckyLatestScroll(false);
+            }
+        },
+        { passive: true }
+    );
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener(
+            "resize",
+            () => {
+                const keepBottom = isLuckyChatNearBottom(180);
+                luckyUserNearBottom = keepBottom;
+                updateLuckyComposerClearance(false);
+
+                if (keepBottom) {
+                    scheduleLuckyLatestScroll(false);
+                }
+            },
+            { passive: true }
+        );
+
+        window.visualViewport.addEventListener(
+            "scroll",
+            () => {
+                updateLuckyComposerClearance(false);
+            },
+            { passive: true }
+        );
+    }
+
+    luckyUserNearBottom = true;
+    updateLuckyComposerClearance(false);
+}
+
+/* =========================================================
    Lucky Chat — wallpaper runtime migrated from chat.html
    ========================================================= */
 (function(){
@@ -1373,6 +1667,9 @@ async function loadMessages() {
     try {
         window.dispatchEvent(new CustomEvent("lucky-history-loaded"));
     } catch (_) {}
+
+    bindLuckyComposerClearance();
+    updateLuckyComposerClearance(true);
 }
 
 function flushPendingReceiptAcknowledgements() {
@@ -2390,6 +2687,8 @@ async function initChatCore() {
     updateFriendStatus();
     bindImageAndSendControls();
     bindStaticChatInteractions();
+    bindLuckyComposerClearance();
+    updateLuckyComposerClearance(true);
 }
 
 function bindImageAndSendControls() {
@@ -3882,7 +4181,7 @@ function addMessage(msg){
 
     renderPinnedBadge(msg.id);
     renderPinnedBar();
-    messages.scrollTop = messages.scrollHeight;
+    updateLuckyComposerClearance(true);
 }
 
 window.addMessage = addMessage;
