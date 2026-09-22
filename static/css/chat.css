@@ -11609,3 +11609,41 @@ html.lucky-light .video-message{
         inset 0 1px 0 rgba(255,255,255,.95),
         0 8px 20px rgba(15,23,42,.07) !important;
 }
+
+/* =========================================================
+   LUCKY CHAT — IN-CHAT UI V17
+   Composer clearance correction.
+   The spacer now matches the measured fixed-composer clearance exactly,
+   leaving only a small breathing gap below the latest message.
+   ========================================================= */
+
+.messages{
+    padding-bottom:0 !important;
+    scroll-padding-bottom:var(--lucky-composer-clearance,88px) !important;
+}
+
+.lucky-composer-spacer{
+    display:block !important;
+    width:100% !important;
+    flex:0 0 var(--lucky-composer-clearance,88px) !important;
+    min-height:var(--lucky-composer-clearance,88px) !important;
+    height:var(--lucky-composer-clearance,88px) !important;
+    margin:0 !important;
+    padding:0 !important;
+    border:0 !important;
+    pointer-events:none !important;
+    visibility:hidden !important;
+}
+
+@media(max-width:480px){
+    .messages{
+        padding-bottom:0 !important;
+        scroll-padding-bottom:var(--lucky-composer-clearance,88px) !important;
+    }
+
+    .lucky-composer-spacer{
+        flex-basis:var(--lucky-composer-clearance,88px) !important;
+        min-height:var(--lucky-composer-clearance,88px) !important;
+        height:var(--lucky-composer-clearance,88px) !important;
+    }
+}

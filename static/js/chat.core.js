@@ -63,38 +63,37 @@ function isLuckyChatNearBottom(threshold = 120) {
 
 function getLuckyComposerClearance() {
     const composer = document.querySelector(".input-area");
-    if (!composer) return 136;
+    if (!composer) return 88;
 
     const rect = composer.getBoundingClientRect();
-    const viewportHeight =
-        window.visualViewport?.height ||
-        window.innerHeight ||
-        document.documentElement.clientHeight ||
-        rect.bottom;
-
-    // Measure the actual visible overlap between the composer and the
-    // viewport, then add a small breathing room so the last bubble never
-    // touches or disappears underneath the composer.
-    const visibleComposerHeight = Math.max(
-        0,
-        Math.ceil(
-            Math.min(
-                Math.max(rect.bottom, 0),
-                viewportHeight
-            ) - Math.max(rect.top, 0)
-        )
-    );
-
     const safeArea =
         parseFloat(
             getComputedStyle(document.documentElement)
                 .getPropertyValue("padding-bottom")
         ) || 0;
 
-    return Math.max(
-        136,
-        visibleComposerHeight + 36 + Math.ceil(safeArea)
-    );
+    // The composer is position:fixed, so its bounding-box height is the
+    // reliable amount of the scroll viewport it covers. Avoid comparing that
+    // box with visualViewport coordinates; on Android those coordinate spaces
+    // can differ while the browser bars are opening/closing.
+    const composerHeight = Math.max(0, Math.ceil(rect.height));
+
+    // Keep only a small breathing margin beyond the real overlay.
+    return Math.max(88, composerHeight + 12 + Math.ceil(safeArea));
+}
+
+function getLuckyLastContentRow() {
+    if (!messages) return null;
+
+    const children = Array.from(messages.children);
+    for (let i = children.length - 1; i >= 0; i -= 1) {
+        const child = children[i];
+        if (child?.dataset?.luckyComposerSpacer === "1") continue;
+        if (child.classList?.contains("message-row")) return child;
+        if (child.querySelector?.(".message")) return child;
+    }
+
+    return null;
 }
 
 function ensureLuckyComposerSpacer(clearance) {
@@ -111,7 +110,10 @@ function ensureLuckyComposerSpacer(clearance) {
         spacer.className = "lucky-composer-spacer";
     }
 
-    const size = Math.max(136, Math.ceil(clearance));
+    // Use the measured clearance directly. The old 136px floor could create
+    // an oversized tail, while the CSS variable already provides the mobile
+    // safety margin.
+    const size = Math.max(88, Math.ceil(clearance));
 
     spacer.style.height = `${size}px`;
     spacer.style.minHeight = `${size}px`;
@@ -132,13 +134,36 @@ function scrollLuckyToLatestNow() {
     const clearance = getLuckyComposerClearance();
     ensureLuckyComposerSpacer(clearance);
 
-    // Scroll to the mathematical end of the scroll container. The real
-    // spacer gives the newest message a guaranteed clear area above the
-    // fixed composer.
+    // First reach the mathematical end. Then perform a geometry check using
+    // getBoundingClientRect() for both the newest message and the fixed
+    // composer. These rects share the same coordinate space, so this final
+    // correction remains reliable on Android even when visualViewport/layout
+    // viewport dimensions differ.
     messages.scrollTop = Math.max(
         0,
         messages.scrollHeight - messages.clientHeight
     );
+
+    const lastRow = getLuckyLastContentRow();
+    const composer = document.querySelector(".input-area");
+    if (!lastRow || !composer) return;
+
+    const lastRect = lastRow.getBoundingClientRect();
+    const composerRect = composer.getBoundingClientRect();
+    const breathingRoom = 10;
+    const desiredBottom = composerRect.top - breathingRoom;
+    const overlap = lastRect.bottom - desiredBottom;
+
+    if (overlap > 0.5) {
+        const maxScrollTop = Math.max(
+            0,
+            messages.scrollHeight - messages.clientHeight
+        );
+        messages.scrollTop = Math.min(
+            maxScrollTop,
+            messages.scrollTop + overlap
+        );
+    }
 }
 
 function scheduleLuckyLatestScroll(force = false) {
@@ -174,9 +199,11 @@ function updateLuckyComposerClearance(scrollToBottom = false) {
 
     const clearance = getLuckyComposerClearance();
 
+    // Expose the measured clearance directly so CSS cannot accidentally
+    // shrink the real spacer with a second subtraction.
     messages.style.setProperty(
         "--lucky-composer-height",
-        `${Math.max(0, clearance - 36)}px`
+        `${Math.max(0, clearance)}px`
     );
     messages.style.setProperty(
         "--lucky-composer-clearance",
