@@ -4787,7 +4787,14 @@ async function sendForward(target){
     const forwardableMediaTypes = new Set(["image", "video", "audio", "document"]);
     const hasAttachment = !!mediaUrl && forwardableMediaTypes.has(mediaType);
 
-    if (!text && !hasAttachment) return;
+    const sourceMessageId = Number(forwardData.id || 0) || null;
+
+    // A media-only history record can expose a generated preview (for example
+    // "📄 requirements.txt") without carrying attachment fields on the local
+    // message object. When the original message id is available, let the
+    // backend resolve the authoritative attachment metadata instead of aborting
+    // here.
+    if (!text && !hasAttachment && !sourceMessageId) return;
 
     let encryptedText = "";
     try {
@@ -4823,19 +4830,27 @@ async function sendForward(target){
         return;
     }
 
-    if(!sendSocket({
-        type:"forward_message",
-        text:encryptedText,
-        target:target,
-        forwarded:true,
-        media_url: mediaUrl || null,
-        media_type: mediaType || null,
-        media_duration: Number(forwardData.media_duration || 0) || 0,
-        media_waveform: forwardData.media_waveform || null,
-        media_name: forwardData.media_name || null,
-        media_size: Number(forwardData.media_size || 0) || 0,
-        source_message_id: Number(forwardData.id || 0) || null
-    })){
+    let sent = false;
+    try {
+        sent = sendSocket({
+            type:"forward_message",
+            text:encryptedText,
+            target:target,
+            forwarded:true,
+            media_url: mediaUrl || null,
+            media_type: mediaType || null,
+            media_duration: Number(forwardData.media_duration || 0) || 0,
+            media_waveform: forwardData.media_waveform || null,
+            media_name: forwardData.media_name || null,
+            media_size: Number(forwardData.media_size || 0) || 0,
+            source_message_id: sourceMessageId
+        });
+    } catch (error) {
+        console.error("FORWARD SEND ERROR:", error);
+        sent = false;
+    }
+
+    if(!sent){
         alert("Connection lost. Please try again.");
         return;
     }
