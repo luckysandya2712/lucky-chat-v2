@@ -492,6 +492,21 @@ def _payload_is_forward(data):
     return False
 
 
+def _normalize_forward_media_type(media_type, media_url=""):
+    """Normalize legacy video MIME/type variants to Lucky Chat's canonical type."""
+    media_type = str(media_type or "").strip().lower()
+    media_url = str(media_url or "").strip().lower()
+    clean_url = media_url.split("#", 1)[0].split("?", 1)[0]
+
+    if media_type == "video" or media_type.startswith("video/"):
+        return "video"
+
+    if not media_type and Path(clean_url).suffix.lower() in {".mp4", ".m4v", ".webm", ".ogv", ".ogg"}:
+        return "video"
+
+    return media_type
+
+
 def _chat_preview_text(message) -> str:
     """Dashboard/chat list preview that works for media-only messages."""
     if message is None:
@@ -1726,7 +1741,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     source_message_id = None
 
                 media_url = str(data.get("media_url") or "").strip()
-                media_type = str(data.get("media_type") or "").strip().lower()
+                media_type = _normalize_forward_media_type(
+                    data.get("media_type"),
+                    media_url,
+                )
                 forwardable_media_types = {"image", "video", "audio", "document"}
                 has_attachment = bool(
                     media_url and media_type in forwardable_media_types
@@ -1783,10 +1801,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         if source_message is not None
                         else (media_url or None)
                     )
-                    source_media_type = (
+                    source_media_type = _normalize_forward_media_type(
                         getattr(source_message, "media_type", None)
                         if source_message is not None
-                        else (media_type or None)
+                        else media_type,
+                        getattr(source_message, "media_url", None)
+                        if source_message is not None
+                        else media_url,
                     )
                     source_media_duration = (
                         getattr(source_message, "media_duration", 0)
@@ -1834,7 +1855,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         forwarded=1,
                         reply_to=None,
                         media_url=source_media_url,
-                        media_type=str(source_media_type or "").strip().lower() or None,
+                        media_type=_normalize_forward_media_type(
+                            source_media_type,
+                            source_media_url,
+                        ) or None,
                         media_duration=int(source_media_duration or 0),
                         media_waveform=source_media_waveform,
                         media_name=source_media_name,

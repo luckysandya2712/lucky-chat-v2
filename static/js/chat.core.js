@@ -4673,11 +4673,17 @@ async function forwardMessage(){
         return;
     }
 
+    const forwardMediaUrl = String(msg.media_url || "").trim();
+    const forwardMediaType = normalizeForwardMediaType(
+        msg.media_type,
+        forwardMediaUrl
+    );
+
     window.forwardMessageData = {
         id: msg.id,
         text: msg.text || "",
-        media_url: msg.media_url || null,
-        media_type: msg.media_type || null,
+        media_url: forwardMediaUrl || null,
+        media_type: forwardMediaType || null,
         media_duration: msg.media_duration || 0,
         media_waveform: msg.media_waveform || null,
         media_name: msg.media_name || null,
@@ -4776,6 +4782,25 @@ function getForwardMessageText(forwardData) {
     return text;
 }
 
+function normalizeForwardMediaType(mediaType, mediaUrl) {
+    const type = String(mediaType || "").trim().toLowerCase();
+    const url = String(mediaUrl || "").trim().toLowerCase();
+    const cleanUrl = url.split("#", 1)[0].split("?", 1)[0];
+
+    if (type === "video" || type.startsWith("video/")) {
+        return "video";
+    }
+
+    if (
+        !type &&
+        /\.(mp4|m4v|webm|ogv|ogg)$/.test(cleanUrl)
+    ) {
+        return "video";
+    }
+
+    return type;
+}
+
 async function sendForward(target){
 
     if(!window.forwardMessageData) return;
@@ -4783,7 +4808,10 @@ async function sendForward(target){
     const forwardData = window.forwardMessageData;
     const text = getForwardMessageText(forwardData);
     const mediaUrl = String(forwardData.media_url || "").trim();
-    const mediaType = String(forwardData.media_type || "").trim().toLowerCase();
+    const mediaType = normalizeForwardMediaType(
+        forwardData.media_type,
+        mediaUrl
+    );
     const forwardableMediaTypes = new Set(["image", "video", "audio", "document"]);
     const hasAttachment = !!mediaUrl && forwardableMediaTypes.has(mediaType);
 
