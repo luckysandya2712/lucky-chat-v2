@@ -516,6 +516,41 @@ def _chat_preview_text(message) -> str:
     return text
 
 
+def _dashboard_preview_text(message) -> str:
+    """Return the dashboard preview payload without destroying E2EE ciphertext.
+
+    The dashboard client decrypts LCE1/LCE2 values locally. The normal chat
+    serializer intentionally keeps its existing safe "New message" placeholder,
+    so only /dashboard-data receives the ciphertext required for local preview
+    decryption. Media-only messages keep their human-readable preview labels.
+    """
+    if message is None:
+        return ""
+
+    media_type = str(getattr(message, "media_type", "") or "").strip().lower()
+    media_name = str(getattr(message, "media_name", "") or "").strip()
+    text = str(getattr(message, "text", "") or "")
+
+    if media_type == "document" or media_name:
+        return "📄 " + (media_name or "Document")
+    if media_type == "image":
+        return "📷 Photo"
+    if media_type == "video":
+        return "🎬 Video"
+    if media_type == "audio":
+        return "🎙️ Voice message"
+    if media_type == "call":
+        return "📞 Voice call"
+
+    # Pass encrypted chat text through unchanged. It is still protected by
+    # HTTPS/session authentication in transit, and the dashboard client needs
+    # the ciphertext in order to decrypt it locally with LuckyCrypto.
+    if text.startswith("LCE1:") or text.startswith("LCE2:"):
+        return text
+
+    return text
+
+
 def _serialize_chat_message(m) -> dict:
     """JSON shape used by /messages and the chat-page bootstrap payload."""
     media_type = str(getattr(m, "media_type", "") or "").strip().lower()
@@ -2346,7 +2381,7 @@ async def dashboard_data(request: Request):
                 "display_name": user.display_name or user.username,
                 "profile": user.profile_picture,
                 "unread": unread_by_user.get(user.username, 0),
-                "last": _chat_preview_text(last) if last else "",
+                "last": _dashboard_preview_text(last) if last else "",
                 "sender": last.sender if last else "",
                 "time": last.timestamp if last else "",
                 "id": last.id if last else 0,
