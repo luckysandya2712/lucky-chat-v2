@@ -4676,12 +4676,12 @@ async function forwardMessage(){
     window.forwardMessageData = {
         id: msg.id,
         text: msg.text || "",
-        media_url: msg.media_url || msg.document_url || msg.file_url || msg.url || null,
+        media_url: msg.media_url || null,
         media_type: msg.media_type || null,
         media_duration: msg.media_duration || 0,
         media_waveform: msg.media_waveform || null,
-        media_name: msg.media_name || msg.document_name || msg.file_name || null,
-        media_size: msg.media_size || msg.document_size || msg.file_size || msg.size || 0
+        media_name: msg.media_name || null,
+        media_size: msg.media_size || 0
     };
 
     hideMessageMenu();
@@ -4739,44 +4739,55 @@ async function forwardMessage(){
     }
 }
 
+function getForwardMessageText(forwardData) {
+    const text = String(forwardData?.text || "").trim();
+    if (!text) return "";
+
+    // Media-only messages receive a human-readable preview string from the
+    // history serializer (for example, "📄 requirements.txt" or "📷 Photo").
+    // That preview is UI metadata, not a user caption, and must not enter the
+    // E2EE forwarding path. Doing so can block forwarding while the crypto
+    // layer tries to prepare keys for text that was never actually sent.
+    const mediaUrl = String(forwardData?.media_url || "").trim();
+    const mediaType = String(forwardData?.media_type || "").trim().toLowerCase();
+    const mediaName = String(forwardData?.media_name || "").trim();
+
+    if (mediaUrl) {
+        const generatedPreviewByType = {
+            image: "📷 Photo",
+            video: "🎬 Video",
+            audio: "🎙️ Voice message"
+        };
+
+        if (generatedPreviewByType[mediaType] === text) {
+            return "";
+        }
+
+        if (mediaType === "document") {
+            if (
+                text === "📄 Document" ||
+                (mediaName && text === `📄 ${mediaName}`)
+            ) {
+                return "";
+            }
+        }
+    }
+
+    return text;
+}
+
 async function sendForward(target){
 
     if(!window.forwardMessageData) return;
 
     const forwardData = window.forwardMessageData;
-    const rawText = String(forwardData.text || "").trim();
-    const mediaUrl = String(
-        forwardData.media_url ||
-        forwardData.document_url ||
-        forwardData.file_url ||
-        forwardData.url ||
-        ""
-    ).trim();
+    const text = getForwardMessageText(forwardData);
+    const mediaUrl = String(forwardData.media_url || "").trim();
     const mediaType = String(forwardData.media_type || "").trim().toLowerCase();
     const forwardableMediaTypes = new Set(["image", "video", "audio", "document"]);
     const hasAttachment = !!mediaUrl && forwardableMediaTypes.has(mediaType);
 
-    // Attachment-only messages are valid. Document cards may carry a
-    // generated "📄 filename" preview rather than a real caption; do not
-    // force that preview through the encrypted text-forward path.
-    const text =
-        hasAttachment && mediaType === "document" &&
-        (
-            !rawText ||
-            rawText === String(forwardData.media_name || "").trim() ||
-            rawText.startsWith("📄")
-        )
-            ? ""
-            : rawText;
-
-    if (!text && !hasAttachment) {
-        const usersBox = document.getElementById("forwardUsers");
-        if (usersBox) {
-            usersBox.innerHTML =
-                '<div style="padding:20px;color:#fca5a5;text-align:center;">This message cannot be forwarded.</div>';
-        }
-        return;
-    }
+    if (!text && !hasAttachment) return;
 
     let encryptedText = "";
     try {
@@ -4817,13 +4828,13 @@ async function sendForward(target){
         text:encryptedText,
         target:target,
         forwarded:true,
-        source_message_id: Number(forwardData.id) > 0 ? Number(forwardData.id) : null,
         media_url: mediaUrl || null,
         media_type: mediaType || null,
         media_duration: Number(forwardData.media_duration || 0) || 0,
         media_waveform: forwardData.media_waveform || null,
         media_name: forwardData.media_name || null,
-        media_size: Number(forwardData.media_size || 0) || 0
+        media_size: Number(forwardData.media_size || 0) || 0,
+        source_message_id: Number(forwardData.id || 0) || null
     })){
         alert("Connection lost. Please try again.");
         return;
