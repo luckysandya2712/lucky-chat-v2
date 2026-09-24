@@ -1721,7 +1721,7 @@ async function loadMessages() {
     data.forEach(msg => {
         if (msg.sender !== username && !deletedMessages[msg.id]) {
             if (!msg.delivered) pendingDeliveredIds.add(Number(msg.id));
-            if (isReadReceiptsEnabled() && !msg.read) {
+            if (!document.hidden && isReadReceiptsEnabled() && !msg.read) {
                 pendingReadIds.add(Number(msg.id));
             }
         }
@@ -1819,6 +1819,23 @@ async function loadMessages() {
     }
 }
 
+function queueVisibleReadReceipts() {
+    if (document.hidden || !isReadReceiptsEnabled()) {
+        return;
+    }
+
+    document.querySelectorAll("[data-msg]").forEach(row => {
+        const id = Number(row.dataset.msg);
+        if (!Number.isFinite(id) || id <= 0) return;
+
+        const msg = messageMap[id];
+        if (!msg || msg.sender === username || msg.read) return;
+        if (deletedMessages[id]) return;
+
+        pendingReadIds.add(id);
+    });
+}
+
 function flushPendingReceiptAcknowledgements() {
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -1865,7 +1882,7 @@ function queueMessageReceipt(id) {
     const numericId = Number(id);
     pendingDeliveredIds.add(numericId);
 
-    if (friend && isReadReceiptsEnabled()) {
+    if (friend && !document.hidden && isReadReceiptsEnabled()) {
         pendingReadIds.add(numericId);
     }
 
@@ -2470,7 +2487,11 @@ function reviveSocketIfNeeded(){
 }
 
 document.addEventListener("visibilitychange",()=>{
-    if(!document.hidden) reviveSocketIfNeeded();
+    if(!document.hidden){
+        queueVisibleReadReceipts();
+        flushPendingReceiptAcknowledgements();
+        reviveSocketIfNeeded();
+    }
 });
 
 window.addEventListener("online",reviveSocketIfNeeded);
@@ -3098,16 +3119,7 @@ window.addEventListener("lucky-setting-changed", event => {
     if (event.detail.value === false) {
         pendingReadIds.clear();
     } else {
-        // Rebuild read acknowledgements for currently received messages.
-        document.querySelectorAll("[data-msg]").forEach(row => {
-            const id = Number(row.dataset.msg);
-            if (!Number.isNaN(id) && id > 0) {
-                const msg = messageMap[id];
-                if (msg && msg.sender !== username) {
-                    pendingReadIds.add(id);
-                }
-            }
-        });
+        queueVisibleReadReceipts();
     }
 
     flushPendingReceiptAcknowledgements();
