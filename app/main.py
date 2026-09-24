@@ -552,10 +552,10 @@ def _serialize_chat_message(m) -> dict:
     }
 
 
-def _conversation_messages(db, username: str, friend: str):
-    """Load every message in a 1:1 chat, including document rows."""
-    current_user = resolve_user_by_username(db, username)
-    friend_user = resolve_user_by_username(db, friend)
+def _conversation_messages(db, username: str, friend: str, current_user=None, friend_user=None):
+    """Load every message in a 1:1 chat using database-side filtering."""
+    current_user = current_user or resolve_user_by_username(db, username)
+    friend_user = friend_user or resolve_user_by_username(db, friend)
 
     names_me = []
     names_friend = []
@@ -574,27 +574,26 @@ def _conversation_messages(db, username: str, friend: str):
         if clean and clean not in names_friend:
             names_friend.append(clean)
 
-    me_fold = {name.casefold() for name in names_me}
-    friend_fold = {name.casefold() for name in names_friend}
-
-    rows = db.query(Message).filter(
-        or_(
-            Message.sender.in_(names_me + names_friend),
-            Message.receiver.in_(names_me + names_friend),
+    # Filter the conversation in SQL instead of loading the entire Message
+    # table and then scanning it in Python. This scales with the current
+    # conversation rather than the size of every chat in the database.
+    return (
+        db.query(Message)
+        .filter(
+            or_(
+                and_(
+                    Message.sender.in_(names_me),
+                    Message.receiver.in_(names_friend),
+                ),
+                and_(
+                    Message.sender.in_(names_friend),
+                    Message.receiver.in_(names_me),
+                ),
+            )
         )
-    ).order_by(Message.id.asc()).all()
-
-    msgs_by_id = {}
-    for row in rows:
-        sender_norm = str(row.sender or "").strip().casefold()
-        receiver_norm = str(row.receiver or "").strip().casefold()
-        if (
-            sender_norm in me_fold and receiver_norm in friend_fold
-        ) or (
-            sender_norm in friend_fold and receiver_norm in me_fold
-        ):
-            msgs_by_id[row.id] = row
-    return [msgs_by_id[key] for key in sorted(msgs_by_id)]
+        .order_by(Message.id.asc())
+        .all()
+    )
 
 
 templates = Jinja2Templates(directory="app/templates")
@@ -1124,30 +1123,13 @@ async def chat(friend: str, request: Request):
         return RedirectResponse("/login", status_code=303)
 
     db = SessionLocal()
-
-    user = resolve_user_by_username(db, friend)
-    canonical_friend = user.username if user else friend
-    embedded_documents = []
+    user = None
     try:
-        # Redirect before loading the conversation: the ?lc=14 hop throws this
-        # response away, so the full-history query would just run twice.
-        if str(request.query_params.get("lc") or "") != "14":
-            return RedirectResponse(
-                url="/chat/" + urllib.parse.quote(str(canonical_friend)) + "?lc=14",
-                status_code=302,
-                headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
-            )
-
-        conversation = _conversation_messages(db, current_username, canonical_friend)
-        embedded_documents = [
-            _serialize_chat_message(row)
-            for row in conversation
-            if str(getattr(row, "media_type", "") or "").strip().lower() == "document"
-            or getattr(row, "media_name", None)
-        ]
-    except Exception as exc:
-        print("EMBEDDED DOCUMENT LOOKUP ERROR:", exc)
-        traceback.print_exc()
+        # Resolve only the friend needed by the template. Do not query the
+        # conversation here: chat.core loads history asynchronously after the
+        # shell is painted, so a page request stays fast even for huge chats.
+        user = resolve_user_by_username(db, friend)
+        canonical_friend = user.username if user else str(friend or "").strip()
     finally:
         db.close()
 
@@ -1158,13 +1140,15 @@ async def chat(friend: str, request: Request):
             "request": request,
             "friend": canonical_friend,
             "friend_user": user,
-            "embedded_documents": embedded_documents,
+            # Kept for backwards compatibility with the existing template and
+            # client fallback, but deliberately empty to avoid embedding the
+            # entire document history into the initial HTML response.
+            "embedded_documents": [],
         }
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
-
 
 @app.post("/login")
 async def login_user(
@@ -2239,7 +2223,7 @@ async def get_messages(friend: str, request: Request):
         print("CANONICAL USERNAME =", canonical_username)
         print("CANONICAL FRIEND =", canonical_friend)
 
-        msgs = _conversation_messages(db, username, friend)
+        msgs = _conversation_messages(db, canonical_username, canonical_friend, current_user, friend_user)
         print("USERNAME:", canonical_username)
         print("FRIEND:", canonical_friend)
         print("FOUND MESSAGES:", len(msgs))
@@ -2250,15 +2234,19 @@ async def get_messages(friend: str, request: Request):
 
         result = [_serialize_chat_message(m) for m in msgs]
 
+        # Only incoming unread rows from this conversation are relevant.
+        unread_candidates = (
+            db.query(Message)
+            .filter(
+                Message.unread == 1,
+                Message.sender.in_([canonical_friend, friend]),
+                Message.receiver.in_([canonical_username, username]),
+            )
+            .all()
+        )
+
         normalized_username = canonical_username.strip().casefold()
         normalized_friend = canonical_friend.strip().casefold()
-        unread_candidates = db.query(Message).filter(
-            Message.unread == 1,
-            or_(
-                Message.sender.in_([canonical_friend, canonical_username, friend, username]),
-                Message.receiver.in_([canonical_friend, canonical_username, friend, username])
-            )
-        ).all()
 
         for unread_message in unread_candidates:
             sender_norm = str(unread_message.sender or "").strip().casefold()
@@ -2281,7 +2269,6 @@ async def get_messages(friend: str, request: Request):
             "Pragma": "no-cache",
         },
     )
-
 
 @app.post("/messages/{friend}/sync")
 async def sync_messages(friend: str, request: Request):

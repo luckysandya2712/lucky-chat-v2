@@ -41,7 +41,7 @@ const friend = document.body.dataset.chatFriend;
 const messages=document.querySelector(".messages");
 
 /* =========================================================
-   LUCKY CHAT — V11 COMPOSER CLEARANCE / MEDIA-AWARE SCROLL
+   LUCKY CHAT — V26 INITIAL HISTORY HYDRATION / LOW-LAYOUT LOAD
    Keeps the newest message fully above the fixed composer.
    Handles late image/video/audio layout changes on Android.
    ========================================================= */
@@ -53,6 +53,10 @@ let luckyViewportResizeBound = false;
 let luckyScrollBound = false;
 let luckyScrollFrame = null;
 let luckyUserNearBottom = true;
+let luckyInitialHistoryAutoFollow = false;
+let luckyManualScrollIntentBound = false;
+let luckyHistoryHydrating = false;
+const luckyMessageRowMap = new Map();
 
 function isLuckyChatNearBottom(threshold = 120) {
     if (!messages) return false;
@@ -94,6 +98,24 @@ function getLuckyLastContentRow() {
     }
 
     return null;
+}
+
+function scrollLuckyToLatestInstant() {
+    if (!messages) return;
+
+    // The main chat stylesheet intentionally uses smooth scrolling for normal
+    // navigation. During the initial history open, however, using smooth
+    // behavior makes every scrollTop correction animate from the oldest row to
+    // the newest row. Temporarily disable smooth behavior so the initial chat
+    // snaps directly to the bottom.
+    const previousInlineBehavior = messages.style.scrollBehavior;
+    messages.style.scrollBehavior = "auto";
+
+    try {
+        scrollLuckyToLatestNow();
+    } finally {
+        messages.style.scrollBehavior = previousInlineBehavior;
+    }
 }
 
 function ensureLuckyComposerSpacer(clearance) {
@@ -172,10 +194,18 @@ function scheduleLuckyLatestScroll(force = false) {
 
     if (luckyScrollFrame) {
         cancelAnimationFrame(luckyScrollFrame);
+        luckyScrollFrame = null;
     }
 
-    // Wait for browser layout/media sizing to settle. A single RAF can occur
-    // before an image/video has contributed its final height.
+    // During the initial history open, jump directly to the mathematical
+    // bottom instead of animating every intermediate correction. Resize/media
+    // observers can call this again later as content settles.
+    if (luckyInitialHistoryAutoFollow) {
+        scrollLuckyToLatestInstant();
+        return;
+    }
+
+    // Normal in-chat scrolling keeps the existing smooth/settling behavior.
     luckyScrollFrame = requestAnimationFrame(() => {
         luckyScrollFrame = null;
         scrollLuckyToLatestNow();
@@ -255,20 +285,44 @@ function bindLuckyComposerClearance() {
         messages.addEventListener(
             "scroll",
             () => {
+                if (luckyInitialHistoryAutoFollow) {
+                    // Layout/decryption can legitimately change scrollHeight during
+                    // the initial history load. Do not let those programmatic
+                    // scroll events cancel the initial follow-to-latest state.
+                    luckyUserNearBottom = true;
+                    return;
+                }
                 luckyUserNearBottom = isLuckyChatNearBottom(120);
             },
             { passive: true }
         );
     }
 
+    // During initial history hydration, keep following the newest message while
+    // crypto/text/media layout settles. Explicit user scrolling cancels that
+    // temporary auto-follow so the user can freely browse older messages.
+    if (!luckyManualScrollIntentBound) {
+        luckyManualScrollIntentBound = true;
+        const cancelInitialAutoFollow = () => {
+            if (luckyInitialHistoryAutoFollow) {
+                luckyInitialHistoryAutoFollow = false;
+                luckyUserNearBottom = isLuckyChatNearBottom(120);
+            }
+        };
+
+        messages.addEventListener("wheel", cancelInitialAutoFollow, { passive: true });
+        messages.addEventListener("touchstart", cancelInitialAutoFollow, { passive: true });
+    }
+
     if (typeof ResizeObserver === "function") {
         luckyMessageResizeObserver = new ResizeObserver(() => {
+            if (luckyHistoryHydrating) return;
             // The message was already in view before the media/layout resize.
             // If the user is still at the conversation bottom, preserve that
             // state and restore the latest-message position after layout.
-            if (luckyUserNearBottom) {
+            if (luckyInitialHistoryAutoFollow || luckyUserNearBottom) {
                 updateLuckyComposerClearance(false);
-                scheduleLuckyLatestScroll(false);
+                scheduleLuckyLatestScroll(luckyInitialHistoryAutoFollow);
             }
         });
 
@@ -281,8 +335,8 @@ function bindLuckyComposerClearance() {
             ensureLuckyComposerSpacer(clearance);
             observeLuckyMessageRows();
 
-            if (luckyUserNearBottom) {
-                scheduleLuckyLatestScroll(false);
+            if (luckyInitialHistoryAutoFollow || luckyUserNearBottom) {
+                scheduleLuckyLatestScroll(luckyInitialHistoryAutoFollow);
             }
         });
 
@@ -299,8 +353,8 @@ function bindLuckyComposerClearance() {
 
             updateLuckyComposerClearance(false);
 
-            if (keepBottom) {
-                scheduleLuckyLatestScroll(false);
+            if (luckyInitialHistoryAutoFollow || keepBottom) {
+                scheduleLuckyLatestScroll(luckyInitialHistoryAutoFollow);
             }
         });
 
@@ -310,9 +364,10 @@ function bindLuckyComposerClearance() {
     // Capture media loading events even when a media element's box size
     // changes too late for the row observer to catch the transition.
     const mediaLoadHandler = () => {
-        if (!luckyUserNearBottom) return;
+        if (luckyHistoryHydrating) return;
+        if (!luckyInitialHistoryAutoFollow && !luckyUserNearBottom) return;
         updateLuckyComposerClearance(false);
-        scheduleLuckyLatestScroll(false);
+        scheduleLuckyLatestScroll(luckyInitialHistoryAutoFollow);
     };
 
     messages.addEventListener("load", mediaLoadHandler, true);
@@ -326,8 +381,8 @@ function bindLuckyComposerClearance() {
             luckyUserNearBottom = keepBottom;
             updateLuckyComposerClearance(false);
 
-            if (keepBottom) {
-                scheduleLuckyLatestScroll(false);
+            if (luckyInitialHistoryAutoFollow || keepBottom) {
+                scheduleLuckyLatestScroll(luckyInitialHistoryAutoFollow);
             }
         },
         { passive: true }
@@ -1534,7 +1589,37 @@ function normalizeDocumentMessage(msg) {
     return msg;
 }
 
+let luckyCryptoInitPromise = null;
+
+function ensureLuckyCryptoReady() {
+    if (luckyCryptoInitPromise) return luckyCryptoInitPromise;
+
+    luckyCryptoInitPromise = (async () => {
+        try {
+            if (typeof LuckyCrypto !== "undefined" && typeof LuckyCrypto.init === "function") {
+                await LuckyCrypto.init();
+                console.log("✅ LuckyCrypto ready");
+            }
+        } catch (error) {
+            // History/media loading must still proceed. Individual decrypt
+            // operations already have their own error handling below.
+            console.warn("⚠️ LuckyCrypto unavailable:", error);
+        }
+    })();
+
+    return luckyCryptoInitPromise;
+}
+
 async function loadMessages() {
+    // During the initial open, keep the conversation following the newest
+    // message while encrypted text is hydrated. This prevents late decryption
+    // layout changes from leaving the viewport above the latest message.
+    luckyInitialHistoryAutoFollow = true;
+    luckyUserNearBottom = true;
+
+    // Start the history request without spending main-thread work on crypto
+    // initialization first. The shell/history can render as soon as the
+    // network response arrives; encrypted text is filled in afterward.
 
     let res = await fetch("/messages/" + encodeURIComponent(friend) + "/sync?_=" + Date.now(), {
         method: "POST",
@@ -1545,6 +1630,7 @@ async function loadMessages() {
             "Pragma": "no-cache"
         }
     });
+
     if (!res.ok) {
         res = await fetch("/messages/" + encodeURIComponent(friend) + "?_=" + Date.now(), {
             method: "GET",
@@ -1570,109 +1656,71 @@ async function loadMessages() {
         throw new Error("Failed to load messages (invalid history payload)");
     }
 
-    // Initial history loading can take noticeable time because messages are
-    // decrypted one-by-one. Preserve any outgoing bubbles created while that
-    // work is in progress so they are not wiped out by messages.innerHTML = "".
     const pendingOptimistic = pendingOutgoingMessages
         .map(item => item.message)
         .filter(Boolean);
 
     messages.innerHTML = "";
     messageMap = {};
+    luckyMessageRowMap.clear();
+    luckyHistoryHydrating = true;
 
     const savedReactions = loadSavedReactions();
+    const decryptQueue = [];
 
-    for (const msg of data) {
-        if (deletedMessages[msg.id]) {
-            continue;
-        }
+    // Render in small batches so the browser can paint early on long chats.
+    // Encrypted text gets a tiny placeholder and is decrypted in the background
+    // after the first visible history has reached the screen.
+    const renderChunkSize = 50;
+    const yieldToBrowser = () => new Promise(resolve => requestAnimationFrame(resolve));
 
-        if (savedReactions[msg.id]) {
-            msg.reaction = savedReactions[msg.id];
-        }
+    for (let start = 0; start < data.length; start += renderChunkSize) {
+        const end = Math.min(start + renderChunkSize, data.length);
 
-        normalizeDocumentMessage(msg);
+        for (let index = start; index < end; index += 1) {
+            const rawMsg = data[index];
+            if (deletedMessages[rawMsg.id]) continue;
 
-        // Documents have no encrypted text to decrypt, so nothing here waits
-        // on them. They are deliberately NOT rendered in this loop: doing so
-        // put every document above all text messages (addMessage appends, and
-        // the text messages are only rendered in the id-ordered pass below),
-        // so a document sat at the very top of the thread instead of at its
-        // place in the conversation.
+            const msg = rawMsg;
 
-        if (
-            msg.media_type !== "call" &&
-            !isDocumentMessage(msg) &&
-            typeof msg.text === "string" &&
-            msg.text.length > 0 &&
-            (msg.text.startsWith("LCE1:") || msg.text.startsWith("LCE2:"))
-        ) {
-            try {
-                msg.text = await LuckyCrypto.decryptMessage(msg.text, username);
-            } catch (error) {
-                console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
-                msg.text = "🔒 Unable to decrypt this message";
+            if (savedReactions[msg.id]) {
+                msg.reaction = savedReactions[msg.id];
             }
-        }
 
-        messageMap[msg.id] = msg;
-    }
+            normalizeDocumentMessage(msg);
 
-    pinnedMessages = pinnedMessages.filter(id => messageMap[id]);
-    savePinnedMessages();
+            if (
+                msg.media_type !== "call" &&
+                !isDocumentMessage(msg) &&
+                typeof msg.text === "string" &&
+                msg.text.length > 0 &&
+                (msg.text.startsWith("LCE1:") || msg.text.startsWith("LCE2:"))
+            ) {
+                decryptQueue.push({ ciphertext: msg.text, target: msg });
+                msg.text = "🔐 Decrypting…";
+            }
 
-    // Render the processed copies from messageMap so decrypted text and
-    // media fields stay together. Previously the raw `data` objects were
-    // rendered again here, discarding the processed message object.
-    data.forEach(rawMsg => {
-        if (deletedMessages[rawMsg.id]) {
-            return;
-        }
-
-        const msg = messageMap[rawMsg.id] || rawMsg;
-
-        // Normalize media fields once at the render boundary. This makes
-        // image delivery tolerant of harmless casing/whitespace differences.
-        if (msg.media_type != null) {
-            msg.media_type = String(msg.media_type).trim().toLowerCase();
-        }
-        if (msg.media_url != null) {
-            msg.media_url = String(msg.media_url).trim();
-        }
-
-        addMessage(msg);
-    });
-
-    // Documents must survive history reload even if an earlier render path
-    // skipped them. Re-apply any persisted document that is still missing.
-    data.forEach(rawMsg => {
-        const msg = messageMap[rawMsg.id] || rawMsg;
-        const type = String(msg.media_type || "").trim().toLowerCase();
-        const url = String(msg.media_url || msg.document_url || msg.file_url || "").trim();
-        if ((!isDocumentMessage(msg) && type !== "document") || msg.id == null) return;
-        if (!document.querySelector(`[data-msg="${msg.id}"]`)) {
+            messageMap[msg.id] = msg;
             addMessage(msg);
         }
-    });
 
-    // Restore any optimistic outgoing messages that were created while the
-    // history request/decryption was still running.
+        if (end < data.length) {
+            await yieldToBrowser();
+        }
+    }
+
+    // Restore optimistic messages immediately, before any asynchronous crypto
+    // work completes.
     pendingOptimistic.forEach(msg => {
         if (msg && !document.querySelector(`[data-msg="${msg.id}"]`)) {
             addMessage(msg);
         }
     });
 
-    // Queue delivery/read acknowledgements until the WebSocket is connected.
-    // Only acknowledge what the server still has as undelivered/unread.
-    // Re-acknowledging the whole history on every open made the server
-    // commit and echo hundreds of redundant events per page load/reconnect.
+    // Queue delivery/read acknowledgements without delaying first paint.
     data.forEach(msg => {
         if (msg.sender !== username && !deletedMessages[msg.id]) {
-            if (!msg.delivered) {
-                pendingDeliveredIds.add(Number(msg.id));
-            }
-
+            if (!msg.delivered) pendingDeliveredIds.add(Number(msg.id));
             if (isReadReceiptsEnabled() && !msg.read) {
                 pendingReadIds.add(Number(msg.id));
             }
@@ -1681,13 +1729,16 @@ async function loadMessages() {
 
     flushPendingReceiptAcknowledgements();
 
+    // Keep the embedded-document safety net, but do not render duplicates.
     const embedded = Array.isArray(window.LUCKY_EMBEDDED_DOCUMENTS)
         ? window.LUCKY_EMBEDDED_DOCUMENTS
         : [];
-    embedded.concat(data).forEach((msg) => {
+    embedded.forEach(msg => {
         if (!msg || msg.id == null) return;
         if (typeof isDocumentMessage === "function" && isDocumentMessage(msg)) {
-            addMessage(msg);
+            if (!document.querySelector(`[data-msg="${msg.id}"]`)) {
+                addMessage(msg);
+            }
         }
     });
 
@@ -1697,6 +1748,75 @@ async function loadMessages() {
 
     bindLuckyComposerClearance();
     updateLuckyComposerClearance(true);
+
+    const finishInitialHistoryAutoFollow = () => {
+        luckyInitialHistoryAutoFollow = true;
+        luckyUserNearBottom = true;
+
+        // Release the hydration guard only after all asynchronous message
+        // text updates have finished. This keeps ResizeObserver/media events
+        // from performing repeated layout + scroll work during opening.
+        luckyHistoryHydrating = false;
+
+        // Rebuild the small pinned UI once, after the history DOM is complete.
+        pinnedMessages.forEach(id => renderPinnedBadge(id));
+        renderPinnedBar();
+
+        updateLuckyComposerClearance(false);
+        scrollLuckyToLatestInstant();
+        luckyInitialHistoryAutoFollow = false;
+    };
+
+    // Decryption is deliberately detached from the critical rendering path.
+    // Use a small worker pool so large histories do not monopolize the mobile
+    // main thread while still finishing all encrypted messages promptly.
+    if (decryptQueue.length && typeof LuckyCrypto !== "undefined" && typeof LuckyCrypto.decryptMessage === "function") {
+        // Keep public-key upload/startup initialization detached from history
+        // decryption. decryptMessage() now has a local-only key readiness path.
+        void ensureLuckyCryptoReady();
+
+        void (async () => {
+            let cursor = 0;
+            const workerCount = Math.min(6, decryptQueue.length);
+
+            async function decryptWorker() {
+                while (cursor < decryptQueue.length) {
+                    const item = decryptQueue[cursor++];
+                    const msg = item.target;
+                    try {
+                        msg.text = await LuckyCrypto.decryptMessage(item.ciphertext, username);
+                    } catch (error) {
+                        console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
+                        msg.text = "🔒 Unable to decrypt this message";
+                    }
+
+                    const bubble = luckyMessageRowMap.get(String(msg.id)) ||
+                        document.querySelector(`[data-msg="${msg.id}"]`);
+                    const textElement = bubble?.querySelector(".msg-text");
+                    if (textElement) {
+                        textElement.textContent = msg.text;
+                    }
+                }
+            }
+
+            await Promise.all(
+                Array.from({ length: workerCount }, () => decryptWorker())
+            );
+        })().finally(finishInitialHistoryAutoFollow);
+    } else if (decryptQueue.length) {
+        // Never leave historical messages permanently stuck on a loading
+        // placeholder when the crypto runtime failed to load.
+        decryptQueue.forEach(item => {
+            const bubble = document.querySelector(`[data-msg="${item.target.id}"]`);
+            const textElement = bubble?.querySelector(".msg-text");
+            if (textElement) {
+                textElement.textContent = "🔒 Unable to load secure messages";
+            }
+        });
+        finishInitialHistoryAutoFollow();
+    } else {
+        finishInitialHistoryAutoFollow();
+    }
 }
 
 function flushPendingReceiptAcknowledgements() {
@@ -2690,13 +2810,18 @@ async function handleSocketMessage(event) {
 } // closes handleSocketMessage()
 
 async function initChatCore() {
-    // Crypto must never prevent the chat history from loading.
-    try {
-        await LuckyCrypto.init();
-        console.log("✅ LuckyCrypto ready");
-    } catch (error) {
-        console.warn("⚠️ LuckyCrypto unavailable:", error);
-    }
+    // Start the independent startup tasks immediately. The previous sequence
+    // waited for crypto initialization before even requesting chat history,
+    // and waited for history before checking the friend's presence. On mobile
+    // that could leave the header stuck on "Checking..." while the thread
+    // was still loading.
+    ensureLuckyCryptoReady();
+    void updateFriendStatus();
+
+    bindImageAndSendControls();
+    bindStaticChatInteractions();
+    bindLuckyComposerClearance();
+    updateLuckyComposerClearance(false);
 
     // Load the authoritative database history before opening the live socket.
     // This prevents a document delivered by the socket during startup from
@@ -2711,10 +2836,8 @@ async function initChatCore() {
     socketAllowed = true;
     connectSocket();
 
-    updateFriendStatus();
-    bindImageAndSendControls();
-    bindStaticChatInteractions();
-    bindLuckyComposerClearance();
+    // Refresh status after the initial history request without blocking the UI.
+    void updateFriendStatus();
     updateLuckyComposerClearance(true);
 }
 
@@ -3870,9 +3993,15 @@ function addMessage(msg){
         return;
     }
 
-    // Idempotent rendering: a server echo/reconnect must never append a
-    // second DOM copy of a message that is already visible.
-    const existingBubble = document.querySelector(`[data-msg="${msg.id}"]`);
+    // Idempotent rendering is needed for live/reconnect paths. During the
+    // initial history build the container was just cleared, so scanning the
+    // entire DOM for every message would turn a large history into repeated
+    // O(n) selector work. Skip that scan while history is being hydrated.
+    const existingBubble =
+        luckyMessageRowMap.get(String(msg.id)) ||
+        (luckyHistoryHydrating
+            ? null
+            : document.querySelector(`[data-msg="${msg.id}"]`));
     if (existingBubble) {
         messageMap[msg.id] = msg;
 
@@ -4172,6 +4301,7 @@ function addMessage(msg){
     }
 
     messages.appendChild(row);
+    luckyMessageRowMap.set(String(msg.id), row);
 
     if (isDocumentMessage(msg)) {
         const caption = row.querySelector(".msg-text");
@@ -4206,9 +4336,11 @@ function addMessage(msg){
         scheduleVoiceHydration(row, msg);
     }
 
-    renderPinnedBadge(msg.id);
-    renderPinnedBar();
-    updateLuckyComposerClearance(true);
+    if (!luckyHistoryHydrating) {
+        renderPinnedBadge(msg.id);
+        renderPinnedBar();
+        updateLuckyComposerClearance(true);
+    }
 }
 
 window.addMessage = addMessage;

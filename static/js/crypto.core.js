@@ -3,7 +3,9 @@ const LuckyCrypto = {
     keyPair: null,
     keyHistory: [],
     publicKeyCache: new Map(),
+    publicKeyIdCache: new WeakMap(),
     initPromise: null,
+    localKeyPromise: null,
 
     async init() {
         if (this.initialized) return true;
@@ -14,7 +16,10 @@ const LuckyCrypto = {
                 throw new Error("Web Crypto API is not available");
             }
 
-            await this.loadOrCreateKeyPair();
+            // Load/create the local identity independently from the network.
+            // This keeps stored-message decryption usable even if the public
+            // key upload endpoint is slow.
+            await this.ensureLocalKeyPair();
             await this.uploadPublicKey();
 
             this.initialized = true;
@@ -38,6 +43,35 @@ const LuckyCrypto = {
         if (!this.keyPair?.privateKey || !this.keyPair?.publicKey) {
             throw new Error("Encryption key pair is not available");
         }
+    },
+
+    // Fast local-only readiness path used by history decryption. It never
+    // uploads a public key, so decrypting existing messages is not blocked by
+    // network latency or a temporarily unavailable key endpoint.
+    async ensureLocalKeyPair() {
+        if (this.keyPair?.privateKey && this.keyPair?.publicKey) {
+            return true;
+        }
+        if (this.localKeyPromise) return this.localKeyPromise;
+
+        this.localKeyPromise = (async () => {
+            await this.loadOrCreateKeyPair();
+            if (!this.keyPair?.privateKey || !this.keyPair?.publicKey) {
+                throw new Error("Local encryption key pair is not available");
+            }
+            return true;
+        })();
+
+        try {
+            return await this.localKeyPromise;
+        } catch (error) {
+            this.localKeyPromise = null;
+            throw error;
+        }
+    },
+
+    async ensureDecryptReady() {
+        return this.ensureLocalKeyPair();
     },
 
     async generateKeyPair() {
@@ -245,6 +279,10 @@ async getPublicKey(username) {
 },
 
 async publicKeyId(publicKey) {
+    if (publicKey && this.publicKeyIdCache.has(publicKey)) {
+        return this.publicKeyIdCache.get(publicKey);
+    }
+
     const spki = await window.crypto.subtle.exportKey(
         "spki",
         publicKey
@@ -255,10 +293,16 @@ async publicKeyId(publicKey) {
         spki
     );
 
-    return Array.from(new Uint8Array(digest))
+    const id = Array.from(new Uint8Array(digest))
         .map(byte => byte.toString(16).padStart(2, "0"))
         .join("")
         .slice(0, 24);
+
+    if (publicKey) {
+        this.publicKeyIdCache.set(publicKey, id);
+    }
+
+    return id;
 },
 
 
@@ -357,7 +401,7 @@ isEncryptedMessage(value) {
 },
 
 async decryptMessage(value, currentUsername) {
-    await this.ensureReady();
+    await this.ensureDecryptReady();
 
     if (!this.isEncryptedMessage(value)) return value;
 
@@ -820,3 +864,6 @@ async restoreRecoveryBackup(recoveryCode) {
         });
     }
 };
+
+// Expose the crypto runtime to other classic scripts (chat.core.js).
+window.LuckyCrypto = LuckyCrypto;
