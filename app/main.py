@@ -1714,10 +1714,23 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             if data["type"] == "forward_message":
-                # Forwarding currently sends encrypted text only. Resolve the
-                # selected recipient to the canonical database username and
-                # never reuse the current chat's `friend` value.
-                text = data.get("text", "").strip()
+                # Forwarding supports encrypted text plus an optional
+                # attachment. Resolve the selected recipient to the canonical
+                # database username and never reuse the current chat's `friend`
+                # value.
+                text = str(data.get("text") or "").strip()
+                source_message_id = data.get("source_message_id")
+                try:
+                    source_message_id = int(source_message_id) if source_message_id is not None else None
+                except (TypeError, ValueError):
+                    source_message_id = None
+
+                media_url = str(data.get("media_url") or "").strip()
+                media_type = str(data.get("media_type") or "").strip().lower()
+                forwardable_media_types = {"image", "video", "audio", "document"}
+                has_attachment = bool(
+                    media_url and media_type in forwardable_media_types
+                )
                 requested_target = (
                     data.get("target")
                     or data.get("receiver")
@@ -1727,7 +1740,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 requested_target = str(requested_target).strip()
 
-                if not text or not requested_target:
+                if not requested_target:
                     continue
 
                 db = SessionLocal()
@@ -1745,6 +1758,72 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     target = target_user.username
 
+                    # Prefer the authoritative attachment metadata from the
+                    # original message. Only the original sender may forward it.
+                    source_message = None
+                    if source_message_id is not None:
+                        source_message = (
+                            db.query(Message)
+                            .filter(Message.id == source_message_id)
+                            .first()
+                        )
+                        if not source_message or username not in (
+                            source_message.sender,
+                            source_message.receiver,
+                        ):
+                            print(
+                                "FORWARD SOURCE MESSAGE NOT ACCESSIBLE:",
+                                source_message_id,
+                                username,
+                            )
+                            continue
+
+                    source_media_url = (
+                        getattr(source_message, "media_url", None)
+                        if source_message is not None
+                        else (media_url or None)
+                    )
+                    source_media_type = (
+                        getattr(source_message, "media_type", None)
+                        if source_message is not None
+                        else (media_type or None)
+                    )
+                    source_media_duration = (
+                        getattr(source_message, "media_duration", 0)
+                        if source_message is not None
+                        else data.get("media_duration")
+                    )
+                    source_media_waveform = (
+                        getattr(source_message, "media_waveform", None)
+                        if source_message is not None
+                        else data.get("media_waveform")
+                    )
+                    source_media_name = (
+                        getattr(source_message, "media_name", None)
+                        if source_message is not None
+                        else data.get("media_name")
+                    )
+                    source_media_size = (
+                        getattr(source_message, "media_size", 0)
+                        if source_message is not None
+                        else data.get("media_size")
+                    )
+
+                    has_authoritative_attachment = bool(
+                        source_media_url
+                        and str(source_media_type or "").strip().lower()
+                        in forwardable_media_types
+                    )
+                    if not text and not has_authoritative_attachment:
+                        print(
+                            "FORWARD MESSAGE EMPTY:",
+                            source_message_id,
+                            username,
+                            "->",
+                            target,
+                        )
+                        continue
+
                     message = Message(
                         sender=username,
                         receiver=target,
@@ -1754,19 +1833,24 @@ async def websocket_endpoint(websocket: WebSocket):
                         seen_in_chat=0,
                         forwarded=1,
                         reply_to=None,
-                        media_url=data.get("media_url"),
-                        media_type=data.get("media_type"),
-                        media_duration=int(data.get("media_duration") or 0),
-                        media_waveform=data.get("media_waveform"),
-                        media_name=data.get("media_name"),
-                        media_size=int(data.get("media_size") or 0),
+                        media_url=source_media_url,
+                        media_type=str(source_media_type or "").strip().lower() or None,
+                        media_duration=int(source_media_duration or 0),
+                        media_waveform=source_media_waveform,
+                        media_name=source_media_name,
+                        media_size=int(source_media_size or 0),
                     )
 
                     db.add(message)
                     db.commit()
                     db.refresh(message)
 
-                    _remember_forward(username, text, target)
+                    # The duplicate-forward guard is only needed for
+                    # text forwards. Do not record attachment-only forwards with
+                    # an empty text key, otherwise a normal media-only message
+                    # could be mistaken for a duplicate forward.
+                    if text:
+                        _remember_forward(username, text, target)
 
                     print(
                         "FORWARDED MESSAGE:",
@@ -2524,6 +2608,46 @@ async def send_chat_document(request: Request):
 
     if not document_url:
         return {"success": False, "error": "Missing document URL"}
+
+    # Never trust a browser-supplied document URL blindly. Documents uploaded
+    # through /upload-chat-document are stored under the authenticated user's
+    # stable filename prefix. Accept only that local upload shape, keep the
+    # resolved path inside UPLOAD_DIR, and require the file to exist. This
+    # prevents a client from attaching an arbitrary /static path or another
+    # user's uploaded document to a chat message.
+    try:
+        parsed_document_url = urllib.parse.urlparse(document_url)
+        if parsed_document_url.scheme or parsed_document_url.netloc:
+            raise ValueError("Invalid document URL")
+
+        document_path_text = parsed_document_url.path or document_url
+        document_path = Path(document_path_text)
+        expected_prefix = _storage_user_key(username) + "_"
+
+        if document_path.parts[:3] != ("/", "static", "uploads"):
+            # Relative paths such as static/uploads/... are normalized below.
+            # Reject anything that is not rooted at our chat upload directory.
+            if document_path_text.startswith("/static/") is False:
+                raise ValueError("Invalid document URL")
+
+        filename_only = document_path.name
+        upload_root = UPLOAD_DIR.resolve()
+        resolved_document_path = (upload_root / filename_only).resolve()
+
+        if resolved_document_path.parent != upload_root:
+            raise ValueError("Invalid document URL")
+        if not filename_only.startswith(expected_prefix):
+            raise ValueError("Invalid document ownership")
+        if not resolved_document_path.is_file():
+            raise ValueError("Uploaded document not found")
+
+        document_url = "/static/uploads/chat/" + filename_only
+        actual_document_size = resolved_document_path.stat().st_size
+        if actual_document_size > 20 * 1024 * 1024:
+            raise ValueError("Document is too large. Maximum size is 20 MB")
+        document_size = actual_document_size
+    except (OSError, ValueError) as exc:
+        return {"success": False, "error": str(exc) or "Invalid document URL"}
 
     db = SessionLocal()
     try:

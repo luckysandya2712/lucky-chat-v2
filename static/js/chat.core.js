@@ -4675,7 +4675,13 @@ async function forwardMessage(){
 
     window.forwardMessageData = {
         id: msg.id,
-        text: msg.text
+        text: msg.text || "",
+        media_url: msg.media_url || msg.document_url || msg.file_url || msg.url || null,
+        media_type: msg.media_type || null,
+        media_duration: msg.media_duration || 0,
+        media_waveform: msg.media_waveform || null,
+        media_name: msg.media_name || msg.document_name || msg.file_name || null,
+        media_size: msg.media_size || msg.document_size || msg.file_size || msg.size || 0
     };
 
     hideMessageMenu();
@@ -4737,18 +4743,51 @@ async function sendForward(target){
 
     if(!window.forwardMessageData) return;
 
-    const text = window.forwardMessageData.text;
+    const forwardData = window.forwardMessageData;
+    const rawText = String(forwardData.text || "").trim();
+    const mediaUrl = String(
+        forwardData.media_url ||
+        forwardData.document_url ||
+        forwardData.file_url ||
+        forwardData.url ||
+        ""
+    ).trim();
+    const mediaType = String(forwardData.media_type || "").trim().toLowerCase();
+    const forwardableMediaTypes = new Set(["image", "video", "audio", "document"]);
+    const hasAttachment = !!mediaUrl && forwardableMediaTypes.has(mediaType);
 
-    if(!text) return;
+    // Attachment-only messages are valid. Document cards may carry a
+    // generated "📄 filename" preview rather than a real caption; do not
+    // force that preview through the encrypted text-forward path.
+    const text =
+        hasAttachment && mediaType === "document" &&
+        (
+            !rawText ||
+            rawText === String(forwardData.media_name || "").trim() ||
+            rawText.startsWith("📄")
+        )
+            ? ""
+            : rawText;
 
-    let encryptedText;
+    if (!text && !hasAttachment) {
+        const usersBox = document.getElementById("forwardUsers");
+        if (usersBox) {
+            usersBox.innerHTML =
+                '<div style="padding:20px;color:#fca5a5;text-align:center;">This message cannot be forwarded.</div>';
+        }
+        return;
+    }
+
+    let encryptedText = "";
     try {
-        await LuckyCrypto.ensureReady();
-        encryptedText = await LuckyCrypto.encryptMessage(
-            text,
-            target,
-            username
-        );
+        if (text) {
+            await LuckyCrypto.ensureReady();
+            encryptedText = await LuckyCrypto.encryptMessage(
+                text,
+                target,
+                username
+            );
+        }
     } catch (error) {
         console.error("FORWARD ENCRYPTION ERROR:", error);
 
@@ -4777,7 +4816,14 @@ async function sendForward(target){
         type:"forward_message",
         text:encryptedText,
         target:target,
-        forwarded:true
+        forwarded:true,
+        source_message_id: Number(forwardData.id) > 0 ? Number(forwardData.id) : null,
+        media_url: mediaUrl || null,
+        media_type: mediaType || null,
+        media_duration: Number(forwardData.media_duration || 0) || 0,
+        media_waveform: forwardData.media_waveform || null,
+        media_name: forwardData.media_name || null,
+        media_size: Number(forwardData.media_size || 0) || 0
     })){
         alert("Connection lost. Please try again.");
         return;
