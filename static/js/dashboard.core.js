@@ -64,22 +64,21 @@ async function updateOnlineUsers(){
             : (Array.isArray(users?.users) ? users.users : null);
         if (!list) return;
 
-        document.querySelectorAll("[id^='status-']").forEach(el => {
-            el.innerHTML = "⚪ Offline";
-        });
-
+        const onlineNames = new Set();
         list.forEach(user => {
             const name = typeof user === "string" ? user : (user?.username || user?.user || "");
-            if (!name) return;
-            const el = document.getElementById("status-" + name);
-            if (el) el.innerHTML = "🟢 Online";
+            if (name) onlineNames.add(String(name));
+        });
+
+        document.querySelectorAll("[id^='status-']").forEach(el => {
+            const name = el.id.slice("status-".length);
+            const nextText = onlineNames.has(name) ? "🟢 Online" : "⚪ Offline";
+            if (el.textContent !== nextText) el.textContent = nextText;
         });
     } catch (error) {
         console.debug("Online users refresh failed:", error);
     }
 }
-
-void updateOnlineUsers();
 
 function openChat(friend){
     window.location.href="/chat/"+encodeURIComponent(friend);
@@ -561,7 +560,9 @@ document.addEventListener("DOMContentLoaded", () => {
         sendStatusPrivateReply();
     });
 
-    loadStatuses();
+    requestAnimationFrame(() => {
+        setTimeout(() => { void loadStatuses(); }, 0);
+    });
     syncStatusPrivacySwitches();
     if (getStatusPrivacy().blockScreenshots) {
         document.body.classList.add("status-block-shots");
@@ -2530,28 +2531,41 @@ function buildStatusViewerList(statuses){
     });
 }
 
+let statusLoadInFlight = null;
+
 async function loadStatuses(){
     const row = document.getElementById("statusRow");
     if (!row) return;
+    if (statusLoadInFlight) return statusLoadInFlight;
 
-    try {
-        const res = await fetch("/statuses", {
-            credentials:"same-origin",
-            cache:"no-store"
-        });
-        if (handleDashboardAuthFailure(res.status)) return;
-        const data = await res.json();
+    statusLoadInFlight = (async () => {
+        try {
+            const res = await fetch("/statuses", {
+                credentials:"same-origin",
+                cache:"no-store"
+            });
+            if (handleDashboardAuthFailure(res.status)) return;
+            const data = await res.json();
 
-        if (!res.ok || !data.success) {
-            throw new Error(data.error || "Could not load statuses");
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || "Could not load statuses");
+            }
+
+            loadedStatuses = Array.isArray(data.statuses) ? data.statuses : [];
+            statusViewerStatuses = buildStatusViewerList(loadedStatuses);
+            renderStatuses();
+        } catch (error) {
+            console.debug("Status list unavailable; keeping current shelf:", error);
         }
+    })();
 
-        loadedStatuses = Array.isArray(data.statuses) ? data.statuses : [];
-        statusViewerStatuses = buildStatusViewerList(loadedStatuses);
-        renderStatuses();
-    } catch (error) {
-        console.debug("Status list unavailable; keeping current shelf:", error);
-    }
+    const currentLoad = statusLoadInFlight;
+    currentLoad.then(
+        () => { if (statusLoadInFlight === currentLoad) statusLoadInFlight = null; },
+        () => { if (statusLoadInFlight === currentLoad) statusLoadInFlight = null; }
+    );
+
+    return currentLoad;
 }
 
 function recoverMyStatusEmptyState(image){
@@ -3613,11 +3627,17 @@ document.addEventListener("visibilitychange", () => {
 
 window.addEventListener("online", resumeDashboardNetwork);
 
-connectDashboardSocket();
-startDashboardTimers();
-
-void loadServerPinnedChats();
-void refreshDashboard();
+// The dashboard is server-rendered, so let that UI paint first. Network work
+// starts on the next animation frame instead of competing with initial layout.
+requestAnimationFrame(() => {
+    setTimeout(() => {
+        if (dashboardPageUnloading || dashboardSessionExpired) return;
+        connectDashboardSocket();
+        startDashboardTimers();
+        void loadServerPinnedChats();
+        void refreshDashboard();
+    }, 0);
+});
 
 function getChatTimestamp(value) {
     if (!value) return 0;
@@ -3933,127 +3953,100 @@ function escapeDashboardText(value){
 }
 
 let dashboardRefreshGeneration = 0;
-let dashboardRefreshInFlight = false;
+let dashboardRefreshInFlight = null;
+let dashboardOnlinePrimed = false;
 
-async function refreshDashboard(){
+function isUsableCachedDashboardPreview(cached){
+    const cachedText = String(cached?.text || "").trim();
+    if (!cached || !cachedText) return false;
+    return !cachedText.startsWith("LCE1:") &&
+           !cachedText.startsWith("LCE2:") &&
+           cachedText !== "🔒 Encrypted message" &&
+           cachedText !== "Encrypted message";
+}
 
-    const generation = ++dashboardRefreshGeneration;
+function prepareFastDashboardChat(chat){
+    const next = { ...(chat || {}) };
+    if (!next.username) return next;
 
-    // Multiple dashboard_update events plus the timer can overlap. A slower,
-    // older refresh must never overwrite a newer dashboard state.
-    try {
-        const res = await fetch("/dashboard-data", {
-            cache: "no-store",
-            credentials: "same-origin"
-        });
+    const cached = getCachedDashboardPreview(next.username);
+    if (isUsableCachedDashboardPreview(cached) && Number(cached.id) >= Number(next.id || 0)) {
+        next.last = cached.text || "";
+        next.sender = cached.sender || next.sender || "";
+        next.time = cached.timestamp || next.time || "";
+        next.id = Math.max(Number(next.id || 0), Number(cached.id || 0));
+        next.media_url = cached.media_url || next.media_url || null;
+        next.media_type = cached.media_type || next.media_type || null;
+        return next;
+    }
 
-        if (handleDashboardAuthFailure(res.status)) return;
+    const raw = String(next.last || "");
+    if (raw.startsWith("LCE1:") || raw.startsWith("LCE2:")) {
+        next.last = "🔒 Encrypted message";
+    }
+    return next;
+}
 
-        if (!res.ok) {
-            throw new Error("Dashboard data request failed (HTTP " + res.status + ")");
-        }
+function getDashboardPreviewText(chat){
+    let messageText = chat?.last || "";
 
-        const payload = await res.json();
+    if (!messageText && chat?.media_type === "image") {
+        messageText = "📷 Photo";
+    } else if (!messageText && chat?.media_type === "audio") {
+        messageText = "🎙️ Voice message";
+    }
 
-        // Never treat an invalid/temporary response as an instruction to
-        // erase conversations already shown on the dashboard.
-        if (!Array.isArray(payload)) {
-            console.warn("DASHBOARD DATA: expected an array; keeping current chat list.");
-            return;
-        }
+    return String(messageText);
+}
 
-        const chats = payload.filter(chat => chat && typeof chat === "object");
+function sortDashboardChats(chats){
+    const pinned = getPinnedChats();
+    return [...chats].sort((a, b) => {
+        const pinA = pinned.includes(a.username) ? 1 : 0;
+        const pinB = pinned.includes(b.username) ? 1 : 0;
+        if (pinA !== pinB) return pinB - pinA;
 
-        const settled = await Promise.allSettled(
-            chats.map(decryptDashboardPreview)
-        );
+        const timeA = getChatTimestamp(a.time);
+        const timeB = getChatTimestamp(b.time);
+        if (timeA !== timeB) return timeB - timeA;
 
-        // Ignore results from an older refresh once a newer request started.
-        if (generation !== dashboardRefreshGeneration) {
-            return;
-        }
+        const unreadA = Number(a.unread) || 0;
+        const unreadB = Number(b.unread) || 0;
+        return unreadB - unreadA;
+    });
+}
 
-        // A failed decrypt must never leak ciphertext into the visible UI.
-        settled.forEach((result, index) => {
-            if (result.status === "rejected") {
-                chats[index].last = "🔒 Encrypted message";
-            }
-        });
+function buildDashboardChatHtml(chat){
+    const username = String(chat.username ?? "").trim();
+    if (!username) return "";
 
-        console.log("DASHBOARD DATA:", chats);
+    const senderName =
+        chat.sender === "{{ username }}"
+        ? "You"
+        : (chat.display_name || username);
 
-        const chatList = document.querySelector(".chat-list");
-        if (!chatList) return;
+    const messageText = getDashboardPreviewText(chat);
+    const trimmedText = messageText.substring(0, 30);
+    const preview = messageText
+        ? `${escapeDashboardText(senderName)}: ${escapeDashboardText(trimmedText)}${messageText.length > 30 ? "..." : ""}`
+        : "No messages yet";
 
-        const pinned = getPinnedChats();
+    const unread = Number(chat.unread) || 0;
+    const badge = unread > 0
+        ? `<span class="badge">${unread}</span>`
+        : "";
 
-        const orderedChats = [...chats].sort((a, b) => {
-            const pinA = pinned.includes(a.username) ? 1 : 0;
-            const pinB = pinned.includes(b.username) ? 1 : 0;
+    const safeUsername = username.replace(/'/g, "\\'");
+    const profile = chat.profile || "/static/profile/default.png";
+    const displayName = escapeDashboardText(chat.display_name || username);
+    const escapedUsername = escapeDashboardText(username);
+    const pinMark = isPinned(username)
+        ? ' <span class="chat-pin">📌</span>'
+        : "";
+    const activeClass = unread > 0 ? " has-unread" : "";
+    const pinnedClass = isPinned(username) ? " is-pinned" : "";
 
-            if (pinA !== pinB) return pinB - pinA;
-
-            const timeA = getChatTimestamp(a.time);
-            const timeB = getChatTimestamp(b.time);
-
-            if (timeA !== timeB) return timeB - timeA;
-
-            const unreadA = Number(a.unread) || 0;
-            const unreadB = Number(b.unread) || 0;
-            return unreadB - unreadA;
-        });
-
-        // An empty result is not enough evidence that there are no chats.
-        // Keep the existing server-rendered/current list visible.
-        if (orderedChats.length === 0) {
-            updateOnlineUsers();
-            searchChats();
-            return;
-        }
-
-        // Build the entire replacement off-DOM first. This prevents a single
-        // malformed chat record from leaving the dashboard completely blank.
-        let renderedChatList = "";
-
-        orderedChats.forEach(chat => {
-            try {
-                const username = String(chat.username ?? "").trim();
-                if (!username) return;
-
-                const senderName =
-                    chat.sender === "{{ username }}"
-                    ? "You"
-                    : (chat.display_name || username);
-
-                let messageText = chat.last || "";
-
-                if (!messageText && chat.media_type === "image") {
-                    messageText = "📷 Photo";
-                } else if (!messageText && chat.media_type === "audio") {
-                    messageText = "🎙️ Voice message";
-                }
-
-                const trimmedText = String(messageText).substring(0, 30);
-                const preview = messageText
-                    ? `${escapeDashboardText(senderName)}: ${escapeDashboardText(trimmedText)}${String(messageText).length > 30 ? "..." : ""}`
-                    : "No messages yet";
-
-                const unread = Number(chat.unread) || 0;
-                const badge = unread > 0
-                    ? `<span class="badge">${unread}</span>`
-                    : "";
-
-                const safeUsername = username.replace(/'/g, "\\'");
-                const profile = chat.profile || "/static/profile/default.png";
-                const displayName = escapeDashboardText(chat.display_name || username);
-                const escapedUsername = escapeDashboardText(username);
-                const pinMark = isPinned(username)
-                    ? ' <span class="chat-pin">📌</span>'
-                    : "";
-                const activeClass = unread > 0 ? " has-unread" : "";
-                const pinnedClass = isPinned(username) ? " is-pinned" : "";
-
-                renderedChatList += `
+    return `
     <div class="chat-item${activeClass}${pinnedClass}"
          data-username="${escapedUsername}"
          onclick="openChat('${safeUsername}')"
@@ -4092,24 +4085,156 @@ async function refreshDashboard(){
 
     </div>
 `;
-            } catch (chatRenderError) {
-                console.warn("Skipping malformed dashboard chat record:", chatRenderError, chat);
-            }
-        });
+}
 
-        // Never replace a working list with an empty render.
-        if (renderedChatList.trim()) {
-            chatList.innerHTML = renderedChatList;
+function renderDashboardChats(chats){
+    const chatList = document.querySelector(".chat-list");
+    if (!chatList) return false;
+
+    const orderedChats = sortDashboardChats(chats);
+    if (!orderedChats.length) return false;
+
+    let renderedChatList = "";
+    for (const chat of orderedChats) {
+        try {
+            renderedChatList += buildDashboardChatHtml(chat);
+        } catch (chatRenderError) {
+            console.warn("Skipping malformed dashboard chat record:", chatRenderError, chat);
         }
-
-        updateOnlineUsers();
-        searchChats();
-
-    } catch (error) {
-        // Preserve whatever conversation list is already on screen when
-        // the refresh endpoint/network temporarily fails.
-        console.error("DASHBOARD REFRESH ERROR:", error);
     }
+
+    if (!renderedChatList.trim()) return false;
+    chatList.innerHTML = renderedChatList;
+    searchChats();
+    return true;
+}
+
+function patchDashboardDecryptedPreviews(chats){
+    const chatList = document.querySelector(".chat-list");
+    if (!chatList) return;
+
+    const elements = new Map();
+    chatList.querySelectorAll(".chat-item[data-username]").forEach(item => {
+        elements.set(item.getAttribute("data-username") || "", item);
+    });
+
+    chats.forEach(chat => {
+        const username = String(chat?.username || "");
+        if (!username) return;
+        const item = elements.get(username);
+        if (!item) return;
+
+        const previewEl = item.querySelector(".message-preview");
+        if (!previewEl) return;
+
+        const senderName =
+            chat.sender === "{{ username }}"
+            ? "You"
+            : (chat.display_name || username);
+        const messageText = getDashboardPreviewText(chat);
+        const trimmedText = messageText.substring(0, 30);
+        const preview = messageText
+            ? `${escapeDashboardText(senderName)}: ${escapeDashboardText(trimmedText)}${messageText.length > 30 ? "..." : ""}`
+            : "No messages yet";
+
+        previewEl.innerHTML = preview;
+    });
+
+    searchChats();
+}
+
+async function decryptDashboardPreviewsInBackground(chats, generation){
+    if (!Array.isArray(chats) || !chats.length) return;
+
+    let nextIndex = 0;
+    const workerCount = Math.min(4, chats.length);
+
+    const worker = async () => {
+        while (nextIndex < chats.length) {
+            const index = nextIndex++;
+            try {
+                await decryptDashboardPreview(chats[index]);
+            } catch (_error) {
+                chats[index].last = "🔒 Encrypted message";
+            }
+            // Yield between decryptions so long chat lists do not monopolize
+            // the main thread on mobile devices.
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    };
+
+    await Promise.all(Array.from({ length: workerCount }, worker));
+
+    if (generation !== dashboardRefreshGeneration) return;
+    patchDashboardDecryptedPreviews(chats);
+}
+
+async function refreshDashboard(){
+    if (dashboardSessionExpired || dashboardPageUnloading) return;
+    if (dashboardRefreshInFlight) return dashboardRefreshInFlight;
+
+    const generation = ++dashboardRefreshGeneration;
+
+    const run = (async () => {
+        try {
+            const res = await fetch("/dashboard-data", {
+                cache: "no-store",
+                credentials: "same-origin"
+            });
+
+            if (handleDashboardAuthFailure(res.status)) return;
+
+            if (!res.ok) {
+                throw new Error("Dashboard data request failed (HTTP " + res.status + ")");
+            }
+
+            const payload = await res.json();
+
+            if (!Array.isArray(payload)) {
+                console.warn("DASHBOARD DATA: expected an array; keeping current chat list.");
+                return;
+            }
+
+            const chats = payload.filter(chat => chat && typeof chat === "object");
+            const fastChats = chats.map(prepareFastDashboardChat);
+
+            // The server-rendered dashboard is already visible on first load.
+            // Refresh only after the first paint and replace it in one DOM write
+            // as soon as fresh server data arrives.
+            const rendered = renderDashboardChats(fastChats);
+
+            if (!rendered) {
+                // Keep the existing server-rendered/current list visible on an
+                // empty or malformed response.
+                searchChats();
+            }
+
+            // Online state is a separate endpoint. Do not chain it to every
+            // dashboard refresh; prime it once, then let its own timer handle it.
+            if (!dashboardOnlinePrimed) {
+                dashboardOnlinePrimed = true;
+                setTimeout(() => { void updateOnlineUsers(); }, 0);
+            }
+
+            // Decryption is never on the critical first-paint path.
+            if (chats.length) {
+                requestAnimationFrame(() => {
+                    void decryptDashboardPreviewsInBackground(chats, generation);
+                });
+            }
+
+        } catch (error) {
+            console.error("DASHBOARD REFRESH ERROR:", error);
+        }
+    })();
+
+    dashboardRefreshInFlight = run;
+    run.then(
+        () => { if (dashboardRefreshInFlight === run) dashboardRefreshInFlight = null; },
+        () => { if (dashboardRefreshInFlight === run) dashboardRefreshInFlight = null; }
+    );
+
+    return run;
 }
 
 
