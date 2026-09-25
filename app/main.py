@@ -443,6 +443,48 @@ def canonicalize_chat_media_type(media_type, media_url=None, media_name=None):
     return value
 
 
+def _prepare_server_side_forward_video(source_media_url, username):
+    """Create a server-side copy of an existing local chat video for forwarding.
+
+    The browser never downloads and re-uploads the video. This avoids mobile
+    CORS/fetch failures and keeps the attachment entirely on the server.
+    """
+    source_url = str(source_media_url or "").strip()
+    parsed = urllib.parse.urlparse(source_url)
+
+    if parsed.scheme or parsed.netloc:
+        raise ValueError("Video URL must be a local chat upload")
+
+    path = parsed.path or ""
+    prefix = "/static/uploads/chat/"
+    if not path.startswith(prefix):
+        raise ValueError("Video URL must be a chat upload")
+
+    filename = Path(path).name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".mp4", ".webm", ".ogv"}:
+        raise ValueError("Unsupported video format")
+
+    source_path = (UPLOAD_DIR / filename).resolve()
+    upload_root = UPLOAD_DIR.resolve()
+    if source_path.parent != upload_root or not source_path.is_file():
+        raise ValueError("Source video is no longer available")
+
+    size = source_path.stat().st_size
+    max_size = 30 * 1024 * 1024
+    if size <= 0 or size > max_size:
+        raise ValueError("Source video is invalid or too large")
+
+    target_filename = (
+        f"{_storage_user_key(username)}_forward_"
+        f"{datetime.now().strftime('%Y%m%d%H%M%S%f')}{suffix}"
+    )
+    target_path = upload_root / target_filename
+    shutil.copyfile(source_path, target_path)
+
+    return "/static/uploads/chat/" + target_filename, size
+
+
 def resolve_user_by_username(db, username):
     """Resolve a user by exact username, then normalized username.
 
@@ -1809,51 +1851,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             )
                             continue
 
-                    # For videos, the client prepares a fresh authenticated
-                    # upload before forwarding. Prefer that freshly uploaded
-                    # video URL, but only when it points to this user's own
-                    # chat-upload file. This prevents the prepared URL from
-                    # being discarded in favor of stale/empty source metadata.
-                    prepared_video_url = None
-                    if media_type == "video" and media_url:
-                        try:
-                            parsed_video_url = urllib.parse.urlparse(media_url)
-                            if (
-                                parsed_video_url.scheme
-                                or parsed_video_url.netloc
-                                or not parsed_video_url.path.startswith("/static/uploads/chat/")
-                            ):
-                                raise ValueError("Video URL must be a local chat upload")
-
-                            video_filename = Path(parsed_video_url.path).name
-                            expected_video_prefix = _storage_user_key(username) + "_"
-                            if (
-                                not video_filename.startswith(expected_video_prefix)
-                                or Path(video_filename).suffix.lower() not in {".mp4", ".webm", ".ogv"}
-                            ):
-                                raise ValueError("Video upload is not owned by the current user")
-
-                            video_path = (UPLOAD_DIR / video_filename).resolve()
-                            if (
-                                video_path.parent != UPLOAD_DIR.resolve()
-                                or not video_path.is_file()
-                            ):
-                                raise ValueError("Video upload is no longer available")
-
-                            if video_path.stat().st_size > 30 * 1024 * 1024:
-                                raise ValueError("Video upload is too large")
-
-                            prepared_video_url = "/static/uploads/chat/" + video_filename
-                        except (OSError, ValueError):
-                            prepared_video_url = None
-
                     source_media_url = (
-                        prepared_video_url
-                        or (
-                            getattr(source_message, "media_url", None)
-                            if source_message is not None
-                            else (media_url or None)
-                        )
+                        getattr(source_message, "media_url", None)
+                        if source_message is not None
+                        else (media_url or None)
                     )
                     source_media_type = canonicalize_chat_media_type(
                         getattr(source_message, "media_type", None)
@@ -1886,6 +1887,28 @@ async def websocket_endpoint(websocket: WebSocket):
                         if source_message is not None
                         else data.get("media_size")
                     )
+
+                    # Video forwarding is handled entirely server-side. The
+                    # browser no longer fetches/re-uploads the source video.
+                    # Copy the already stored local video after the source-message
+                    # access check so the forwarded row receives its own valid
+                    # chat-upload URL.
+                    if source_media_type == "video" and source_media_url:
+                        try:
+                            source_media_url, copied_video_size = _prepare_server_side_forward_video(
+                                source_media_url,
+                                username,
+                            )
+                            source_media_size = copied_video_size
+                        except (OSError, ValueError) as exc:
+                            print(
+                                "FORWARD VIDEO PREPARATION ERROR:",
+                                source_message_id,
+                                username,
+                                exc,
+                            )
+                            continue
+
 
                     has_authoritative_attachment = bool(
                         source_media_url
