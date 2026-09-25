@@ -4725,17 +4725,26 @@ async function forwardMessage(){
             const item = document.createElement("div");
             item.className = "forward-user";
 
-            item.innerHTML = `
- 
-                <img
-                   src="${user.profile_picture || '/static/profile/default.png'}"
-                       onerror="this.src='/static/profile/default.png'"
-                       >
+            const avatar = document.createElement("img");
+            const rawProfilePicture = String(user.profile_picture || "").trim();
+            const safeProfilePicture =
+                /^(https?:\/\/|\/)/i.test(rawProfilePicture)
+                    ? rawProfilePicture
+                    : "/static/profile/default.png";
 
-                <div class="forward-user-name">
-                    ${user.display_name || user.username}
-                </div>
-            `;
+            avatar.src = safeProfilePicture;
+            avatar.alt = "";
+            avatar.onerror = () => {
+                avatar.onerror = null;
+                avatar.src = "/static/profile/default.png";
+            };
+
+            const name = document.createElement("div");
+            name.className = "forward-user-name";
+            name.textContent = String(user.display_name || user.username || "").trim();
+
+            item.appendChild(avatar);
+            item.appendChild(name);
 
             item.onclick = () => {
                 sendForward(user.username);
