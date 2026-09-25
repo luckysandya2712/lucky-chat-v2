@@ -4795,35 +4795,142 @@ function getForwardMessageText(forwardData) {
     return text;
 }
 
+async function prepareVideoForForward(mediaUrl, originalName = "") {
+    const sourceUrl = String(mediaUrl || "").trim();
+    if (!sourceUrl) return null;
+
+    // Video uploads use the server's local chat storage. Re-uploading the
+    // selected source video through the authenticated upload endpoint gives the
+    // forwarded message its own valid video asset instead of relying on a copied
+    // media path that may not survive the original message/rendering path.
+    const response = await fetch(sourceUrl, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store"
+    });
+
+    if (!response.ok) {
+        throw new Error(`Could not read the source video (HTTP ${response.status})`);
+    }
+
+    const blob = await response.blob();
+    if (!blob.size) {
+        throw new Error("The source video is empty or unavailable");
+    }
+
+    const maxSize = 30 * 1024 * 1024;
+    if (blob.size > maxSize) {
+        throw new Error("Video is too large. Maximum size is 30 MB");
+    }
+
+    const pathName = (() => {
+        try {
+            return new URL(sourceUrl, window.location.origin).pathname;
+        } catch (_) {
+            return sourceUrl.split("?", 1)[0].split("#", 1)[0];
+        }
+    })();
+
+    const fallbackMime = (() => {
+        const lower = pathName.toLowerCase();
+        if (lower.endsWith(".webm")) return "video/webm";
+        if (lower.endsWith(".ogv") || lower.endsWith(".ogg")) return "video/ogg";
+        return "video/mp4";
+    })();
+
+    const mimeType = String(blob.type || fallbackMime).toLowerCase();
+    const extension = mimeType === "video/webm"
+        ? ".webm"
+        : mimeType === "video/ogg"
+            ? ".ogv"
+            : ".mp4";
+
+    let filename = String(originalName || "").trim();
+    if (!filename || !/\.(mp4|webm|ogv|ogg)$/i.test(filename)) {
+        filename = `forwarded-video${extension}`;
+    }
+
+    const file = new File([blob], filename, { type: mimeType });
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const uploadResponse = await fetch("/upload-chat-video", {
+        method: "POST",
+        credentials: "same-origin",
+        body: formData
+    });
+
+    let result = null;
+    try {
+        result = await uploadResponse.json();
+    } catch (_) {
+        // Fall through to a useful HTTP error below.
+    }
+
+    if (!uploadResponse.ok || !result?.success || !result?.url) {
+        throw new Error(
+            result?.error || `Could not prepare video for forwarding (HTTP ${uploadResponse.status})`
+        );
+    }
+
+    return {
+        url: String(result.url).trim(),
+        media_type: "video",
+        name: filename,
+        size: blob.size
+    };
+}
+
 async function sendForward(target){
 
     if(!window.forwardMessageData) return;
 
     const forwardData = window.forwardMessageData;
     const text = getForwardMessageText(forwardData);
-    const mediaUrl = String(
+    let mediaUrl = String(
         forwardData.media_url ||
         forwardData.document_url ||
         forwardData.file_url ||
         forwardData.url ||
         ""
     ).trim();
-    const mediaType = canonicalizeChatMediaType(
+    let mediaType = canonicalizeChatMediaType(
         forwardData.media_type,
         mediaUrl,
         forwardData.media_name
     );
+    let mediaName = forwardData.media_name || null;
+    let mediaSize = Number(forwardData.media_size || 0) || 0;
     const forwardableMediaTypes = new Set(["image", "video", "audio", "document"]);
-    const hasAttachment = !!mediaUrl && forwardableMediaTypes.has(mediaType);
+    let hasAttachment = !!mediaUrl && forwardableMediaTypes.has(mediaType);
 
     const sourceMessageId = Number(forwardData.id || 0) || null;
 
-    // A media-only history record can expose a generated preview (for example
-    // "📄 requirements.txt") without carrying attachment fields on the local
-    // message object. When the original message id is available, let the
-    // backend resolve the authoritative attachment metadata instead of aborting
-    // here.
+    // A media-only history record can expose a generated preview without carrying
+    // attachment fields locally. When the source message id is available, let
+    // the backend resolve the authoritative attachment metadata.
     if (!text && !hasAttachment && !sourceMessageId) return;
+
+    // Videos are the one attachment type that is not forwarding reliably when
+    // the original media path is simply reused. Make a fresh authenticated
+    // server-side video asset before creating the forwarded Message row. This
+    // keeps the already-working image/audio/document forwarding paths unchanged.
+    if (mediaType === "video" && mediaUrl) {
+        try {
+            const preparedVideo = await prepareVideoForForward(mediaUrl, mediaName || "");
+            if (preparedVideo?.url) {
+                mediaUrl = preparedVideo.url;
+                mediaType = "video";
+                mediaName = preparedVideo.name || mediaName;
+                mediaSize = preparedVideo.size || mediaSize;
+                hasAttachment = true;
+            }
+        } catch (error) {
+            console.error("VIDEO FORWARD PREPARATION ERROR:", error);
+            alert(error?.message || "Could not prepare video for forwarding");
+            return;
+        }
+    }
 
     let encryptedText = "";
     try {
@@ -4870,8 +4977,8 @@ async function sendForward(target){
             media_type: mediaType || null,
             media_duration: Number(forwardData.media_duration || 0) || 0,
             media_waveform: forwardData.media_waveform || null,
-            media_name: forwardData.media_name || null,
-            media_size: Number(forwardData.media_size || 0) || 0,
+            media_name: mediaName,
+            media_size: mediaSize,
             source_message_id: sourceMessageId
         });
     } catch (error) {
