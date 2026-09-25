@@ -199,6 +199,58 @@ def _storage_user_key(username: str) -> str:
     value = str(username or "").strip()
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
 
+CHAT_MEDIA_URL_PREFIX = "/static/uploads/chat/"
+
+
+def _delete_local_chat_media_if_unreferenced(db, media_url, excluded_message_id=None):
+    """Delete a local chat asset only when no remaining message references it.
+
+    Forwarded media can intentionally reuse the original local asset, so
+    deleting the file when only one message row is removed would break the
+    forwarded copy. This helper therefore checks the Message table first and
+    only removes a safe local file when the URL is no longer referenced.
+    """
+    value = str(media_url or "").strip()
+    if not value.startswith(CHAT_MEDIA_URL_PREFIX):
+        return False
+
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme or parsed.netloc:
+        return False
+
+    path = parsed.path or ""
+    if not path.startswith(CHAT_MEDIA_URL_PREFIX):
+        return False
+
+    filename = Path(path).name
+    if not filename:
+        return False
+
+    canonical_url = CHAT_MEDIA_URL_PREFIX + filename
+
+    try:
+        query = db.query(Message.id).filter(Message.media_url == canonical_url)
+        if excluded_message_id is not None:
+            query = query.filter(Message.id != excluded_message_id)
+        if query.first() is not None:
+            return False
+
+        filepath = (UPLOAD_DIR / filename).resolve()
+        upload_root = UPLOAD_DIR.resolve()
+
+        if filepath.parent != upload_root or not filepath.is_file():
+            return False
+
+        filepath.unlink(missing_ok=True)
+        if not filepath.exists():
+            print("CHAT MEDIA CLEANUP: removed", filename)
+            return True
+    except (OSError, ValueError) as exc:
+        print("CHAT MEDIA CLEANUP ERROR:", exc)
+
+    return False
+
+
 # Session signing must come from deployment configuration, never from a
 # source-controlled hardcoded secret. Set SESSION_SECRET_KEY in Railway/local
 # environment variables before starting the application.
@@ -1747,6 +1799,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     msg.text = "🚫 This message was deleted"
                     msg.deleted_for_everyone = 1
 
+                    # Save the attachment URL before clearing the message.
+                    # The file is removed only after the DB commit and only if
+                    # no other message (including a forwarded copy) still
+                    # references the same local asset.
+                    deleted_media_url = str(msg.media_url or "").strip()
+
                     # Clear attached content and reactions as part of the
                     # permanent deleted state.
                     msg.media_url = None
@@ -1759,6 +1817,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         msg.reactions = "{}"
 
                     db.commit()
+
+                    if deleted_media_url:
+                        _delete_local_chat_media_if_unreferenced(
+                            db,
+                            deleted_media_url,
+                            excluded_message_id=msg.id,
+                        )
 
                     payload = {
                         "type": "delete_everyone",
