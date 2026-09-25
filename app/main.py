@@ -8,6 +8,7 @@ import mimetypes
 import hmac
 import json
 import os
+import shutil
 import time
 import traceback
 import urllib.error
@@ -442,14 +443,14 @@ def canonicalize_chat_media_type(media_type, media_url=None, media_name=None):
     return value
 
 
-def _prepare_server_side_forward_video(source_media_url, username=None):
-    """Validate an existing local chat video and reuse it for forwarding.
+def _prepare_server_side_forward_video(source_media_url, username):
+    """Validate and reuse an existing local chat video for forwarding.
 
-    The browser never downloads/re-uploads the video, and the server does not
-    copy the already-stored file either. After the source-message participant
-    check, the original authenticated chat-upload URL is reused directly. This
-    removes an unnecessary disk I/O pass over the entire video while preserving
-    the existing local-path, format, existence, and size validation.
+    The browser never downloads and re-uploads the video, and the server does
+    not duplicate the already-stored file. The source message access check in
+    the WebSocket handler establishes that the authenticated user may forward
+    the attachment; this helper validates that the referenced asset is a real
+    local chat video within the upload root before reusing its URL.
     """
     source_url = str(source_media_url or "").strip()
     parsed = urllib.parse.urlparse(source_url)
@@ -477,10 +478,9 @@ def _prepare_server_side_forward_video(source_media_url, username=None):
     if size <= 0 or size > max_size:
         raise ValueError("Source video is invalid or too large")
 
-    # Reuse the original validated URL. A forward is already authorized by the
-    # source-message participant check in the WebSocket handler, so duplicating
-    # the physical video file is unnecessary and can be very slow on mobile
-    # uploads / constrained Railway instances.
+    # No file copy is necessary. Reusing the validated original asset makes the
+    # forward operation O(1) with respect to video size instead of rewriting the
+    # entire video before the database row can be created.
     return "/static/uploads/chat/" + filename, size
 
 
