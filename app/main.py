@@ -3325,7 +3325,62 @@ async def user_status(friend: str, request: Request):
 
 STATUS_MAX_SIZE = 25 * 1024 * 1024
 STATUS_LIFETIME = timedelta(hours=24)
+STATUS_MEDIA_URL_PREFIX = "/static/uploads/status/"
 
+
+def _collect_expired_status_media_urls(db, now):
+    """Delete expired Status rows and return their local media URLs."""
+    expired_rows = (
+        db.query(Status.media_url)
+        .filter(Status.expires_at <= now)
+        .all()
+    )
+
+    if not expired_rows:
+        return []
+
+    media_urls = [
+        str(row[0]).strip()
+        for row in expired_rows
+        if row[0]
+    ]
+
+    db.query(Status).filter(Status.expires_at <= now).delete(
+        synchronize_session=False
+    )
+
+    return media_urls
+
+
+def _delete_local_status_media(media_urls):
+    """Remove local status assets belonging to expired/deleted statuses."""
+    removed = 0
+    failed = 0
+
+    for media_url in media_urls or []:
+        value = str(media_url or "").strip()
+        if not value.startswith(STATUS_MEDIA_URL_PREFIX):
+            continue
+
+        filename = Path(value.split("?", 1)[0].split("#", 1)[0]).name
+        if not filename:
+            continue
+
+        try:
+            filepath = (STATUS_UPLOAD_DIR / filename).resolve()
+            upload_root = STATUS_UPLOAD_DIR.resolve()
+            if filepath.parent != upload_root:
+                continue
+
+            existed = filepath.exists()
+            filepath.unlink(missing_ok=True)
+            if existed and not filepath.exists():
+                removed += 1
+        except OSError:
+            failed += 1
+
+    if removed or failed:
+        print("STATUS MEDIA CLEANUP: removed=", removed, "failed=", failed)
 
 
 def status_timestamp_iso(value):
@@ -3410,9 +3465,7 @@ async def upload_status(
 
     try:
         # Remove expired records while the status list is being updated.
-        db.query(Status).filter(Status.expires_at <= now).delete(
-            synchronize_session=False
-        )
+        expired_media_urls = _collect_expired_status_media_urls(db, now)
 
         status = Status(
             username=username,
@@ -3426,6 +3479,9 @@ async def upload_status(
         db.add(status)
         db.commit()
         db.refresh(status)
+
+        # Only remove old files after the DB transaction succeeds.
+        _delete_local_status_media(expired_media_urls)
 
         return {
             "success": True,
@@ -3466,11 +3522,12 @@ async def get_statuses(request: Request):
     db = SessionLocal()
 
     try:
-        # Expired statuses are no longer returned.
-        db.query(Status).filter(Status.expires_at <= now).delete(
-            synchronize_session=False
-        )
-        db.commit()
+        # Expired statuses are no longer returned. Clean up their local media
+        # at the same time while preserving the existing response shape.
+        expired_media_urls = _collect_expired_status_media_urls(db, now)
+        if expired_media_urls:
+            db.commit()
+            _delete_local_status_media(expired_media_urls)
 
         statuses = (
             db.query(Status)
@@ -3983,7 +4040,7 @@ async def delete_status(status_id: int, request: Request):
         db.delete(status)
         db.commit()
 
-        if media_url and media_url.startswith("/static/uploads/status/"):
+        if media_url and media_url.startswith(STATUS_MEDIA_URL_PREFIX):
             filename = media_url.rsplit("/", 1)[-1]
             try:
                 (STATUS_UPLOAD_DIR / filename).unlink(missing_ok=True)
