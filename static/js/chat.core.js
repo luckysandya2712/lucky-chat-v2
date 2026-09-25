@@ -1541,6 +1541,25 @@ function saveReactions() {
     );
 }
 
+function canonicalizeChatMediaType(type, url = "", name = "") {
+    const value = String(type || "").trim().toLowerCase().split(";", 1)[0];
+    if (["image", "video", "audio", "document", "call"].includes(value)) {
+        return value;
+    }
+
+    if (value.startsWith("image/")) return "image";
+    if (value.startsWith("video/")) return "video";
+    if (value.startsWith("audio/")) return "audio";
+
+    const source = String(url || name || "").trim().toLowerCase();
+    if (/\.(mp4|webm|ogv|ogg)(?:[?#]|$)/i.test(source)) return "video";
+    if (/\.(mp3|wav|m4a|aac|oga)(?:[?#]|$)/i.test(source)) return "audio";
+    if (/\.(png|jpe?g|webp|gif)(?:[?#]|$)/i.test(source)) return "image";
+    if (/\.(pdf|docx?|txt|csv|xlsx?|pptx?|zip|rtf)(?:[?#]|$)/i.test(source)) return "document";
+
+    return value;
+}
+
 function isDocumentMessage(msg) {
     if (!msg || typeof msg !== "object") return false;
 
@@ -3356,7 +3375,7 @@ function queueOptimisticMessage(msg) {
         clientId: msg.client_id || null,
         text: msg.text || "",
         media_url: msg.media_url || null,
-        media_type: msg.media_type || null,
+        media_type: canonicalizeChatMediaType(msg.media_type, msg.media_url, msg.media_name),
         message: msg,
         attempted: false
     });
@@ -3469,7 +3488,7 @@ function reconcileOutgoingMessage(msg) {
             optimistic.media_url = String(msg.media_url).trim();
         }
         if (msg.media_type != null) {
-            optimistic.media_type = String(msg.media_type).trim().toLowerCase();
+            optimistic.media_type = canonicalizeChatMediaType(msg.media_type, msg.media_url, msg.media_name);
         }
         if (msg.media_name != null) {
             optimistic.media_name = msg.media_name;
@@ -3975,7 +3994,7 @@ function addMessage(msg){
     // paths call addMessage() directly and therefore do not pass through the
     // history/live-socket normalization performed elsewhere.
     if (msg.media_type != null) {
-        msg.media_type = String(msg.media_type).trim().toLowerCase();
+        msg.media_type = canonicalizeChatMediaType(msg.media_type, msg.media_url, msg.media_name);
     }
 
     if (msg.media_url != null) {
@@ -4673,17 +4692,11 @@ async function forwardMessage(){
         return;
     }
 
-    const forwardMediaUrl = String(msg.media_url || "").trim();
-    const forwardMediaType = normalizeForwardMediaType(
-        msg.media_type,
-        forwardMediaUrl
-    );
-
     window.forwardMessageData = {
         id: msg.id,
         text: msg.text || "",
-        media_url: forwardMediaUrl || null,
-        media_type: forwardMediaType || null,
+        media_url: msg.media_url || null,
+        media_type: msg.media_type || null,
         media_duration: msg.media_duration || 0,
         media_waveform: msg.media_waveform || null,
         media_name: msg.media_name || null,
@@ -4782,35 +4795,23 @@ function getForwardMessageText(forwardData) {
     return text;
 }
 
-function normalizeForwardMediaType(mediaType, mediaUrl) {
-    const type = String(mediaType || "").trim().toLowerCase();
-    const url = String(mediaUrl || "").trim().toLowerCase();
-    const cleanUrl = url.split("#", 1)[0].split("?", 1)[0];
-
-    if (type === "video" || type.startsWith("video/")) {
-        return "video";
-    }
-
-    if (
-        !type &&
-        /\.(mp4|m4v|webm|ogv|ogg)$/.test(cleanUrl)
-    ) {
-        return "video";
-    }
-
-    return type;
-}
-
 async function sendForward(target){
 
     if(!window.forwardMessageData) return;
 
     const forwardData = window.forwardMessageData;
     const text = getForwardMessageText(forwardData);
-    const mediaUrl = String(forwardData.media_url || "").trim();
-    const mediaType = normalizeForwardMediaType(
+    const mediaUrl = String(
+        forwardData.media_url ||
+        forwardData.document_url ||
+        forwardData.file_url ||
+        forwardData.url ||
+        ""
+    ).trim();
+    const mediaType = canonicalizeChatMediaType(
         forwardData.media_type,
-        mediaUrl
+        mediaUrl,
+        forwardData.media_name
     );
     const forwardableMediaTypes = new Set(["image", "video", "audio", "document"]);
     const hasAttachment = !!mediaUrl && forwardableMediaTypes.has(mediaType);
