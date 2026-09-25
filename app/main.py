@@ -8,7 +8,6 @@ import mimetypes
 import hmac
 import json
 import os
-import shutil
 import time
 import traceback
 import urllib.error
@@ -443,11 +442,14 @@ def canonicalize_chat_media_type(media_type, media_url=None, media_name=None):
     return value
 
 
-def _prepare_server_side_forward_video(source_media_url, username):
-    """Create a server-side copy of an existing local chat video for forwarding.
+def _prepare_server_side_forward_video(source_media_url, username=None):
+    """Validate an existing local chat video and reuse it for forwarding.
 
-    The browser never downloads and re-uploads the video. This avoids mobile
-    CORS/fetch failures and keeps the attachment entirely on the server.
+    The browser never downloads/re-uploads the video, and the server does not
+    copy the already-stored file either. After the source-message participant
+    check, the original authenticated chat-upload URL is reused directly. This
+    removes an unnecessary disk I/O pass over the entire video while preserving
+    the existing local-path, format, existence, and size validation.
     """
     source_url = str(source_media_url or "").strip()
     parsed = urllib.parse.urlparse(source_url)
@@ -475,14 +477,11 @@ def _prepare_server_side_forward_video(source_media_url, username):
     if size <= 0 or size > max_size:
         raise ValueError("Source video is invalid or too large")
 
-    target_filename = (
-        f"{_storage_user_key(username)}_forward_"
-        f"{datetime.now().strftime('%Y%m%d%H%M%S%f')}{suffix}"
-    )
-    target_path = upload_root / target_filename
-    shutil.copyfile(source_path, target_path)
-
-    return "/static/uploads/chat/" + target_filename, size
+    # Reuse the original validated URL. A forward is already authorized by the
+    # source-message participant check in the WebSocket handler, so duplicating
+    # the physical video file is unnecessary and can be very slow on mobile
+    # uploads / constrained Railway instances.
+    return "/static/uploads/chat/" + filename, size
 
 
 def resolve_user_by_username(db, username):
