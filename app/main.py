@@ -1809,10 +1809,51 @@ async def websocket_endpoint(websocket: WebSocket):
                             )
                             continue
 
+                    # For videos, the client prepares a fresh authenticated
+                    # upload before forwarding. Prefer that freshly uploaded
+                    # video URL, but only when it points to this user's own
+                    # chat-upload file. This prevents the prepared URL from
+                    # being discarded in favor of stale/empty source metadata.
+                    prepared_video_url = None
+                    if media_type == "video" and media_url:
+                        try:
+                            parsed_video_url = urllib.parse.urlparse(media_url)
+                            if (
+                                parsed_video_url.scheme
+                                or parsed_video_url.netloc
+                                or not parsed_video_url.path.startswith("/static/uploads/chat/")
+                            ):
+                                raise ValueError("Video URL must be a local chat upload")
+
+                            video_filename = Path(parsed_video_url.path).name
+                            expected_video_prefix = _storage_user_key(username) + "_"
+                            if (
+                                not video_filename.startswith(expected_video_prefix)
+                                or Path(video_filename).suffix.lower() not in {".mp4", ".webm", ".ogv"}
+                            ):
+                                raise ValueError("Video upload is not owned by the current user")
+
+                            video_path = (UPLOAD_DIR / video_filename).resolve()
+                            if (
+                                video_path.parent != UPLOAD_DIR.resolve()
+                                or not video_path.is_file()
+                            ):
+                                raise ValueError("Video upload is no longer available")
+
+                            if video_path.stat().st_size > 30 * 1024 * 1024:
+                                raise ValueError("Video upload is too large")
+
+                            prepared_video_url = "/static/uploads/chat/" + video_filename
+                        except (OSError, ValueError):
+                            prepared_video_url = None
+
                     source_media_url = (
-                        getattr(source_message, "media_url", None)
-                        if source_message is not None
-                        else (media_url or None)
+                        prepared_video_url
+                        or (
+                            getattr(source_message, "media_url", None)
+                            if source_message is not None
+                            else (media_url or None)
+                        )
                     )
                     source_media_type = canonicalize_chat_media_type(
                         getattr(source_message, "media_type", None)
