@@ -2331,11 +2331,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 db = SessionLocal()
                 try:
                     target_user = resolve_user_by_username(db, requested_target)
-                    receiver_name = (
-                        target_user.username
-                        if target_user
-                        else requested_target
-                    )
+                    if not target_user:
+                        print(
+                            "DOCUMENT MESSAGE TARGET USER NOT FOUND:",
+                            requested_target,
+                        )
+                        continue
+
+                    receiver_name = target_user.username
 
                     if not receiver_name:
                         continue
@@ -2498,7 +2501,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 try:
                     target_user = resolve_user_by_username(db, receiver_name)
-                    receiver_name = target_user.username if target_user else str(receiver_name or "").strip()
+                    if not target_user:
+                        print(
+                            "MESSAGE TARGET USER NOT FOUND:",
+                            receiver_name,
+                        )
+                        continue
+
+                    receiver_name = target_user.username
 
                     if not receiver_name:
                         continue
@@ -3545,6 +3555,11 @@ async def set_pinned_chat(request: Request):
     db = SessionLocal()
 
     try:
+        friend_user = resolve_user_by_username(db, friend)
+        if not friend_user:
+            return {"success": False, "error": "Friend not found"}
+        friend = friend_user.username
+
         row = db.execute(
             sqlalchemy_text(
                 "SELECT pinned_json FROM pinned_chats "
