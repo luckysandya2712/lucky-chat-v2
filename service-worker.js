@@ -155,7 +155,12 @@ async function getNotificationTarget(data) {
     const sender = String(data?.sender || "").trim();
 
     if (data?.url) {
-        return new URL(data.url, self.location.origin).href;
+        try {
+            const requested = new URL(data.url, self.location.origin);
+            if (requested.origin === self.location.origin) {
+                return requested.href;
+            }
+        } catch (_error) {}
     }
 
     if (sender) {
@@ -273,8 +278,13 @@ self.addEventListener("notificationclick", event => {
         const target =
             event.notification?.data?.url || "/";
 
-        const absoluteTarget =
-            new URL(target, self.location.origin).href;
+        let absoluteTarget = new URL("/", self.location.origin).href;
+        try {
+            const requestedTarget = new URL(target, self.location.origin);
+            if (requestedTarget.origin === self.location.origin) {
+                absoluteTarget = requestedTarget.href;
+            }
+        } catch (_error) {}
 
         const allClients = await clients.matchAll({
             type: "window",
