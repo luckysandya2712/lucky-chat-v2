@@ -6125,6 +6125,110 @@ body{
 }
 </style>
 
+
+
+<style id="lucky-status-shelf-final-row-fix-v1">
+/* Final Status shelf geometry guard.
+   Keep every story card in one horizontal, non-wrapping row on all widths.
+   This is intentionally CSS-only; Status data/rendering logic is unchanged. */
+#statusRow.status-row{
+  display:flex!important;
+  flex-direction:row!important;
+  flex-wrap:nowrap!important;
+  align-items:flex-start!important;
+  align-content:flex-start!important;
+  justify-content:flex-start!important;
+  width:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  height:auto!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  gap:9px!important;
+  margin:0!important;
+  padding:1px 1px 3px!important;
+}
+
+#statusRow.status-row > .status-card.story-card{
+  position:relative!important;
+  float:none!important;
+  clear:none!important;
+  display:flex!important;
+  flex:0 0 74px!important;
+  width:74px!important;
+  min-width:74px!important;
+  max-width:74px!important;
+  height:96px!important;
+  min-height:96px!important;
+  max-height:96px!important;
+  margin:0!important;
+  padding:3px 2px 2px!important;
+  flex-direction:column!important;
+  flex-wrap:nowrap!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  box-sizing:border-box!important;
+}
+
+#statusRow.status-row > .status-loading{
+  display:none!important;
+}
+
+#statusRow.status-row > .status-card.story-card .story-card-top{
+  flex:0 0 58px!important;
+  width:58px!important;
+  height:58px!important;
+  min-width:58px!important;
+  min-height:58px!important;
+  margin:0 auto 4px!important;
+}
+
+#statusRow.status-row > .status-card.story-card .story-avatar-wrap{
+  width:58px!important;
+  height:58px!important;
+  min-width:58px!important;
+  min-height:58px!important;
+}
+
+#statusRow.status-row > .status-card.story-card .story-card-bottom{
+  position:relative!important;
+  width:100%!important;
+  min-width:0!important;
+  flex:0 0 auto!important;
+}
+
+@media(max-width:390px){
+  #statusRow.status-row{
+    gap:8px!important;
+  }
+
+  #statusRow.status-row > .status-card.story-card{
+    flex-basis:64px!important;
+    width:64px!important;
+    min-width:64px!important;
+    max-width:64px!important;
+    height:84px!important;
+    min-height:84px!important;
+    max-height:84px!important;
+  }
+
+  #statusRow.status-row > .status-card.story-card .story-card-top{
+    flex-basis:52px!important;
+    width:52px!important;
+    height:52px!important;
+    min-width:52px!important;
+    min-height:52px!important;
+  }
+
+  #statusRow.status-row > .status-card.story-card .story-avatar-wrap{
+    width:52px!important;
+    height:52px!important;
+    min-width:52px!important;
+    min-height:52px!important;
+  }
+}
+</style>
+
 </head>
 
 <body>
