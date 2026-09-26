@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import and_, or_, inspect, text as sqlalchemy_text, func, case
+from sqlalchemy.exc import IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.websocket import manager
@@ -1091,13 +1092,14 @@ async def register_user(
     db = SessionLocal()
     try:
 
+        # Keep registration consistent with the rest of the app, which resolves
+        # usernames case-insensitively and trims legacy whitespace.
         existing = db.query(User).filter(
-            (User.username == username) |
+            (func.lower(func.trim(User.username)) == username.lower()) |
             (User.email == email)
         ).first()
 
         if existing:
-            db.close()
             return {"message": "Username or email already exists"}
 
         user = User(
@@ -1107,7 +1109,15 @@ async def register_user(
         )
 
         db.add(user)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two registrations can race between the pre-check and COMMIT.
+            # Treat a database uniqueness collision as the same safe response
+            # instead of leaking a 500 error.
+            db.rollback()
+            return {"message": "Username or email already exists"}
+
         return RedirectResponse(url="/login", status_code=303)
 
     finally:
