@@ -934,9 +934,10 @@ function collectDashboardContacts(){
         const name = item.querySelector("h4")?.textContent?.replace("📌","").trim();
         const preview = item.querySelector(".message-preview")?.textContent?.trim() || "";
         const avatar = item.querySelector("img.avatar")?.getAttribute("src") || "/static/profile/default.png";
+        const dataUsername = item.getAttribute("data-username") || "";
         const onclick = item.getAttribute("onclick") || "";
         const match = onclick.match(/openChat\('([^']+)'\)/);
-        const username = match ? match[1] : name;
+        const username = dataUsername || (match ? match[1] : name);
         return name && username ? {name, username, preview, avatar} : null;
     }).filter(Boolean);
 }
@@ -3954,6 +3955,7 @@ function escapeDashboardText(value){
 
 let dashboardRefreshGeneration = 0;
 let dashboardRefreshInFlight = null;
+let dashboardRefreshPending = false;
 let dashboardOnlinePrimed = false;
 
 function isUsableCachedDashboardPreview(cached){
@@ -4036,7 +4038,6 @@ function buildDashboardChatHtml(chat){
         ? `<span class="badge">${unread}</span>`
         : "";
 
-    const safeUsername = username.replace(/'/g, "\\'");
     const profile = chat.profile || "/static/profile/default.png";
     const displayName = escapeDashboardText(chat.display_name || username);
     const escapedUsername = escapeDashboardText(username);
@@ -4049,8 +4050,8 @@ function buildDashboardChatHtml(chat){
     return `
     <div class="chat-item${activeClass}${pinnedClass}"
          data-username="${escapedUsername}"
-         onclick="openChat('${safeUsername}')"
-         oncontextmenu="showChatMenu(event, '${safeUsername}')">
+         onclick="openChat(this.dataset.username)"
+         oncontextmenu="showChatMenu(event, this.dataset.username)">
 
         <img
             class="avatar"
@@ -4171,7 +4172,12 @@ async function decryptDashboardPreviewsInBackground(chats, generation){
 
 async function refreshDashboard(){
     if (dashboardSessionExpired || dashboardPageUnloading) return;
-    if (dashboardRefreshInFlight) return dashboardRefreshInFlight;
+    if (dashboardRefreshInFlight) {
+        // A WebSocket/timer event can arrive while the current request is still
+        // in flight. Queue one trailing refresh instead of silently dropping it.
+        dashboardRefreshPending = true;
+        return dashboardRefreshInFlight;
+    }
 
     const generation = ++dashboardRefreshGeneration;
 
@@ -4229,11 +4235,27 @@ async function refreshDashboard(){
     })();
 
     dashboardRefreshInFlight = run;
-    run.then(
-        () => { if (dashboardRefreshInFlight === run) dashboardRefreshInFlight = null; },
-        () => { if (dashboardRefreshInFlight === run) dashboardRefreshInFlight = null; }
-    );
+    const finishRefresh = () => {
+        if (dashboardRefreshInFlight !== run) return;
 
+        dashboardRefreshInFlight = null;
+
+        // Never lose an update received during an active /dashboard-data
+        // request. One coalesced trailing fetch is enough even when several
+        // events arrive together.
+        if (
+            dashboardRefreshPending &&
+            !dashboardSessionExpired &&
+            !dashboardPageUnloading
+        ) {
+            dashboardRefreshPending = false;
+            setTimeout(() => {
+                void refreshDashboard();
+            }, 0);
+        }
+    };
+
+    run.then(finishRefresh, finishRefresh);
     return run;
 }
 

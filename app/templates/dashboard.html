@@ -8070,8 +8070,8 @@ body.status-block-shots #statusViewerImage{
 
 <div class="chat-item"
      data-username="{{ user.username }}"
-     onclick="openChat('{{ user.username }}')"
-     oncontextmenu="showChatMenu(event, '{{ user.username }}')">
+     onclick="openChat(this.dataset.username)"
+     oncontextmenu="showChatMenu(event, this.dataset.username)">
 
     <img
     class="avatar"
