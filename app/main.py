@@ -3283,27 +3283,125 @@ async def upload_chat_audio(request: Request):
 # ---------------------------------------------------------
 # SERVER-PERSISTENT DASHBOARD PINNED CHATS
 # ---------------------------------------------------------
+# Pinned-chat state used to live in data/pinned_chats.json. That location is
+# outside the persistent Railway Volume, so a deployment could silently reset
+# the user's pinned chats. Keep the legacy file only as a one-time migration
+# source and store active state in the database instead.
 PINNED_CHATS_FILE = Path("data/pinned_chats.json")
-PINNED_CHATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+PINNED_CHATS_TABLE = "pinned_chats"
 
 
-def _load_pinned_chats():
+def _ensure_pinned_chats_table():
+    """Create the DB-backed pinned-chat table and migrate legacy JSON once."""
     try:
-        if not PINNED_CHATS_FILE.exists():
-            return {}
+        with engine.begin() as connection:
+            connection.execute(
+                sqlalchemy_text(
+                    "CREATE TABLE IF NOT EXISTS pinned_chats ("
+                    "username VARCHAR(320) PRIMARY KEY, "
+                    "pinned_json TEXT NOT NULL DEFAULT '[]'"
+                    ")"
+                )
+            )
+    except Exception as exc:
+        print("PINNED CHAT SCHEMA ERROR:", exc)
+        traceback.print_exc()
+        return
+
+    # Migrate any legacy JSON file that still exists in the current deployment.
+    # Existing DB rows always win, so a restart cannot overwrite newer pinned
+    # state with an older legacy snapshot.
+    if not PINNED_CHATS_FILE.is_file():
+        return
+
+    try:
         with open(PINNED_CHATS_FILE, "r", encoding="utf-8") as f:
-            value = json.load(f)
-        return value if isinstance(value, dict) else {}
-    except Exception as e:
-        print("PINNED CHAT LOAD ERROR:", e)
-        return {}
+            legacy = json.load(f)
+
+        if not isinstance(legacy, dict):
+            return
+
+        with engine.begin() as connection:
+            for raw_username, raw_pinned in legacy.items():
+                username = str(raw_username or "").strip()
+                if not username:
+                    continue
+
+                pinned = (
+                    raw_pinned
+                    if isinstance(raw_pinned, list)
+                    else []
+                )
+                pinned = [
+                    str(value).strip()
+                    for value in pinned
+                    if str(value).strip()
+                ]
+
+                exists = connection.execute(
+                    sqlalchemy_text(
+                        "SELECT 1 FROM pinned_chats "
+                        "WHERE username = :username"
+                    ),
+                    {"username": username},
+                ).first()
+
+                if exists is None:
+                    connection.execute(
+                        sqlalchemy_text(
+                            "INSERT INTO pinned_chats "
+                            "(username, pinned_json) "
+                            "VALUES (:username, :pinned_json)"
+                        ),
+                        {
+                            "username": username,
+                            "pinned_json": json.dumps(
+                                pinned,
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        },
+                    )
+
+        print("PINNED CHAT STORAGE: database-backed state ready")
+    except Exception as exc:
+        print("PINNED CHAT MIGRATION ERROR:", exc)
+        traceback.print_exc()
 
 
-def _save_pinned_chats(value):
-    tmp = PINNED_CHATS_FILE.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(value, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, PINNED_CHATS_FILE)
+_ensure_pinned_chats_table()
+
+
+def _load_pinned_chats(username):
+    """Load one user's pinned chats from the database."""
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            sqlalchemy_text(
+                "SELECT pinned_json FROM pinned_chats "
+                "WHERE username = :username"
+            ),
+            {"username": username},
+        ).first()
+
+        if row is None:
+            return []
+
+        try:
+            value = json.loads(row[0] or "[]")
+        except (TypeError, ValueError):
+            value = []
+
+        if not isinstance(value, list):
+            return []
+
+        return [
+            str(item).strip()
+            for item in value
+            if str(item).strip()
+        ]
+    finally:
+        db.close()
 
 
 @app.get("/pinned-chats")
@@ -3312,12 +3410,13 @@ async def get_pinned_chats(request: Request):
     if not username:
         return {"success": False, "pinned": []}
 
-    data = _load_pinned_chats()
-    pinned = data.get(username, [])
-    if not isinstance(pinned, list):
-        pinned = []
-
-    return {"success": True, "pinned": pinned}
+    try:
+        pinned = _load_pinned_chats(username)
+        return {"success": True, "pinned": pinned}
+    except Exception as exc:
+        print("PINNED CHAT LOAD ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "pinned": []}
 
 
 @app.post("/pinned-chats")
@@ -3337,22 +3436,80 @@ async def set_pinned_chat(request: Request):
     if not friend:
         return {"success": False, "error": "Missing friend"}
 
-    data = _load_pinned_chats()
-    current = data.get(username, [])
-    if not isinstance(current, list):
-        current = []
+    db = SessionLocal()
 
-    if pinned:
-        if friend in current:
-            current.remove(friend)
-        current.insert(0, friend)
-    else:
-        current = [x for x in current if x != friend]
+    try:
+        row = db.execute(
+            sqlalchemy_text(
+                "SELECT pinned_json FROM pinned_chats "
+                "WHERE username = :username"
+            ),
+            {"username": username},
+        ).first()
 
-    data[username] = current
-    _save_pinned_chats(data)
+        if row is None:
+            current = []
+        else:
+            try:
+                parsed = json.loads(row[0] or "[]")
+                current = parsed if isinstance(parsed, list) else []
+            except (TypeError, ValueError):
+                current = []
 
-    return {"success": True, "pinned": current}
+            current = [
+                str(value).strip()
+                for value in current
+                if str(value).strip()
+            ]
+
+        if pinned:
+            if friend in current:
+                current.remove(friend)
+            current.insert(0, friend)
+        else:
+            current = [x for x in current if x != friend]
+
+        pinned_json = json.dumps(
+            current,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+        if row is None:
+            db.execute(
+                sqlalchemy_text(
+                    "INSERT INTO pinned_chats "
+                    "(username, pinned_json) "
+                    "VALUES (:username, :pinned_json)"
+                ),
+                {
+                    "username": username,
+                    "pinned_json": pinned_json,
+                },
+            )
+        else:
+            db.execute(
+                sqlalchemy_text(
+                    "UPDATE pinned_chats "
+                    "SET pinned_json = :pinned_json "
+                    "WHERE username = :username"
+                ),
+                {
+                    "username": username,
+                    "pinned_json": pinned_json,
+                },
+            )
+
+        db.commit()
+        return {"success": True, "pinned": current}
+
+    except Exception as exc:
+        db.rollback()
+        print("PINNED CHAT SAVE ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save pinned chat"}
+    finally:
+        db.close()
 
 
 @app.get("/online")
