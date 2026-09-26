@@ -2228,7 +2228,7 @@ html.lucky-light .wallpaper-close{
         </button>
     </section>
 
-    <button class="logout" type="button" onclick="showComingSoon('Logout')">
+    <button class="logout" type="button" onclick="logoutUser(this)">
         🚪 Logout
     </button>
 
@@ -2897,6 +2897,31 @@ function openProfile(){
 
 function showComingSoon(name){
     alert(name + " will be connected to the backend next.");
+}
+
+async function logoutUser(button){
+    if(button) button.disabled = true;
+
+    try{
+        const response = await fetch("/logout", {
+            method: "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+                "Accept": "application/json"
+            }
+        });
+
+        if(!response.ok){
+            throw new Error("Logout request failed.");
+        }
+
+        window.location.replace("/login");
+    }catch(error){
+        console.error("LOGOUT ERROR:", error);
+        if(button) button.disabled = false;
+        alert("Could not log out. Please try again.");
+    }
 }
 
 async function savePreference(key,value,inputElement){

@@ -328,9 +328,25 @@ if not SESSION_SECRET_KEY:
         "Set a long random secret in the deployment environment before startup."
     )
 
+# Keep local HTTP development working while automatically protecting the
+# signed session cookie on Railway. Explicit SESSION_COOKIE_SECURE values
+# always override the environment-based default.
+_SESSION_COOKIE_SECURE_RAW = os.environ.get("SESSION_COOKIE_SECURE")
+if _SESSION_COOKIE_SECURE_RAW is None:
+    SESSION_COOKIE_SECURE = bool(
+        os.environ.get("RAILWAY_PROJECT_ID", "").strip()
+    )
+else:
+    SESSION_COOKIE_SECURE = _SESSION_COOKIE_SECURE_RAW.strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
 app.add_middleware(
     SessionMiddleware,
-    secret_key=SESSION_SECRET_KEY
+    secret_key=SESSION_SECRET_KEY,
+    max_age=14 * 24 * 60 * 60,
+    same_site="lax",
+    https_only=SESSION_COOKIE_SECURE,
 )
 
 models.Base.metadata.create_all(bind=engine)
@@ -1494,6 +1510,19 @@ async def login_user(
 
     finally:
         db.close()
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    """Clear the signed application session and legacy username cookie."""
+    request.session.clear()
+
+    response = JSONResponse({"success": True})
+    response.delete_cookie(
+        "username",
+        samesite="lax",
+    )
+    return response
 
 
 @app.websocket("/ws")
