@@ -533,7 +533,84 @@ def _ensure_online_status_settings_column():
 _ensure_online_status_settings_column()
 
 
+def _ensure_model_indexes():
+    """Create model indexes that may be missing on pre-existing databases.
 
+    SQLAlchemy's create_all() creates tables that do not exist, but schema
+    changes to already-existing tables do not reliably add newly introduced
+    indexes. Keep this migration additive and non-destructive: only create
+    the named indexes when their tables exist and the index is absent.
+    """
+    required_indexes = {
+        "messages": {
+            "ix_messages_sender_receiver_id",
+            "ix_messages_receiver_unread_sender_id",
+            "ix_messages_receiver_sender_id",
+        },
+        "statuses": {
+            "ix_statuses_expires_created_id",
+        },
+        "status_views": {
+            "ix_status_views_status_seen",
+        },
+        "status_likes": {
+            "ix_status_likes_status_created",
+        },
+        "status_replies": {
+            "ix_status_replies_status_replied",
+        },
+    }
+
+    try:
+        inspector = inspect(engine)
+
+        metadata_tables = {
+            "messages": Message.__table__,
+            "statuses": Status.__table__,
+            "status_views": StatusView.__table__,
+            "status_likes": StatusLike.__table__,
+            "status_replies": StatusReply.__table__,
+        }
+
+        created = 0
+
+        for table_name, index_names in required_indexes.items():
+            if not inspector.has_table(table_name):
+                continue
+
+            table = metadata_tables.get(table_name)
+            if table is None:
+                continue
+
+            existing = {
+                str(index.get("name") or "")
+                for index in inspector.get_indexes(table_name)
+            }
+
+            for index in table.indexes:
+                if not index.name or index.name not in index_names:
+                    continue
+                if index.name in existing:
+                    continue
+
+                index.create(bind=engine, checkfirst=True)
+                existing.add(index.name)
+                created += 1
+                print(
+                    "DATABASE INDEX SCHEMA: created",
+                    index.name,
+                    "on",
+                    table_name,
+                )
+
+        if created:
+            print("DATABASE INDEX SCHEMA: created", created, "missing index(es)")
+    except Exception as exc:
+        print("DATABASE INDEX SCHEMA ERROR:", exc)
+        traceback.print_exc()
+
+
+_ensure_model_indexes()
 
 
 def canonicalize_chat_media_type(media_type, media_url=None, media_name=None):
