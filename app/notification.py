@@ -211,7 +211,10 @@ async def send_push_to_user(username: str, payload: dict) -> int:
     if not configured:
         return 0
 
-    subscriptions = get_subscriptions(username)
+    # Subscription lookup is synchronous SQLAlchemy work. Run it off the
+    # event loop so a slow/stale database connection cannot block chat or call
+    # WebSocket processing while push notifications are being prepared.
+    subscriptions = await asyncio.to_thread(get_subscriptions, username)
     print("PUSH SUBSCRIPTIONS FOUND:", len(subscriptions))
     if not subscriptions:
         return 0

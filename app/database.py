@@ -22,9 +22,23 @@ connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
+engine_kwargs = {
+    "connect_args": connect_args,
+}
+
+# Railway/PostgreSQL connections can become stale while the service remains
+# alive (idle periods, network changes, database failover, etc.). Re-pinging
+# pooled connections before use prevents a dead connection from surfacing as
+# an intermittent request failure. SQLite keeps its existing configuration.
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs.update({
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+    })
+
 engine = create_engine(
     DATABASE_URL,
-    connect_args=connect_args
+    **engine_kwargs,
 )
 
 SessionLocal = sessionmaker(

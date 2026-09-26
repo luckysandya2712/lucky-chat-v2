@@ -275,7 +275,9 @@ async getPublicKeys(username) {
 
 async getPublicKey(username) {
     const keys = await this.getPublicKeys(username);
-    return keys[0].publicKey;
+    // The backend returns archived keys first and the current key last.
+    // Preserve the single-key helper's historical/current-key semantics.
+    return keys[keys.length - 1].publicKey;
 },
 
 async publicKeyId(publicKey) {
@@ -401,9 +403,12 @@ isEncryptedMessage(value) {
 },
 
 async decryptMessage(value, currentUsername) {
-    await this.ensureDecryptReady();
-
+    // Plaintext does not need local crypto state. This is important for
+    // compatibility with older messages/edit events and avoids failing a
+    // plaintext render just because IndexedDB/Web Crypto is unavailable.
     if (!this.isEncryptedMessage(value)) return value;
+
+    await this.ensureDecryptReady();
 
     const username = String(currentUsername || "").trim();
     if (!username) {
@@ -505,10 +510,18 @@ async decryptMessage(value, currentUsername) {
         }
     }
 
-    const seen = new Set();
+    // De-duplicate only the same wrapped-key/candidate-pair combination.
+    // De-duplicating by wrapped ciphertext alone can consume a historical-key
+    // attempt after the current private key fails against the same wrapped key.
+    const seen = new WeakMap();
     for (const attempt of attempts) {
-        if (seen.has(attempt.wrapped)) continue;
-        seen.add(attempt.wrapped);
+        let pairSeen = seen.get(attempt.pair);
+        if (!pairSeen) {
+            pairSeen = new Set();
+            seen.set(attempt.pair, pairSeen);
+        }
+        if (pairSeen.has(attempt.wrapped)) continue;
+        pairSeen.add(attempt.wrapped);
 
         try {
             const rawAesKey = await window.crypto.subtle.decrypt(

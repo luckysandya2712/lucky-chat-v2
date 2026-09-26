@@ -195,5 +195,15 @@ h1{margin:0;font-size:35px;line-height:1.02;font-weight:800;letter-spacing:-.055
     <div class="footer">💙 A safer place to connect<br>Made with <b>💙</b> by <b>Lucky Chat</b></div>
   </div>
 </div>
+<script>
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker
+            .register("/service-worker.js")
+            .then(() => console.log("Lucky Chat PWA Ready"))
+            .catch(console.error);
+    });
+}
+</script>
 </body>
 </html>
