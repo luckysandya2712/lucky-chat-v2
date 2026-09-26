@@ -53,6 +53,11 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 STATUS_UPLOAD_DIR = Path("static/uploads/status")
 STATUS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Profile uploads live inside the existing persistent Railway Volume at
+# /app/static/uploads. The default avatar remains in static/profile.
+PROFILE_UPLOAD_DIR = Path("static/uploads/profile")
+PROFILE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 # Chat images can use Cloudinary for persistent, shared delivery in production.
 # When Cloudinary is not configured, the existing local filesystem behavior is
 # preserved for local development.
@@ -199,6 +204,68 @@ def _storage_user_key(username: str) -> str:
     value = str(username or "").strip()
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
 
+
+def _migrate_profile_picture_urls_to_persistent_storage():
+    """Move existing profile-picture DB URLs onto the persistent Volume.
+
+    Legacy default-avatar URLs remain under /static/profile/. Only real
+    uploaded profile files are rewritten, and only when the corresponding
+    file already exists in static/uploads/profile.
+    """
+    db = SessionLocal()
+    changed = 0
+    skipped = 0
+    try:
+        users = db.query(User).filter(User.profile_picture.isnot(None)).all()
+        for user in users:
+            value = str(user.profile_picture or "").strip()
+            if not value.startswith("/static/profile/"):
+                continue
+            parsed = urllib.parse.urlparse(value)
+            if parsed.scheme or parsed.netloc:
+                continue
+
+            path = parsed.path or ""
+            prefix = "/static/profile/"
+            if not path.startswith(prefix):
+                continue
+
+            filename = Path(path).name
+            if not filename or filename == "default.png":
+                continue
+
+            filepath = (PROFILE_UPLOAD_DIR / filename).resolve()
+            upload_root = PROFILE_UPLOAD_DIR.resolve()
+            if filepath.parent != upload_root or not filepath.is_file():
+                skipped += 1
+                continue
+
+            new_value = "/static/uploads/profile/" + filename
+            if parsed.query:
+                new_value += "?" + parsed.query
+            if parsed.fragment:
+                new_value += "#" + parsed.fragment
+
+            if value != new_value:
+                user.profile_picture = new_value
+                changed += 1
+
+        if changed:
+            db.commit()
+        print(
+            "PROFILE STORAGE MIGRATION: changed=",
+            changed,
+            "skipped=",
+            skipped,
+        )
+    except Exception as exc:
+        db.rollback()
+        print("PROFILE STORAGE MIGRATION ERROR:", exc)
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
 CHAT_MEDIA_URL_PREFIX = "/static/uploads/chat/"
 
 
@@ -267,6 +334,7 @@ app.add_middleware(
 )
 
 models.Base.metadata.create_all(bind=engine)
+_migrate_profile_picture_urls_to_persistent_storage()
 
 
 def _ensure_message_media_columns():
@@ -4430,11 +4498,7 @@ async def upload_profile(
     extension = allowed_types[content_type]
     filename = f"{_storage_user_key(username)}{extension}"
 
-    filepath = os.path.join(
-        "static",
-        "profile",
-        filename
-    )
+    filepath = PROFILE_UPLOAD_DIR / filename
 
     with open(filepath, "wb") as buffer:
         buffer.write(data)
@@ -4454,7 +4518,7 @@ async def upload_profile(
 
         cache_version = int(time.time() * 1000)
         profile_picture_url = (
-            "/static/profile/" + filename + "?v=" + str(cache_version)
+            "/static/uploads/profile/" + filename + "?v=" + str(cache_version)
         )
 
         user.profile_picture = profile_picture_url
