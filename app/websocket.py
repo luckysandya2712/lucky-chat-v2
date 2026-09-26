@@ -243,11 +243,10 @@ class ConnectionManager:
         if delivered:
             return True
 
-        # Always queue when the matching chat is not open. A generic send()
-        # may hit a different conversation's socket; queuing first keeps the
-        # document available when the correct chat is opened.
+        # Queue when the matching chat is not open. Do NOT fall back to the
+        # generic send() path here: it only knows the user, not the conversation,
+        # so it could deliver this payload into a different open chat.
         self.queue_pending(username, payload)
-        await self.send(username, payload)
         return False
 
     async def send_personal(self, payload: dict, username: str):
