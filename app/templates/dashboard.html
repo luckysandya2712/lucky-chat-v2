@@ -8393,7 +8393,7 @@ body.status-block-shots #statusViewerImage{
 
 <script src="/static/js/crypto.core.js?v=20260923-crypto-local-decrypt-v22" onerror="console.error('Lucky Chat crypto failed to load')"></script>
 <script src="/static/js/notification.js?v=20260927-notification-stability-v1"></script>
-<script src="/static/js/dashboard.core.js?v=20260926-dashboard-core-v1"></script>
+<script src="/static/js/dashboard.core.js?v=20260927-dashboard-core-stability-v2"></script>
 
 <style id="lucky-liquid-glass-v1">
 /* Lucky Chat — Liquid Glass dashboard pass
@@ -10049,6 +10049,123 @@ html.lucky-light .status-modal-card{
   }
   .status-card.story-card.your-status.story-card-empty .my-status-empty-avatar .status-add{
     width:19px!important;height:19px!important;font-size:12px!important;
+  }
+}
+</style>
+
+
+<style id="lucky-status-shelf-final-grid-v2">
+/*
+ * Final Status shelf geometry guard.
+ * Must remain the last Status shelf rule in the cascade.
+ * Use one explicit grid row so later flex-oriented Status styles
+ * cannot place story cards underneath one another.
+ */
+#statusRow.status-row{
+  display:grid!important;
+  grid-auto-flow:column!important;
+  grid-auto-columns:74px!important;
+  grid-template-rows:96px!important;
+  grid-template-columns:none!important;
+  align-items:start!important;
+  justify-content:start!important;
+  align-content:start!important;
+  width:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  height:96px!important;
+  max-height:96px!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  gap:9px!important;
+  margin:0!important;
+  padding:1px 1px 3px!important;
+  box-sizing:border-box!important;
+  scrollbar-width:none!important;
+  overscroll-behavior-inline:contain!important;
+}
+
+#statusRow.status-row::-webkit-scrollbar{
+  width:0!important;
+  height:0!important;
+  display:none!important;
+  background:transparent!important;
+}
+
+#statusRow.status-row > .status-card.story-card{
+  display:flex!important;
+  position:relative!important;
+  grid-column:auto!important;
+  grid-row:1!important;
+  width:74px!important;
+  min-width:74px!important;
+  max-width:74px!important;
+  height:96px!important;
+  min-height:96px!important;
+  max-height:96px!important;
+  margin:0!important;
+  padding:3px 2px 2px!important;
+  box-sizing:border-box!important;
+  flex:none!important;
+  flex-basis:auto!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  overflow:visible!important;
+}
+
+#statusRow.status-row > .status-card.story-card .story-card-top{
+  flex:none!important;
+  width:58px!important;
+  height:58px!important;
+  min-width:58px!important;
+  min-height:58px!important;
+  margin:0 auto 4px!important;
+}
+
+#statusRow.status-row > .status-card.story-card .story-avatar-wrap{
+  width:58px!important;
+  height:58px!important;
+  min-width:58px!important;
+  min-height:58px!important;
+}
+
+#statusRow.status-row > .status-card.story-card .story-card-bottom{
+  width:100%!important;
+  min-width:0!important;
+  flex:none!important;
+}
+
+@media(max-width:390px){
+  #statusRow.status-row{
+    grid-auto-columns:64px!important;
+    grid-template-rows:84px!important;
+    height:84px!important;
+    max-height:84px!important;
+    gap:8px!important;
+  }
+
+  #statusRow.status-row > .status-card.story-card{
+    width:64px!important;
+    min-width:64px!important;
+    max-width:64px!important;
+    height:84px!important;
+    min-height:84px!important;
+    max-height:84px!important;
+  }
+
+  #statusRow.status-row > .status-card.story-card .story-card-top{
+    width:52px!important;
+    height:52px!important;
+    min-width:52px!important;
+    min-height:52px!important;
+  }
+
+  #statusRow.status-row > .status-card.story-card .story-avatar-wrap{
+    width:52px!important;
+    height:52px!important;
+    min-width:52px!important;
+    min-height:52px!important;
   }
 }
 </style>
