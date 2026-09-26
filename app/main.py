@@ -762,6 +762,16 @@ def _is_accidental_forward_resend(username, text, receiver):
     return False
 
 
+async def _deliver_chat_or_queue(recipient, sender, payload):
+    """Deliver to the recipient only when that exact chat is open; otherwise queue."""
+    delivered = await manager.send_chat(recipient, sender, payload)
+    if delivered:
+        return True
+
+    manager.queue_pending(recipient, payload)
+    return False
+
+
 def _payload_is_forward(data):
     if not isinstance(data, dict):
         return False
@@ -1590,7 +1600,22 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             raw = await websocket.receive_text()
-            data = json.loads(raw)
+
+            try:
+                data = json.loads(raw)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                # Ignore malformed client frames instead of tearing down the
+                # authenticated chat socket.
+                print(f"CHAT WS INVALID JSON ({username})")
+                continue
+
+            if not isinstance(data, dict):
+                print(f"CHAT WS INVALID PAYLOAD ({username})")
+                continue
+
+            message_type = data.get("type")
+            if not message_type:
+                continue
 
             # Browser heartbeat. This keeps the chat WebSocket active through
             # idle proxy/load-balancer timeouts without touching chat messages.
@@ -1646,6 +1671,37 @@ async def websocket_endpoint(websocket: WebSocket):
                         "busy": "busy",
                         "unavailable": "unavailable"
                     }.get(event_type, "ended")
+
+                    # Do not allow delayed/duplicate signaling events to move
+                    # an already-terminal call back into another state. This
+                    # keeps call history monotonic under WebSocket races.
+                    existing_status = "ringing"
+                    try:
+                        existing_status = str(
+                            json.loads(row.text or "{}").get("status") or "ringing"
+                        ).strip().lower()
+                    except Exception:
+                        pass
+
+                    terminal_statuses = {
+                        "ended",
+                        "missed",
+                        "rejected",
+                        "busy",
+                        "unavailable",
+                    }
+                    if (
+                        existing_status in terminal_statuses
+                        and status != existing_status
+                    ):
+                        print(
+                            "CALL HISTORY STATE REGRESSION IGNORED:",
+                            call_id,
+                            existing_status,
+                            "->",
+                            status,
+                        )
+                        return row
 
                     duration = int(row.media_duration or 0)
 
@@ -1742,7 +1798,87 @@ async def websocket_endpoint(websocket: WebSocket):
                 if target == username:
                     continue
 
-                call_id = data.get("call_id")
+                # A chat WebSocket is bound to one conversation. Never allow
+                # its call-signaling frames to retarget a different user.
+                friend_key = str(friend or "").strip().casefold()
+                target_key = str(target or "").strip().casefold()
+                if not friend_key or target_key != friend_key:
+                    print(
+                        "VOICE CALL TARGET MISMATCH:",
+                        username,
+                        "socket_friend=",
+                        friend,
+                        "requested_target=",
+                        target,
+                    )
+                    await manager.send(username, {
+                        "type": "call_unavailable",
+                        "call_id": data.get("call_id"),
+                        "target": target,
+                        "reason": "target_mismatch",
+                    })
+                    continue
+
+                call_id = str(data.get("call_id") or "").strip()
+                if not call_id or len(call_id) > 128:
+                    print(
+                        "VOICE CALL INVALID CALL ID:",
+                        username,
+                        signal_type,
+                    )
+                    continue
+
+                # Every non-initial signal must belong to the same authenticated
+                # two-party call. This prevents a client that knows/guesses a
+                # call ID from injecting signaling or mutating another call's
+                # persisted history.
+                db_call_lookup = SessionLocal()
+                try:
+                    existing_call = (
+                        db_call_lookup.query(Message)
+                        .filter(
+                            Message.media_type == "call",
+                            Message.media_url == "call:" + call_id,
+                        )
+                        .first()
+                    )
+                finally:
+                    db_call_lookup.close()
+
+                if existing_call is not None:
+                    participant_keys = {
+                        str(existing_call.sender or "").strip().casefold(),
+                        str(existing_call.receiver or "").strip().casefold(),
+                    }
+                    if participant_keys != {str(username).strip().casefold(), target_key}:
+                        print(
+                            "VOICE CALL PARTICIPANT MISMATCH:",
+                            call_id,
+                            username,
+                            target,
+                        )
+                        continue
+
+                requires_existing_call = signal_type in {
+                    "call_ice",
+                    "call_answer",
+                    "call_reject",
+                    "call_busy",
+                    "call_end",
+                } or (
+                    signal_type == "call_offer"
+                    and bool(data.get("ice_restart"))
+                )
+                if requires_existing_call and existing_call is None:
+                    print(
+                        "VOICE CALL UNKNOWN CALL ID:",
+                        call_id,
+                        signal_type,
+                        username,
+                        "->",
+                        target,
+                    )
+                    continue
 
                 # Persist the call lifecycle. ICE-restart offers/answers are
                 # renegotiations and must not create duplicate history rows.
@@ -1831,7 +1967,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                 continue
 
-            if data["type"] == "typing":
+            if message_type == "typing":
                 if not friend:
                     continue
 
@@ -1843,7 +1979,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await manager.send_personal(payload, friend)
                 continue
 
-            if data["type"] == "stop_typing":
+            if message_type == "stop_typing":
                 if not friend:
                     continue
 
@@ -1855,7 +1991,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await manager.send_personal(payload, friend)
                 continue
 
-            if data["type"] == "delivered":
+            if message_type == "delivered":
                 db = SessionLocal()
 
                 msg = db.query(Message).filter(
@@ -1876,7 +2012,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 db.close()
                 continue
 
-            if data["type"] == "read":
+            if message_type == "read":
                 db = SessionLocal()
 
                 try:
@@ -1916,7 +2052,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 continue
 
-            if data["type"] == "reaction":
+            if message_type == "reaction":
 
                 db = SessionLocal()
 
@@ -1965,7 +2101,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
 
-            if data["type"] == "delete_everyone":
+            if message_type == "delete_everyone":
                 db = SessionLocal()
 
                 try:
@@ -2030,7 +2166,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 continue
 
-            if data["type"] == "forward_message":
+            if message_type == "forward_message":
                 # Forwarding supports encrypted text plus an optional
                 # attachment. Resolve the selected recipient to the canonical
                 # database username and never reuse the current chat's `friend`
@@ -2291,7 +2427,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 continue
 
-            if data["type"] == "edit_message":
+            if message_type == "edit_message":
                 db = SessionLocal()
 
                 msg = db.query(Message).filter(
@@ -2417,7 +2553,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await manager.send(username, payload)
 
                     if receiver_name != username:
-                        delivered = await manager.deliver_or_queue(
+                        delivered = await _deliver_chat_or_queue(
                             receiver_name,
                             username,
                             payload,
@@ -3080,7 +3216,7 @@ async def send_chat_document(request: Request):
         # below is the authoritative reconciliation source for the sender.
         delivered = False
         if receiver_name != username:
-            delivered = await manager.deliver_or_queue(
+            delivered = await _deliver_chat_or_queue(
                 receiver_name,
                 username,
                 payload,

@@ -2770,9 +2770,16 @@ document.addEventListener("keydown", event => {
 });
 
 
+let passwordCloseTimer = null;
+
 function openPassword(){
     const overlay = document.getElementById("passwordOverlay");
     if(!overlay) return;
+
+    if(passwordCloseTimer){
+        clearTimeout(passwordCloseTimer);
+        passwordCloseTimer = null;
+    }
 
     ["currentPassword","newPassword","confirmPassword"].forEach(id => {
         const input = document.getElementById(id);
@@ -2795,6 +2802,10 @@ function openPassword(){
 function closePassword(){
     const overlay = document.getElementById("passwordOverlay");
     if(!overlay) return;
+    if(passwordCloseTimer){
+        clearTimeout(passwordCloseTimer);
+        passwordCloseTimer = null;
+    }
     overlay.classList.remove("show");
     document.body.style.overflow = "";
 }
@@ -2836,7 +2847,11 @@ async function submitPasswordChange(){
         document.getElementById("currentPassword").value="";
         document.getElementById("newPassword").value="";
         document.getElementById("confirmPassword").value="";
-        setTimeout(closePassword,1000);
+        if(passwordCloseTimer) clearTimeout(passwordCloseTimer);
+        passwordCloseTimer = setTimeout(() => {
+            passwordCloseTimer = null;
+            closePassword();
+        },1000);
     }catch(error){
         setPasswordMessage("error",error.message || "Could not change password.");
     }finally{

@@ -6388,6 +6388,8 @@ async function voiceCallLoadIceServers(){
     }
 
     voiceCallIceConfigPromise=(async()=>{
+        let loadSucceeded=false;
+
         try{
             const response=await fetch("/turn-credentials",{
                 credentials:"same-origin",
@@ -6399,6 +6401,10 @@ async function voiceCallLoadIceServers(){
             }
 
             const data=await response.json();
+            if(data?.success===false){
+                throw new Error(data.error||"TURN credentials unavailable");
+            }
+
             const configured=Array.isArray(data?.ice_servers)
                 ? data.ice_servers
                 : [];
@@ -6414,13 +6420,18 @@ async function voiceCallLoadIceServers(){
                     "VOICE ICE CONFIG: STUN-only fallback"
                 );
             }
+
+            loadSucceeded=true;
         }catch(error){
             console.warn(
                 "VOICE ICE CONFIG FALLBACK:",
                 error
             );
         }finally{
-            voiceCallIceServersLoaded=true;
+            // A successful config (including an intentional STUN-only config)
+            // is cached. A transient failure stays retryable for later calls.
+            voiceCallIceServersLoaded=loadSucceeded;
+            voiceCallIceConfigPromise=null;
         }
 
         return VOICE_CALL_ICE_SERVERS;
@@ -7332,7 +7343,7 @@ async function voiceCallAccept(){
     voiceCallStarting=true;
     try{
         await voiceCallGetLocalStream();
-        const p=voiceCallEnsurePeer();
+        const p=await voiceCallEnsurePeer();
         await p.setRemoteDescription(new RTCSessionDescription(voiceCallPendingOffer));
         for(const c of voiceCallPendingCandidates.splice(0)){
             try{await p.addIceCandidate(c)}catch(_){}

@@ -56,6 +56,23 @@ function isPrecacheableStatic(pathname) {
     return true;
 }
 
+function isAuthenticatedNavigation(pathname) {
+    return (
+        pathname === "/dashboard" ||
+        pathname === "/crypto-recovery"
+    );
+}
+
+async function authenticatedNavigation(request) {
+    try {
+        return await fetch(request, { cache: "no-store" });
+    } catch (error) {
+        const offline = await caches.match(OFFLINE_URL);
+        if (offline) return offline;
+        throw error;
+    }
+}
+
 async function putInCache(request, response) {
     if (!response || !response.ok || response.status === 206) return;
     const cache = await caches.open(CACHE_NAME);
@@ -132,7 +149,11 @@ self.addEventListener("fetch", event => {
     if (isNetworkOnlyPath(url.pathname)) return;
 
     if (request.mode === "navigate") {
-        event.respondWith(networkFirst(request, OFFLINE_URL));
+        if (isAuthenticatedNavigation(url.pathname)) {
+            event.respondWith(authenticatedNavigation(request));
+        } else {
+            event.respondWith(networkFirst(request, OFFLINE_URL));
+        }
         return;
     }
 

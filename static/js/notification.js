@@ -5,6 +5,17 @@
     const SUBSCRIPTION_REFRESH_KEY = "lucky_push_subscription_refresh_v4";
     let registrationPromise = null;
     let syncPromise = null;
+    let subscriptionOperationPromise = Promise.resolve();
+
+    function enqueueSubscriptionOperation(operation) {
+        const next = subscriptionOperationPromise.then(
+            operation,
+            operation
+        );
+
+        subscriptionOperationPromise = next.catch(() => {});
+        return next;
+    }
 
     function notificationsEnabled() {
         return localStorage.getItem(SETTING_KEY) !== "0";
@@ -120,8 +131,15 @@
             return fail("Service Worker API is not available in this browser.");
         }
 
-        syncPromise = (async () => {
+        syncPromise = enqueueSubscriptionOperation(async () => {
             try {
+                // Settings can change while a queued subscription operation is
+                // waiting behind another operation. Re-check the live setting
+                // before doing any push setup.
+                if (!notificationsEnabled()) {
+                    return fail("Notifications setting is OFF.");
+                }
+
                 const config = await getPushConfig();
 
                 if (!config.enabled) {
@@ -211,14 +229,15 @@
             } finally {
                 syncPromise = null;
             }
-        })();
+        });
 
         return syncPromise;
     }
 
     async function unsubscribe() {
-        try {
-            const registration = await getRegistration();
+        return enqueueSubscriptionOperation(async () => {
+            try {
+                const registration = await getRegistration();
             const subscription =
                 await registration?.pushManager?.getSubscription();
 
@@ -234,15 +253,16 @@
             }).catch(() => {});
 
             await subscription.unsubscribe().catch(() => {});
-            return true;
+                return true;
 
-        } catch (error) {
-            console.debug(
-                "Lucky Chat push unsubscribe unavailable:",
-                error
-            );
-            return false;
-        }
+            } catch (error) {
+                console.debug(
+                    "Lucky Chat push unsubscribe unavailable:",
+                    error
+                );
+                return false;
+            }
+        });
     }
 
     async function showLocalNotification(sender, body, target) {
@@ -253,6 +273,12 @@
 
         try {
             const registration = await getRegistration();
+
+            // The setting may change while the service-worker registration
+            // request is in flight. Re-check immediately before displaying.
+            if (!notificationsEnabled()) return;
+            if (Notification.permission !== "granted") return;
+            if (document.visibilityState === "visible") return;
 
             if (registration?.showNotification) {
                 await registration.showNotification(
@@ -277,7 +303,12 @@
         }
 
         // Final browser fallback for browsers whose SW notification API
-        // is unavailable.
+        // is unavailable. Do not fall back after Notifications was disabled
+        // while the asynchronous SW call above was running.
+        if (!notificationsEnabled()) return;
+        if (Notification.permission !== "granted") return;
+        if (document.visibilityState === "visible") return;
+
         try {
             const notification = new Notification(
                 sender || "Lucky Chat",
@@ -320,7 +351,19 @@
         if (event?.detail?.key !== "notifications") return;
 
         if (event.detail.value === true) {
-            void sync({requestPermission: true});
+            const wasBusy = Boolean(syncPromise);
+            const pending = sync({requestPermission: true});
+
+            // If an OFF/ON toggle happened while an older sync was running,
+            // queue one fresh synchronization after the serialized operations
+            // settle so the final local setting wins.
+            if (wasBusy) {
+                void pending.then(() => {
+                    if (notificationsEnabled()) {
+                        void sync({requestPermission: false});
+                    }
+                });
+            }
         } else if (event.detail.value === false) {
             void unsubscribe();
         }

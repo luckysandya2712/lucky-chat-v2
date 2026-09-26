@@ -7,6 +7,29 @@ from starlette.websockets import WebSocketDisconnect
 from app.database import SessionLocal
 from app.models import User
 
+def _update_last_seen_sync(username: str):
+    """Persist last_seen without blocking the async WebSocket event loop."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(
+            User.username == username
+        ).first()
+
+        if user:
+            user.last_seen = datetime.utcnow()
+            db.commit()
+            print(
+                f"LAST SEEN UPDATED: "
+                f"{username} -> {user.last_seen}"
+            )
+
+    except Exception as e:
+        print("LAST SEEN UPDATE FAILED:", e)
+
+    finally:
+        db.close()
+
+
 class ConnectionManager:
 
     def __init__(self):
@@ -60,28 +83,8 @@ class ConnectionManager:
         self.connections.pop(username, None)
         self.connection_friends.pop(username, None)
 
-        # Save the user's last seen time
-        db = SessionLocal()
-
-        try:
-            user = db.query(User).filter(
-                User.username == username
-            ).first()
-
-            if user:
-                user.last_seen = datetime.utcnow()
-                db.commit()
-
-                print(
-                    f"LAST SEEN UPDATED: "
-                    f"{username} -> {user.last_seen}"
-                )
-
-        except Exception as e:
-            print("LAST SEEN UPDATE FAILED:", e)
-
-        finally:
-            db.close()
+        # Save the user's last seen time off the async event loop.
+        await asyncio.to_thread(_update_last_seen_sync, username)
 
         print(f"OFFLINE: {username}")
 
@@ -148,7 +151,10 @@ class ConnectionManager:
         if not key or not friend_key:
             return
 
-        queue = self.pending_messages.get(key, [])
+        # Detach the current queue before the first await. Any payloads queued
+        # while this flush is in progress then land in a fresh queue and cannot
+        # be overwritten when this flush finishes.
+        queue = self.pending_messages.pop(key, [])
         if not queue:
             return
 
@@ -187,10 +193,23 @@ class ConnectionManager:
                     await self.disconnect(key, ws)
                 break
 
-        if remaining:
-            self.pending_messages[key] = remaining
-        else:
-            self.pending_messages.pop(key, None)
+        # Merge anything queued concurrently while preserving both the older
+        # unflushed payloads and the new arrivals. Deduplicate persisted message
+        # ids so reconnects or overlapping delivery paths do not duplicate them.
+        concurrent = self.pending_messages.pop(key, [])
+        merged = []
+        seen_ids = set()
+
+        for item in remaining + concurrent:
+            message_id = item.get("id")
+            if message_id is not None:
+                if message_id in seen_ids:
+                    continue
+                seen_ids.add(message_id)
+            merged.append(item)
+
+        if merged:
+            self.pending_messages[key] = merged[-100:]
 
     async def send_chat(self, username: str, friend: str, payload: dict):
         """Deliver a chat payload only when the recipient has this chat open.

@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
+<link rel="manifest" href="/manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/static/pwa/icon-192.png?v=logo3">
+<link rel="icon" href="/static/pwa/icon-192.png?v=logo3">
 <title>Create Account • Lucky Chat</title>
 
 <style>
@@ -456,6 +462,7 @@ a:hover{
                 title="Show password">👁️</button>
         </div>
 
+        <div id="registerStatus" role="status" aria-live="polite" style="min-height:18px;margin-top:10px;color:#fca5a5;font-size:12px;text-align:center;"></div>
         <button type="submit" id="registerButton">Create Account</button>
     </form>
 
@@ -474,6 +481,7 @@ const passwordInput = document.getElementById("password");
 const togglePassword = document.getElementById("togglePassword");
 const registerForm = document.getElementById("registerForm");
 const registerButton = document.getElementById("registerButton");
+const registerStatus = document.getElementById("registerStatus");
 
 togglePassword.addEventListener("click", () => {
     const hidden = passwordInput.type === "password";
@@ -483,10 +491,58 @@ togglePassword.addEventListener("click", () => {
     togglePassword.setAttribute("title", hidden ? "Hide password" : "Show password");
 });
 
-registerForm.addEventListener("submit", () => {
+registerForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!registerForm.reportValidity()) return;
+
     registerButton.disabled = true;
     registerButton.textContent = "Creating account...";
+    registerStatus.textContent = "";
+
+    try {
+        const response = await fetch(registerForm.action, {
+            method: "POST",
+            body: new FormData(registerForm),
+            credentials: "same-origin",
+            cache: "no-store",
+            redirect: "follow"
+        });
+
+        if (response.redirected) {
+            window.location.replace(response.url);
+            return;
+        }
+
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+            throw new Error("Server returned an unexpected response.");
+        }
+
+        const data = await response.json();
+        if (!response.ok || data?.message === undefined) {
+            throw new Error(data?.message || "Could not create the account.");
+        }
+
+        registerStatus.textContent = data.message || "Could not create the account.";
+    } catch (error) {
+        registerStatus.textContent =
+            error?.message || "Could not create the account. Please try again.";
+    } finally {
+        registerButton.disabled = false;
+        registerButton.textContent = "Create Account";
+    }
 });
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker
+            .register("/service-worker.js")
+            .then(() => console.log("Lucky Chat PWA Ready"))
+            .catch(error => console.error("Lucky Chat PWA registration failed:", error));
+    });
+}
 </script>
 </body>
 </html>

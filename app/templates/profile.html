@@ -790,8 +790,7 @@ html.lucky-light .profile-limit{color:#7b8798}
         type="file"
         id="profile_image"
         name="file"
-        accept="image/*"
-        onchange="updateFileName(this); if(this.files[0]) preview.src=window.URL.createObjectURL(this.files[0])"
+        accept="image/png,image/jpeg,image/webp"
     >
 </div>
 
@@ -832,19 +831,67 @@ function updateFileName(input) {
         form.appendChild(status);
     }
 
+    let previewObjectUrl = null;
+
+    const showUploadError = (message) => {
+        status.textContent = message;
+        status.style.color = "#fca5a5";
+    };
+
+    const handleFileSelection = () => {
+        const file = fileInput.files?.[0];
+
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+            previewObjectUrl = null;
+        }
+
+        updateFileName(fileInput);
+
+        if (!file) {
+            return;
+        }
+
+        const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+        if (!allowedTypes.has(file.type)) {
+            showUploadError("Please choose a PNG, JPEG, or WebP image.");
+            fileInput.value = "";
+            updateFileName(fileInput);
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            showUploadError("Image is too large. Maximum size is 10 MB.");
+            fileInput.value = "";
+            updateFileName(fileInput);
+            return;
+        }
+
+        previewObjectUrl = URL.createObjectURL(file);
+        preview.src = previewObjectUrl;
+        status.textContent = "";
+        status.style.color = "#94a3b8";
+    };
+
+    fileInput.addEventListener("change", handleFileSelection);
+
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         const file = fileInput.files?.[0];
         if (!file) {
-            status.textContent = "Please choose a profile picture first.";
-            status.style.color = "#fca5a5";
+            showUploadError("Please choose a profile picture first.");
+            return;
+        }
+
+        const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+        if (!allowedTypes.has(file.type)) {
+            showUploadError("Please choose a PNG, JPEG, or WebP image.");
             return;
         }
 
         if (file.size > 10 * 1024 * 1024) {
-            status.textContent = "Image is too large. Maximum size is 10 MB.";
-            status.style.color = "#fca5a5";
+            showUploadError("Image is too large. Maximum size is 10 MB.");
             return;
         }
 
@@ -869,6 +916,27 @@ function updateFileName(input) {
 
             const contentType = response.headers.get("content-type") || "";
             if (!contentType.includes("application/json")) {
+                if (response.redirected) {
+                    const finalUrl = new URL(response.url, window.location.href);
+
+                    if (finalUrl.pathname === "/login") {
+                        window.location.replace(finalUrl.href);
+                        return;
+                    }
+
+                    if (finalUrl.pathname === "/profile") {
+                        const redirectError = finalUrl.searchParams.get("error");
+                        const redirectMessages = {
+                            invalid_image: "Please choose a valid PNG, JPEG, or WebP image.",
+                            image_too_large: "Image is too large. Maximum size is 10 MB."
+                        };
+                        throw new Error(
+                            redirectMessages[redirectError] ||
+                            "Profile picture upload failed (HTTP " + response.status + ")."
+                        );
+                    }
+                }
+
                 throw new Error(
                     "Server returned an unexpected response (HTTP " +
                     response.status + ")."
@@ -892,6 +960,11 @@ function updateFileName(input) {
             status.textContent = "Profile picture updated successfully.";
             status.style.color = "#86efac";
 
+            if (previewObjectUrl) {
+                URL.revokeObjectURL(previewObjectUrl);
+                previewObjectUrl = null;
+            }
+
             setTimeout(() => {
                 window.location.href = "/profile";
             }, 700);
@@ -904,11 +977,22 @@ function updateFileName(input) {
             status.style.color = "#fca5a5";
         } finally {
             clearTimeout(timeoutId);
-            submitButton.disabled = false;
-            submitButton.textContent = "Update Profile Picture";
-            submitButton.style.opacity = "";
+
+            const completedSuccessfully = status.textContent === "Profile picture updated successfully.";
+            if (!completedSuccessfully) {
+                submitButton.disabled = false;
+                submitButton.textContent = "Update Profile Picture";
+                submitButton.style.opacity = "";
+            }
         }
     });
+
+    window.addEventListener("pagehide", () => {
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+            previewObjectUrl = null;
+        }
+    }, { once: true });
 })();
 </script>
 

@@ -84,8 +84,68 @@ const passwordInput=document.getElementById("password");
 const togglePassword=document.getElementById("togglePassword");
 const loginForm=document.getElementById("loginForm");
 const loginButton=document.getElementById("loginButton");
-togglePassword.addEventListener("click",()=>{const hidden=passwordInput.type==="password";passwordInput.type=hidden?"text":"password";togglePassword.textContent=hidden?"🙈":"👁️";togglePassword.setAttribute("aria-label",hidden?"Hide password":"Show password");togglePassword.setAttribute("title",hidden?"Hide password":"Show password")});
-loginForm.addEventListener("submit",()=>{loginButton.disabled=true;loginButton.textContent="Logging in..."});
+
+togglePassword.addEventListener("click",()=>{
+  const hidden=passwordInput.type==="password";
+  passwordInput.type=hidden?"text":"password";
+  togglePassword.textContent=hidden?"🙈":"👁️";
+  togglePassword.setAttribute("aria-label",hidden?"Hide password":"Show password");
+  togglePassword.setAttribute("title",hidden?"Hide password":"Show password");
+});
+
+loginForm.addEventListener("submit",async(event)=>{
+  event.preventDefault();
+
+  loginButton.disabled=true;
+  loginButton.textContent="Logging in...";
+
+  let status=document.getElementById("loginStatus");
+  if(!status){
+    status=document.createElement("div");
+    status.id="loginStatus";
+    status.setAttribute("role","alert");
+    status.setAttribute("aria-live","polite");
+    status.style.cssText="min-height:18px;margin:8px 2px 0;text-align:center;color:#fca5a5;font:600 11px Poppins,Arial,sans-serif;";
+    loginForm.insertBefore(status,loginButton);
+  }
+  status.textContent="";
+
+  try{
+    const response=await fetch(loginForm.action,{
+      method:"POST",
+      body:new FormData(loginForm),
+      credentials:"same-origin",
+      cache:"no-store",
+      redirect:"follow"
+    });
+
+    if(response.redirected){
+      window.location.replace(response.url);
+      return;
+    }
+
+    const contentType=response.headers.get("content-type")||"";
+    let message="Login failed. Please check your username and password.";
+
+    if(contentType.includes("application/json")){
+      const data=await response.json().catch(()=>null);
+      message=data?.message||data?.error||message;
+    }else if(!response.ok){
+      message="Login failed. Please try again.";
+    }
+
+    status.textContent=message;
+    passwordInput.focus();
+  }catch(error){
+    status.textContent="Unable to reach Lucky Chat. Please check your connection and try again.";
+    passwordInput.focus();
+  }finally{
+    if(document.visibilityState!=="hidden"){
+      loginButton.disabled=false;
+      loginButton.textContent="Login";
+    }
+  }
+});
 </script>
 <script>
 if("serviceWorker"in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("/service-worker.js").then(()=>console.log("Lucky Chat PWA Ready")).catch(console.error)})}
