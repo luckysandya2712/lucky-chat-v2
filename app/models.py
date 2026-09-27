@@ -112,6 +112,12 @@ class Status(Base):
     text = Column(String, nullable=True)
     media_url = Column(String, nullable=True)
     media_type = Column(String, nullable=True)
+    # Status audience controls which authenticated users may receive/view this
+    # status. Existing rows default to the legacy "contacts" behavior.
+    visibility = Column(String, nullable=False, default="contacts")
+    # JSON array of canonical usernames. For "close" these are the allowed
+    # viewers; for "except" these are the excluded viewers.
+    audience_users = Column(Text, nullable=False, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, index=True)
 

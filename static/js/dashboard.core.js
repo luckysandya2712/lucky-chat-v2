@@ -110,7 +110,9 @@ const STATUS_REACTION_STATE_KEY = "lucky_status_reaction_state_v1";
 const STATUS_VIEWERS_KEY = "lucky_status_viewers_by_id_v1";
 const STATUS_LIKERS_KEY = "lucky_status_likers_by_id_v1";
 const STATUS_REPLIES_KEY = "lucky_status_replies_by_id_v1";
-const CURRENT_DASHBOARD_USER = String("{{ username }}").trim();
+const CURRENT_DASHBOARD_USER = String(
+    document.querySelector('meta[name="lucky-chat-username"]')?.content || ""
+).trim();
 const STATUS_LIKES_VERSION = 2;
 const STATUS_VISIBILITY_OPTIONS = [
     {id:"contacts", label:"My contacts"},
@@ -118,6 +120,8 @@ const STATUS_VISIBILITY_OPTIONS = [
     {id:"except", label:"My contacts except…"}
 ];
 let statusVisibilityIndex = 0;
+let statusAudienceDraft = [];
+let statusAudienceMode = "contacts";
 
 function resetStatusPreviewSizing(){
     const modal = document.getElementById("statusCreateModal");
@@ -475,6 +479,12 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        const visibilitySheet = document.getElementById("statusVisibilitySheet");
+        if (visibilitySheet && !visibilitySheet.hidden && event.key === "Escape") {
+            closeStatusVisibilitySheet();
+            return;
+        }
+
         const modal = document.getElementById("statusViewerModal");
         if (!modal?.classList.contains("open")) return;
         if (event.target.closest("input, textarea, select, [contenteditable='true']")) {
@@ -763,21 +773,47 @@ function showStatusToast(message, error){
     setTimeout(() => toast.remove(), 2400);
 }
 
+function getStatusPrivacyStorageKey(){
+    const username = String(CURRENT_DASHBOARD_USER || "").trim() || "anonymous";
+    return `${STATUS_PRIVACY_KEY}:v1:${username}`;
+}
+
 function getStatusPrivacy(){
     try{
-        const value = JSON.parse(localStorage.getItem(STATUS_PRIVACY_KEY) || "{}");
+        const key = getStatusPrivacyStorageKey();
+        const scopedRaw = localStorage.getItem(key);
+        const value = JSON.parse(scopedRaw || "{}");
+        const rawAudience = Array.isArray(value.audience_users) ? value.audience_users : [];
+        const audience_users = [...new Set(rawAudience.map(item => String(item || "").trim()).filter(Boolean))];
         return {
             hideViewed: !!value.hideViewed,
             blockScreenshots: !!value.blockScreenshots,
-            visibility: value.visibility || "contacts"
+            visibility: value.visibility || "contacts",
+            audience_users
         };
     }catch(_error){
-        return {hideViewed:false, blockScreenshots:false, visibility:"contacts"};
+        return {hideViewed:false, blockScreenshots:false, visibility:"contacts", audience_users:[]};
     }
 }
 
 function saveStatusPrivacy(next){
-    localStorage.setItem(STATUS_PRIVACY_KEY, JSON.stringify(next));
+    const normalized = {
+        hideViewed: !!next.hideViewed,
+        blockScreenshots: !!next.blockScreenshots,
+        visibility: String(next.visibility || "contacts"),
+        audience_users: Array.isArray(next.audience_users)
+            ? [...new Set(next.audience_users.map(item => String(item || "").trim()).filter(Boolean))]
+            : []
+    };
+    localStorage.setItem(getStatusPrivacyStorageKey(), JSON.stringify(normalized));
+}
+
+function getStatusVisibilitySummary(privacy){
+    const mode = String(privacy?.visibility || "contacts");
+    const count = Array.isArray(privacy?.audience_users) ? privacy.audience_users.length : 0;
+    if (mode === "close") return count ? `Close friends (${count})` : "Close friends";
+    if (mode === "except") return count ? `My contacts except (${count})` : "My contacts except…";
+    return "My contacts";
 }
 
 function syncStatusPrivacySwitches(){
@@ -787,7 +823,7 @@ function syncStatusPrivacySwitches(){
     const visIndex = STATUS_VISIBILITY_OPTIONS.findIndex(item => item.id === privacy.visibility);
     statusVisibilityIndex = visIndex >= 0 ? visIndex : 0;
     const label = document.getElementById("statusVisibilityLabel");
-    if (label) label.textContent = STATUS_VISIBILITY_OPTIONS[statusVisibilityIndex].label;
+    if (label) label.textContent = getStatusVisibilitySummary(privacy);
     syncStatusComposerPreview();
 }
 
@@ -806,16 +842,116 @@ function toggleStatusPrivacy(key){
     }
 }
 
-function cycleStatusVisibility(){
-    statusVisibilityIndex = (statusVisibilityIndex + 1) % STATUS_VISIBILITY_OPTIONS.length;
-    const option = STATUS_VISIBILITY_OPTIONS[statusVisibilityIndex];
+function renderStatusAudiencePicker(){
+    const sheet = document.getElementById("statusVisibilitySheet");
+    const list = document.getElementById("statusAudienceUsers");
+    const hint = document.getElementById("statusAudiencePickerHint");
+    if (!sheet || !list) return;
+
+    const mode = statusAudienceMode;
+    const showPeople = mode !== "contacts";
+    list.hidden = !showPeople;
+    if (hint) {
+        hint.textContent = mode === "close"
+            ? "Choose who can see this status."
+            : mode === "except"
+                ? "Choose people who should not see this status."
+                : "Everyone in your Lucky Chat people list can see it.";
+    }
+
+    const contacts = collectDashboardContacts();
+    if (!showPeople) {
+        list.innerHTML = "";
+        return;
+    }
+
+    if (!contacts.length) {
+        list.innerHTML = '<div class="status-sheet-empty">No other users are available yet.</div>';
+        return;
+    }
+
+    const selected = new Set(statusAudienceDraft.map(value => String(value).trim().toLowerCase()));
+    list.innerHTML = contacts.map(contact => {
+        const username = String(contact.username || "").trim();
+        const checked = selected.has(username.toLowerCase());
+        return `
+            <button class="status-sheet-row status-audience-user ${checked ? "selected" : ""}" type="button" data-username="${escapeHtml(username)}">
+                <img src="${escapeHtml(contact.avatar || "/static/profile/default.png")}" alt="" onerror="this.src='/static/profile/default.png'">
+                <div class="status-audience-user-copy">
+                    <strong>${escapeHtml(contact.name || username)}</strong>
+                    <span>${escapeHtml(username)}</span>
+                </div>
+                <span class="status-audience-check" aria-hidden="true">${checked ? "✓" : ""}</span>
+            </button>`;
+    }).join("");
+
+    list.querySelectorAll(".status-audience-user").forEach(button => {
+        button.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const username = String(button.dataset.username || "").trim();
+            if (!username) return;
+            const key = username.toLowerCase();
+            const next = statusAudienceDraft.filter(item => String(item).trim().toLowerCase() !== key);
+            if (next.length === statusAudienceDraft.length) next.push(username);
+            statusAudienceDraft = next;
+            renderStatusAudiencePicker();
+        });
+    });
+
+    const modeButtons = sheet.querySelectorAll("[data-visibility-mode]");
+    modeButtons.forEach(button => {
+        button.classList.toggle("active", button.dataset.visibilityMode === mode);
+        button.setAttribute("aria-pressed", button.dataset.visibilityMode === mode ? "true" : "false");
+    });
+}
+
+function selectStatusVisibilityMode(mode){
+    if (!STATUS_VISIBILITY_OPTIONS.some(item => item.id === mode)) return;
+    statusAudienceMode = mode;
+    if (mode === "contacts") statusAudienceDraft = [];
+    renderStatusAudiencePicker();
+}
+
+function openStatusVisibilitySheet(){
+    const sheet = document.getElementById("statusVisibilitySheet");
+    if (!sheet) return;
     const privacy = getStatusPrivacy();
-    privacy.visibility = option.id;
+    statusAudienceMode = privacy.visibility || "contacts";
+    statusAudienceDraft = Array.isArray(privacy.audience_users) ? [...privacy.audience_users] : [];
+    renderStatusAudiencePicker();
+    sheet.hidden = false;
+    sheet.setAttribute("aria-hidden", "false");
+}
+
+function closeStatusVisibilitySheet(){
+    const sheet = document.getElementById("statusVisibilitySheet");
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.setAttribute("aria-hidden", "true");
+}
+
+function saveStatusVisibilityChoice(){
+    const mode = statusAudienceMode;
+    if (mode === "close" && !statusAudienceDraft.length) {
+        showStatusToast("Choose at least one close friend.", true);
+        return;
+    }
+
+    const privacy = getStatusPrivacy();
+    privacy.visibility = mode;
+    privacy.audience_users = mode === "contacts" ? [] : [...statusAudienceDraft];
     saveStatusPrivacy(privacy);
-    const label = document.getElementById("statusVisibilityLabel");
-    if (label) label.textContent = option.label;
-    setStatusMessage("Status visibility: " + option.label + ".");
-    syncStatusComposerPreview();
+    syncStatusPrivacySwitches();
+    closeStatusVisibilitySheet();
+    setStatusMessage("Status visibility: " + getStatusVisibilitySummary(privacy) + ".");
+}
+
+function cycleStatusVisibility(){
+    // Kept under the existing onclick contract; the old cycling behavior only
+    // changed localStorage and never enforced privacy. Now it opens the real
+    // audience picker while preserving the existing button/ID.
+    openStatusVisibilitySheet();
 }
 
 function getSeenStatusIds(){
@@ -973,7 +1109,7 @@ function stashOutgoingChatDraft(payload){
 async function encryptOutgoingChatText(text, friend){
     const plain = String(text || "");
     const recipient = String(friend || "").trim();
-    const sender = String(CURRENT_DASHBOARD_USER || "{{ username }}" || "").trim();
+    const sender = String(CURRENT_DASHBOARD_USER || "").trim();
     if (!plain || !recipient || !sender) return plain;
 
     try {
@@ -2433,9 +2569,10 @@ function syncStatusComposerPreview(){
             : "Waiting for photo";
     }
 
+    const privacy = getStatusPrivacy();
     const visibility = STATUS_VISIBILITY_OPTIONS[statusVisibilityIndex] || STATUS_VISIBILITY_OPTIONS[0];
     const audience = document.getElementById("statusAudienceHint");
-    if (audience) audience.textContent = visibility.label;
+    if (audience) audience.textContent = getStatusVisibilitySummary(privacy) || visibility.label;
 
     const hasPhoto = modal.classList.contains("has-selection");
     const hasCustomize = hasPhoto && (!!caption || theme !== "default");
@@ -2468,6 +2605,7 @@ async function uploadStatus(){
     formData.append("file", file);
     formData.append("text", textInput.value.trim());
     formData.append("visibility", privacy.visibility || "contacts");
+    formData.append("audience_users", JSON.stringify(Array.isArray(privacy.audience_users) ? privacy.audience_users : []));
     formData.append("theme", document.getElementById("statusCreateModal")?.dataset.statusTheme || "default");
     formData.append("duration_hours", "24");
 

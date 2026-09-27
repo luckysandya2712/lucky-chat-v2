@@ -13,6 +13,7 @@ content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0b1220">
+<meta name="lucky-chat-username" content="{{ username }}">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -6410,7 +6411,7 @@ body{
                 <div><b>Block screenshots</b><small>Optional extra privacy on this device</small></div>
                 <button class="status-switch" id="statusBlockShotsSwitch" type="button" onclick="toggleStatusPrivacy('blockScreenshots')" aria-label="Block screenshots"><i></i></button>
             </div>
-            <p class="st15-privacy-note">End-to-end private to your chosen audience. Auto-delete after 24 hours.</p>
+            <p class="st15-privacy-note">Only your selected audience can access this status. Auto-delete after 24 hours.</p>
 
             <div class="st15-theme-head">
                 <div>
@@ -6429,7 +6430,7 @@ body{
             </div>
 
             <div class="st15-info-grid">
-                <div class="st15-info-card"><span>◈</span><b>Private</b><small id="statusAudienceHint">Your contacts</small></div>
+                <div class="st15-info-card"><span>◈</span><b>Audience</b><small id="statusAudienceHint">Your contacts</small></div>
                 <div class="st15-info-card"><span>◷</span><b>24 hours</b><small>Auto expires</small></div>
                 <div class="st15-info-card st15-wide"><span>✓</span><b>25 MB</b><small>Maximum photo size</small></div>
             </div>
@@ -7443,6 +7444,32 @@ body{
 .status-toast.error{border-color:rgba(255,90,140,.35);color:#ffd0de}
 @keyframes s30ToastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
+.status-visibility-sheet{
+  position:fixed;inset:0;z-index:10050;display:flex;align-items:flex-end;justify-content:center;
+}
+.status-visibility-sheet[hidden]{display:none!important}
+.status-visibility-backdrop{position:absolute;inset:0;background:rgba(0,2,8,.72);backdrop-filter:blur(12px)}
+.status-visibility-card{position:relative;z-index:1;width:min(560px,calc(100% - 20px));max-height:min(82dvh,760px);margin:0 0 10px;padding:8px 8px 12px;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(160,190,255,.18);border-radius:26px;background:rgba(8,12,24,.98);box-shadow:0 28px 90px rgba(0,0,0,.62);backdrop-filter:blur(28px) saturate(1.2)}
+.status-visibility-card .status-sheet-head{padding-bottom:10px}
+.status-visibility-modes{display:grid;gap:7px;padding:0 6px 8px}
+.status-visibility-modes button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px 13px;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:rgba(255,255,255,.035);color:#fff;text-align:left;cursor:pointer}
+.status-visibility-modes button.active{border-color:rgba(96,165,250,.48);background:linear-gradient(135deg,rgba(59,130,246,.16),rgba(123,92,255,.10));box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.status-visibility-modes button span{font:650 13px Poppins,sans-serif}
+.status-visibility-modes button small{color:#8ea0b7;font:500 10px/1.35 Poppins,sans-serif}
+.status-audience-users-body{padding:0 6px 4px;min-height:0;max-height:36dvh}
+.status-audience-user{min-height:58px!important}
+.status-audience-user.selected{background:rgba(96,165,250,.10)}
+.status-audience-user-copy{min-width:0;flex:1}
+.status-audience-user-copy strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-audience-user-copy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-audience-check{width:22px;height:22px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.12);border-radius:50%;color:#fff;font:700 12px Poppins,sans-serif}
+.status-audience-user.selected .status-audience-check{border-color:rgba(96,165,250,.6);background:#3b82f6}
+.status-visibility-actions{display:grid;grid-template-columns:1fr 1.2fr;gap:8px;padding:9px 6px 0}
+.status-visibility-actions button{height:44px;border:0;border-radius:14px;cursor:pointer;font:700 12px Poppins,sans-serif}
+.status-visibility-cancel{background:rgba(255,255,255,.07);color:#fff}
+.status-visibility-save{background:linear-gradient(135deg,#4ea2ff,#7b5cff);color:#fff;box-shadow:0 10px 24px rgba(78,162,255,.18)}
+@media(min-width:769px){.status-visibility-sheet{align-items:center}.status-visibility-card{margin:0}}
+
 .status-sheet{
   position:absolute;left:12px;right:12px;bottom:12px;z-index:280;
   display:none;flex-direction:column;max-height:min(78dvh,640px);
@@ -7947,6 +7974,35 @@ body.status-block-shots #statusViewerImage{
             </div>
         </div>
     </div>
+    <div id="statusVisibilitySheet" class="status-visibility-sheet" hidden aria-hidden="true">
+        <div class="status-visibility-backdrop" onclick="closeStatusVisibilitySheet()"></div>
+        <section class="status-visibility-card" role="dialog" aria-modal="true" aria-labelledby="statusVisibilityTitle">
+            <div class="status-sheet-handle"></div>
+            <div class="status-sheet-head">
+                <div>
+                    <h3 id="statusVisibilityTitle">Status audience</h3>
+                    <small id="statusAudiencePickerHint">Choose who can see this status.</small>
+                </div>
+                <button class="status-sheet-close" type="button" onclick="closeStatusVisibilitySheet()" aria-label="Close">×</button>
+            </div>
+            <div class="status-visibility-modes" role="group" aria-label="Status visibility">
+                <button type="button" data-visibility-mode="contacts" onclick="selectStatusVisibilityMode('contacts')">
+                    <span>My contacts</span><small>Everyone in your Lucky Chat people list</small>
+                </button>
+                <button type="button" data-visibility-mode="close" onclick="selectStatusVisibilityMode('close')">
+                    <span>Close friends</span><small>Only the people you select</small>
+                </button>
+                <button type="button" data-visibility-mode="except" onclick="selectStatusVisibilityMode('except')">
+                    <span>My contacts except…</span><small>Everyone except the people you select</small>
+                </button>
+            </div>
+            <div class="status-sheet-body status-audience-users-body" id="statusAudienceUsers"></div>
+            <div class="status-visibility-actions">
+                <button type="button" class="status-visibility-cancel" onclick="closeStatusVisibilitySheet()">Cancel</button>
+                <button type="button" class="status-visibility-save" onclick="saveStatusVisibilityChoice()">Save audience</button>
+            </div>
+        </section>
+    </div>
     <div id="statusToastHost" aria-live="polite"></div>
     <div id="statusDeleteConfirmOverlay"
          class="status-delete-confirm-overlay"
@@ -8393,7 +8449,7 @@ body.status-block-shots #statusViewerImage{
 
 <script src="/static/js/crypto.core.js?v=20260923-crypto-local-decrypt-v22" onerror="console.error('Lucky Chat crypto failed to load')"></script>
 <script src="/static/js/notification.js?v=20260927-notification-stability-v1"></script>
-<script src="/static/js/dashboard.core.js?v=20260927-dashboard-core-v4"></script>
+<script src="/static/js/dashboard.core.js?v=20260928-status-visibility-v1"></script>
 
 <style id="lucky-liquid-glass-v1">
 /* Lucky Chat — Liquid Glass dashboard pass

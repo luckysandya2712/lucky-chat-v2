@@ -345,6 +345,55 @@ if not SESSION_SECRET_KEY:
         "Set a long random secret in the deployment environment before startup."
     )
 
+
+@app.middleware("http")
+async def protect_status_media(request: Request, call_next):
+    """Protect direct Status media URLs with the same audience rules as /statuses."""
+    path = request.url.path
+    if not path.startswith("/static/uploads/status/") or request.method not in {"GET", "HEAD"}:
+        return await call_next(request)
+
+    username = str(request.session.get("username") or "").strip()
+    if not username:
+        return JSONResponse({"success": False, "error": "Not logged in"}, status_code=401)
+
+    filename = Path(urllib.parse.urlparse(path).path).name
+    if not filename or filename in {".", ".."} or Path(filename).name != filename:
+        return JSONResponse({"success": False, "error": "Status media not found"}, status_code=404)
+
+    db = SessionLocal()
+    try:
+        canonical_url = STATUS_MEDIA_URL_PREFIX + filename
+        status = (
+            db.query(Status)
+            .filter(Status.media_url == canonical_url)
+            .first()
+        )
+
+        if status is not None and status.expires_at and status.expires_at > datetime.utcnow():
+            if status_user_can_view(status, username):
+                return await call_next(request)
+
+        # A status may have been forwarded into a private chat. The recipient
+        # may access that forwarded copy even when they were not in the original
+        # status audience. The forwarded message remains authenticated by the
+        # normal chat access rules.
+        forwarded = (
+            db.query(Message.id)
+            .filter(
+                Message.receiver == username,
+                Message.forwarded == 1,
+                Message.media_url == canonical_url,
+            )
+            .first()
+        )
+        if forwarded is not None:
+            return await call_next(request)
+
+        return JSONResponse({"success": False, "error": "Status is not available to you"}, status_code=403)
+    finally:
+        db.close()
+
 # Keep local HTTP development working while automatically protecting the
 # signed session cookie on Railway. Explicit SESSION_COOKIE_SECURE values
 # always override the environment-based default.
@@ -564,6 +613,38 @@ def _ensure_online_status_settings_column():
 
 
 _ensure_online_status_settings_column()
+
+
+def _ensure_status_visibility_columns():
+    """Add additive Status audience columns to existing deployments."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("statuses"):
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("statuses")}
+        statements = []
+
+        if "visibility" not in columns:
+            statements.append(
+                "ALTER TABLE statuses ADD COLUMN visibility VARCHAR NOT NULL DEFAULT 'contacts'"
+            )
+        if "audience_users" not in columns:
+            statements.append(
+                "ALTER TABLE statuses ADD COLUMN audience_users TEXT NOT NULL DEFAULT '[]'"
+            )
+
+        if statements:
+            with engine.begin() as connection:
+                for statement in statements:
+                    connection.execute(sqlalchemy_text(statement))
+            print("STATUS SCHEMA: visibility columns added")
+    except Exception as exc:
+        print("STATUS SCHEMA ERROR (visibility):", exc)
+        traceback.print_exc()
+
+
+_ensure_status_visibility_columns()
 
 
 def _ensure_model_indexes():
@@ -2256,6 +2337,32 @@ async def websocket_endpoint(websocket: WebSocket):
                         if source_message is not None
                         else (media_url or None)
                     )
+
+                    # Status forwards created directly from the dashboard do not
+                    # carry a chat-message ID. Validate the supplied Status media
+                    # URL against the authenticated user's current Status audience
+                    # before allowing it to become a new chat attachment.
+                    if (
+                        source_message is None
+                        and source_media_url
+                        and str(source_media_url).startswith(STATUS_MEDIA_URL_PREFIX)
+                    ):
+                        source_status = (
+                            db.query(Status)
+                            .filter(Status.media_url == str(source_media_url).strip())
+                            .first()
+                        )
+                        if (
+                            source_status is None
+                            or not status_user_can_view(source_status, username)
+                            or (source_status.expires_at and source_status.expires_at <= datetime.utcnow())
+                        ):
+                            print(
+                                "FORWARD STATUS NOT ACCESSIBLE:",
+                                source_media_url,
+                                username,
+                            )
+                            continue
                     source_media_type = canonicalize_chat_media_type(
                         getattr(source_message, "media_type", None)
                         if source_message is not None
@@ -3925,8 +4032,8 @@ def _collect_expired_status_media_urls(db, now):
     return media_urls
 
 
-def _delete_local_status_media(media_urls):
-    """Remove local status assets belonging to expired/deleted statuses."""
+def _delete_local_status_media(media_urls, db=None):
+    """Remove local status assets unless an existing forwarded chat still references them."""
     removed = 0
     failed = 0
 
@@ -3943,6 +4050,24 @@ def _delete_local_status_media(media_urls):
             filepath = (STATUS_UPLOAD_DIR / filename).resolve()
             upload_root = STATUS_UPLOAD_DIR.resolve()
             if filepath.parent != upload_root:
+                continue
+
+            canonical_url = STATUS_MEDIA_URL_PREFIX + filename
+            lookup_db = db
+            owns_lookup_db = False
+            if lookup_db is None:
+                lookup_db = SessionLocal()
+                owns_lookup_db = True
+            try:
+                referenced = (
+                    lookup_db.query(Message.id)
+                    .filter(Message.media_url == canonical_url)
+                    .first()
+                )
+            finally:
+                if owns_lookup_db:
+                    lookup_db.close()
+            if referenced is not None:
                 continue
 
             existed = filepath.exists()
@@ -3970,12 +4095,105 @@ STATUS_ALLOWED_TYPES = {
     "image/webp": ".webp",
 }
 
+STATUS_VISIBILITY_VALUES = {"contacts", "close", "except"}
+
+
+def _parse_status_audience_users(status):
+    """Return a normalized set of audience usernames stored on a Status."""
+    raw = getattr(status, "audience_users", "[]") or "[]"
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        value = []
+
+    if not isinstance(value, list):
+        return set()
+
+    return {
+        str(item).strip().casefold()
+        for item in value
+        if str(item).strip()
+    }
+
+
+def status_user_can_view(status, viewer_username):
+    """Return whether an authenticated user belongs to the Status audience."""
+    viewer = str(viewer_username or "").strip().casefold()
+    owner = str(getattr(status, "username", "") or "").strip().casefold()
+    if not viewer or not owner:
+        return False
+    if viewer == owner:
+        return True
+
+    visibility = str(getattr(status, "visibility", "contacts") or "contacts").strip().lower()
+    if visibility not in STATUS_VISIBILITY_VALUES:
+        visibility = "contacts"
+
+    audience = _parse_status_audience_users(status)
+    if visibility == "close":
+        return viewer in audience
+    if visibility == "except":
+        return viewer not in audience
+
+    # The current Lucky Chat account model does not have a separate Contact
+    # table. "My contacts" therefore means the authenticated users represented
+    # in the app's existing people/chat list, which is the legacy behavior.
+    return True
+
+
+def _normalize_status_audience_users(db, owner_username, visibility, raw_users):
+    """Validate and canonicalize the selected Status audience usernames."""
+    mode = str(visibility or "contacts").strip().lower()
+    if mode not in STATUS_VISIBILITY_VALUES:
+        raise ValueError("Invalid status visibility")
+
+    try:
+        values = json.loads(raw_users or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise ValueError("Invalid status audience selection")
+
+    if not isinstance(values, list):
+        raise ValueError("Invalid status audience selection")
+
+    requested = []
+    seen = set()
+    owner_key = str(owner_username or "").strip().casefold()
+    for item in values:
+        value = str(item or "").strip()
+        key = value.casefold()
+        if not value or key == owner_key or key in seen:
+            continue
+        seen.add(key)
+        requested.append(value)
+
+    if mode == "contacts":
+        return []
+
+    if mode == "close" and not requested:
+        raise ValueError("Choose at least one person for Close friends")
+
+    if not requested:
+        return []
+
+    candidates = db.query(User).filter(
+        User.username.in_(requested)
+    ).all()
+    canonical = {str(user.username).strip().casefold(): user.username for user in candidates}
+
+    missing = [value for value in requested if value.casefold() not in canonical]
+    if missing:
+        raise ValueError("One or more selected users no longer exist")
+
+    return [canonical[value.casefold()] for value in requested]
+
 
 @app.post("/upload-status")
 async def upload_status(
     request: Request,
     file: UploadFile = File(...),
-    text: str = Form("")
+    text: str = Form(""),
+    visibility: str = Form("contacts"),
+    audience_users: str = Form("[]"),
 ):
     username = request.session.get("username")
 
@@ -4040,11 +4258,28 @@ async def upload_status(
         # Remove expired records while the status list is being updated.
         expired_media_urls = _collect_expired_status_media_urls(db, now)
 
+        try:
+            normalized_audience = _normalize_status_audience_users(
+                db,
+                username,
+                visibility,
+                audience_users,
+            )
+        except ValueError as exc:
+            db.rollback()
+            try:
+                filepath.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return {"success": False, "error": str(exc)}
+
         status = Status(
             username=username,
             text=text or None,
             media_url="/static/uploads/status/" + filename,
             media_type="image",
+            visibility=str(visibility or "contacts").strip().lower(),
+            audience_users=json.dumps(normalized_audience, separators=(",", ":")),
             created_at=now,
             expires_at=now + STATUS_LIFETIME,
         )
@@ -4054,7 +4289,7 @@ async def upload_status(
         db.refresh(status)
 
         # Only remove old files after the DB transaction succeeds.
-        _delete_local_status_media(expired_media_urls)
+        _delete_local_status_media(expired_media_urls, db=db)
 
         return {
             "success": True,
@@ -4064,6 +4299,8 @@ async def upload_status(
                 "text": status.text or "",
                 "media_url": status.media_url,
                 "media_type": status.media_type,
+                "visibility": status.visibility or "contacts",
+                "audience_count": len(normalized_audience),
                 "created_at": status_timestamp_iso(status.created_at),
                 "expires_at": status_timestamp_iso(status.expires_at),
             }
@@ -4100,7 +4337,7 @@ async def get_statuses(request: Request):
         expired_media_urls = _collect_expired_status_media_urls(db, now)
         if expired_media_urls:
             db.commit()
-            _delete_local_status_media(expired_media_urls)
+            _delete_local_status_media(expired_media_urls, db=db)
 
         statuses = (
             db.query(Status)
@@ -4112,7 +4349,11 @@ async def get_statuses(request: Request):
         result = []
 
         for status in statuses:
-            result.append({
+            if not status_user_can_view(status, username):
+                continue
+
+            is_mine = str(status.username or "").strip().casefold() == str(username or "").strip().casefold()
+            item = {
                 "id": status.id,
                 "username": status.username,
                 "text": status.text or "",
@@ -4120,8 +4361,12 @@ async def get_statuses(request: Request):
                 "media_type": status.media_type,
                 "created_at": status_timestamp_iso(status.created_at),
                 "expires_at": status_timestamp_iso(status.expires_at),
-                "is_mine": status.username == username,
-            })
+                "is_mine": is_mine,
+            }
+            if is_mine:
+                item["visibility"] = status.visibility or "contacts"
+                item["audience_users"] = list(_parse_status_audience_users(status))
+            result.append(item)
 
         return {"success": True, "statuses": result}
 
@@ -4278,6 +4523,9 @@ async def record_status_view(status_id: int, request: Request):
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
 
+        if not status_user_can_view(status, username):
+            return {"success": False, "error": "Status is not available to you"}
+
         seen_at = datetime.utcnow()
         view = (
             db.query(StatusView)
@@ -4363,6 +4611,9 @@ async def record_status_like(
 
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
+
+        if not status_user_can_view(status, username):
+            return {"success": False, "error": "Status is not available to you"}
 
         # Viewing is recorded only by the explicit /view endpoint.
         # Do not create a StatusView as a side effect of a like request.
@@ -4461,6 +4712,9 @@ async def record_status_reply(
 
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
+
+        if not status_user_can_view(status, username):
+            return {"success": False, "error": "Status is not available to you"}
 
         # A reply also implies a view, keeping the viewer and engagement
         # datasets internally consistent.
@@ -4614,11 +4868,7 @@ async def delete_status(status_id: int, request: Request):
         db.commit()
 
         if media_url and media_url.startswith(STATUS_MEDIA_URL_PREFIX):
-            filename = media_url.rsplit("/", 1)[-1]
-            try:
-                (STATUS_UPLOAD_DIR / filename).unlink(missing_ok=True)
-            except Exception:
-                pass
+            _delete_local_status_media([media_url], db=db)
 
         return {"success": True}
 
