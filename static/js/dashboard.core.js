@@ -2660,7 +2660,7 @@ function renderStatuses(){
             </div>
             <div class="story-card-bottom">
                 <span class="status-name">My Status</span>
-                <span class="status-hint" ${myNewest ? `data-status-created="${escapeHtml(myNewest.created_at)}` : ""}>${myAge}</span>
+                <span class="status-hint" ${myNewest ? `data-status-created="${escapeHtml(myNewest.created_at)}"` : ""}>${myAge}</span>
             </div>
         </button>
     `;
