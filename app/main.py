@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.websocket import manager
-from app.models import Message, User, Status, StatusView, StatusLike, StatusReaction, StatusReply
+from app.models import Message, User, Status, StatusView, StatusLike, StatusReaction, HiddenUser, StatusReply
 from app.database import SessionLocal, Base, engine
 from app import models
 from app.auth import hash_password, verify_password
@@ -1465,6 +1465,14 @@ async def dashboard(request: Request):
     db = SessionLocal()
     try:
         users = db.query(User).all()
+        hidden_rows = db.query(HiddenUser.hidden_username).filter(
+            HiddenUser.username == current_user
+        ).all()
+        hidden_usernames = {
+            str(row[0]).strip().casefold()
+            for row in hidden_rows
+            if str(row[0] or "").strip()
+        }
 
         peer_expr = case(
             (Message.sender == current_user, Message.receiver),
@@ -1504,6 +1512,8 @@ async def dashboard(request: Request):
         for user in users:
             if user.username == current_user:
                 continue
+            if str(user.username).strip().casefold() in hidden_usernames:
+                continue
             last_messages.setdefault(user.username, None)
 
         unread_rows = (
@@ -1529,11 +1539,15 @@ async def dashboard(request: Request):
         for user in users:
             if user.username == current_user:
                 continue
+            if str(user.username).strip().casefold() in hidden_usernames:
+                continue
             unread_counts.setdefault(user.username, 0)
 
         chat_list = []
         for user in users:
             if user.username == current_user:
+                continue
+            if str(user.username).strip().casefold() in hidden_usernames:
                 continue
 
             msg = last_messages.get(user.username)
@@ -3049,6 +3063,14 @@ async def dashboard_data(request: Request):
     db = SessionLocal()
     try:
         users = db.query(User).all()
+        hidden_rows = db.query(HiddenUser.hidden_username).filter(
+            HiddenUser.username == current_user
+        ).all()
+        hidden_usernames = {
+            str(row[0]).strip().casefold()
+            for row in hidden_rows
+            if str(row[0] or "").strip()
+        }
 
         peer_expr = case(
             (Message.sender == current_user, Message.receiver),
@@ -3102,6 +3124,8 @@ async def dashboard_data(request: Request):
         result = []
         for user in users:
             if user.username == current_user:
+                continue
+            if str(user.username).strip().casefold() in hidden_usernames:
                 continue
 
             last = last_by_user.get(user.username)
@@ -3686,6 +3710,136 @@ async def upload_chat_audio(request: Request):
         "url": "/static/uploads/chat/" + filename,
         "media_type": "audio"
     }
+
+
+# ---------------------------------------------------------
+# SERVER-PERSISTENT DASHBOARD HIDDEN USERS
+# ---------------------------------------------------------
+
+
+@app.get("/hidden-users")
+async def get_hidden_users(request: Request):
+    """Return the current user's hidden dashboard users with public profile fields."""
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "hidden": []}
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(HiddenUser, User.display_name, User.profile_picture)
+            .outerjoin(User, User.username == HiddenUser.hidden_username)
+            .filter(HiddenUser.username == username)
+            .order_by(HiddenUser.created_at.desc(), HiddenUser.id.desc())
+            .all()
+        )
+
+        hidden = []
+        for hidden_row, display_name, profile_picture in rows:
+            target = str(hidden_row.hidden_username or "").strip()
+            if not target:
+                continue
+            hidden.append({
+                "username": target,
+                "display_name": str(display_name or target),
+                "profile": profile_picture or "/static/profile/default.png",
+            })
+
+        return {"success": True, "hidden": hidden}
+    finally:
+        db.close()
+
+
+@app.post("/hidden-users")
+async def set_hidden_user(request: Request):
+    """Hide or unhide one user from the authenticated dashboard chat list."""
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    try:
+        body = await request.json()
+    except Exception:
+        return {"success": False, "error": "Invalid request"}
+
+    raw_target = str(body.get("username", "") or body.get("user", "")).strip()
+    hidden = bool(body.get("hidden", False))
+    if not raw_target:
+        return {"success": False, "error": "Missing username"}
+
+    db = SessionLocal()
+    try:
+        target_user = resolve_user_by_username(db, raw_target)
+        if not target_user:
+            return {"success": False, "error": "User not found"}
+
+        if str(target_user.username).strip().casefold() == str(username).strip().casefold():
+            return {"success": False, "error": "You cannot hide yourself"}
+
+        existing = (
+            db.query(HiddenUser)
+            .filter(
+                HiddenUser.username == username,
+                HiddenUser.hidden_username == target_user.username,
+            )
+            .first()
+        )
+
+        if hidden:
+            if existing is None:
+                db.add(HiddenUser(
+                    username=username,
+                    hidden_username=target_user.username,
+                ))
+        else:
+            if existing is not None:
+                db.delete(existing)
+
+        db.commit()
+
+        try:
+            await manager.send_dashboard(
+                username,
+                {
+                    "type": "hidden_user_update",
+                    "username": target_user.username,
+                    "hidden": hidden,
+                }
+            )
+        except Exception as exc:
+            print("HIDDEN USER DASHBOARD SYNC ERROR:", exc)
+
+        rows = (
+            db.query(HiddenUser.hidden_username)
+            .filter(HiddenUser.username == username)
+            .order_by(HiddenUser.created_at.desc(), HiddenUser.id.desc())
+            .all()
+        )
+        hidden_users = [
+            str(row[0]).strip()
+            for row in rows
+            if str(row[0] or "").strip()
+        ]
+        return {"success": True, "hidden": hidden_users}
+    except IntegrityError:
+        db.rollback()
+        rows = (
+            db.query(HiddenUser.hidden_username)
+            .filter(HiddenUser.username == username)
+            .all()
+        )
+        return {"success": True, "hidden": [
+            str(row[0]).strip()
+            for row in rows
+            if str(row[0] or "").strip()
+        ]}
+    except Exception as exc:
+        db.rollback()
+        print("HIDDEN USER SAVE ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not save hidden user"}
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------

@@ -705,6 +705,153 @@ body{
     font:500 13px Poppins,sans-serif;
 }
 .chat-menu button:active{background:rgba(96,165,250,.12);}
+.chat-action-btn{
+    width:30px;
+    height:30px;
+    min-width:30px;
+    border:1px solid rgba(148,163,184,.12);
+    border-radius:10px;
+    background:rgba(15,23,42,.72);
+    color:#cbd5e1;
+    font:700 18px/1 Poppins,sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    transition:transform .16s ease,background .16s ease,border-color .16s ease;
+}
+.chat-action-btn:hover{
+    background:rgba(56,189,248,.10);
+    border-color:rgba(125,211,252,.20);
+}
+.chat-action-btn:active{transform:scale(.92);}
+.hidden-users-btn{
+    margin-left:auto !important;
+    margin-right:8px !important;
+}
+.hidden-users-btn + .settings-btn{
+    margin-left:0 !important;
+}
+.hidden-users-overlay{
+    position:fixed;
+    inset:0;
+    z-index:10050;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+    background:rgba(2,6,23,.72);
+    backdrop-filter:blur(16px);
+}
+.hidden-users-panel{
+    width:min(100%,430px);
+    max-height:min(82dvh,640px);
+    overflow:hidden;
+    border:1px solid rgba(125,211,252,.16);
+    border-radius:26px;
+    background:linear-gradient(180deg,rgba(12,22,40,.98),rgba(7,13,26,.98));
+    box-shadow:0 30px 90px rgba(0,0,0,.48);
+}
+.hidden-users-head{
+    display:flex;
+    align-items:flex-start;
+    gap:14px;
+    padding:20px 20px 15px;
+    border-bottom:1px solid rgba(148,163,184,.10);
+}
+.hidden-users-head > div{flex:1;min-width:0;}
+.hidden-users-head span{
+    display:block;
+    color:#7dd3fc;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:.14em;
+}
+.hidden-users-head h3{
+    margin:5px 0 2px;
+    color:#f8fbff;
+    font-size:20px;
+}
+.hidden-users-head p{
+    margin:0;
+    color:#8ea3bb;
+    font-size:11px;
+}
+.hidden-users-close{
+    width:36px;
+    height:36px;
+    flex:0 0 36px;
+    border:1px solid rgba(148,163,184,.14);
+    border-radius:12px;
+    background:rgba(30,41,59,.66);
+    color:#dbe7f4;
+    font-size:24px;
+    cursor:pointer;
+}
+.hidden-users-list{
+    max-height:58dvh;
+    overflow:auto;
+    padding:10px 14px 16px;
+}
+.hidden-user-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:11px 7px;
+    border-bottom:1px solid rgba(148,163,184,.07);
+}
+.hidden-user-row:last-child{border-bottom:0;}
+.hidden-user-avatar{
+    width:46px;
+    height:46px;
+    min-width:46px;
+    object-fit:cover;
+    border-radius:14px;
+    border:1px solid rgba(125,211,252,.18);
+}
+.hidden-user-info{flex:1;min-width:0;}
+.hidden-user-info b{
+    display:block;
+    color:#edf6ff;
+    font-size:13px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+.hidden-user-info small{
+    display:block;
+    margin-top:2px;
+    color:#7790a9;
+    font-size:10px;
+}
+.hidden-user-unhide{
+    border:1px solid rgba(125,211,252,.18);
+    border-radius:12px;
+    background:rgba(56,189,248,.08);
+    color:#9edcff;
+    padding:8px 11px;
+    font:600 11px Poppins,sans-serif;
+    cursor:pointer;
+}
+.hidden-users-empty,.hidden-users-loading{
+    display:grid;
+    place-items:center;
+    gap:4px;
+    padding:36px 14px;
+    color:#8ea3bb;
+    text-align:center;
+}
+.hidden-users-empty b{color:#dbeafe;font-size:13px;}
+.hidden-users-empty small{font-size:11px;}
+@media(max-width:768px){
+    .chat-action-btn{
+        width:32px;
+        height:32px;
+        min-width:32px;
+    }
+    .hidden-users-overlay{padding:12px;}
+    .hidden-users-panel{max-height:88dvh;border-radius:22px;}
+}
 
 
 /* Status presentation rebuilt below in the dedicated Status 5.0 style block. */
@@ -6240,6 +6387,9 @@ body{
 <div class="logo">
     <span><img class="logo-mark" src="/static/pwa/icon-192.png?v=logo2" alt="Lucky Chat"><b>Lucky Chat</b></span>
 
+    <button class="settings-btn hidden-users-btn" onclick="openHiddenUsers()" aria-label="Hidden users" title="Hidden users">
+    🙈
+</button>
     <button class="settings-btn" onclick="openSettings()" aria-label="Settings" title="Settings">
     ⚙️
 </button>
@@ -8390,6 +8540,8 @@ body.status-block-shots #statusViewerImage{
         </span>
         {% endif %}
 
+        <button class="chat-action-btn" type="button" aria-label="Chat options" title="Chat options" onclick="event.stopPropagation(); showChatMenu(event, this.closest('.chat-item').dataset.username)">⋮</button>
+
     </div>
 
 </div>
@@ -8464,7 +8616,7 @@ body.status-block-shots #statusViewerImage{
 
 <script src="/static/js/crypto.core.js?v=20260923-crypto-local-decrypt-v22" onerror="console.error('Lucky Chat crypto failed to load')"></script>
 <script src="/static/js/notification.js?v=20260927-notification-stability-v1"></script>
-<script src="/static/js/dashboard.core.js?v=20260928-status-reactions-v1"></script>
+<script src="/static/js/dashboard.core.js?v=20260928-hide-user-v1"></script>
 
 <style id="lucky-liquid-glass-v1">
 /* Lucky Chat — Liquid Glass dashboard pass

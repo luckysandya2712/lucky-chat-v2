@@ -3910,6 +3910,18 @@ function connectDashboardSocket() {
                 refreshDashboard();
             }
 
+            if (data.type === "hidden_user_update") {
+                const hiddenUsername = String(data.username || data.user || "").trim();
+                if (hiddenUsername) {
+                    const nextHidden = !!data.hidden;
+                    const current = getHiddenUsers().filter(name => String(name).trim().toLowerCase() !== hiddenUsername.toLowerCase());
+                    serverHiddenUsers = nextHidden ? [...current, hiddenUsername] : current;
+                    saveHiddenUsers(serverHiddenUsers);
+                    if (nextHidden) removeHiddenChatRow(hiddenUsername);
+                    else void refreshDashboard();
+                }
+            }
+
             if (data.type === "status_update" || data.type === "new_status" || data.type === "status") {
                 loadStatuses();
                 const who = data.username || data.user || data.status?.username;
@@ -4058,6 +4070,7 @@ requestAnimationFrame(() => {
         connectDashboardSocket();
         startDashboardTimers();
         void loadServerPinnedChats();
+        void loadServerHiddenUsers();
         void refreshDashboard();
     }, 0);
 });
@@ -4116,6 +4129,15 @@ function formatDashboardTime(value) {
 
 const PINNED_CHATS_KEY = "lucky_chat_pinned_chats";
 let serverPinnedChats = null;
+
+const HIDDEN_USERS_KEY = "lucky_chat_hidden_users_v1";
+let serverHiddenUsers = null;
+let hiddenUserMutationPromises = new Map();
+
+function getHiddenUsersStorageKey(){
+    const username = String(CURRENT_DASHBOARD_USER || "").trim() || "anonymous";
+    return `${HIDDEN_USERS_KEY}:${username}`;
+}
 
 function getLocalPinnedChats(){
     try{
@@ -4192,6 +4214,254 @@ async function togglePinnedChat(username){
 }
 
 
+function getLocalHiddenUsers(){
+    try{
+        const value = JSON.parse(localStorage.getItem(getHiddenUsersStorageKey()) || "[]");
+        return Array.isArray(value)
+            ? [...new Set(value.map(item => String(item || "").trim()).filter(Boolean))]
+            : [];
+    }catch(_error){
+        return [];
+    }
+}
+
+function saveHiddenUsers(list){
+    const normalized = Array.isArray(list)
+        ? [...new Set(list.map(item => String(item || "").trim()).filter(Boolean))]
+        : [];
+    localStorage.setItem(getHiddenUsersStorageKey(), JSON.stringify(normalized));
+}
+
+function getHiddenUsers(){
+    return Array.isArray(serverHiddenUsers)
+        ? serverHiddenUsers
+        : getLocalHiddenUsers();
+}
+
+function isUserHidden(username){
+    const target = String(username || "").trim().toLowerCase();
+    if (!target) return false;
+    return getHiddenUsers().some(name => String(name || "").trim().toLowerCase() === target);
+}
+
+function removeHiddenChatRow(username){
+    const target = String(username || "").trim().toLowerCase();
+    if (!target) return;
+    document.querySelectorAll(".chat-list .chat-item[data-username]").forEach(item => {
+        if (String(item.getAttribute("data-username") || "").trim().toLowerCase() === target) {
+            item.remove();
+        }
+    });
+}
+
+async function loadServerHiddenUsers(){
+    try{
+        const res = await fetch("/hidden-users", { credentials:"same-origin", cache:"no-store" });
+        if (handleDashboardAuthFailure(res.status)) return;
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        if(data.success && Array.isArray(data.hidden)){
+            const previous = getHiddenUsers();
+            serverHiddenUsers = data.hidden
+                .map(item => String(item?.username || item || "").trim())
+                .filter(Boolean);
+            saveHiddenUsers(serverHiddenUsers);
+            const before = JSON.stringify(previous.map(name => String(name).trim().toLowerCase()).sort());
+            const after = JSON.stringify(serverHiddenUsers.map(name => String(name).trim().toLowerCase()).sort());
+            if (before !== after) void refreshDashboard();
+            return serverHiddenUsers;
+        }
+        throw new Error(data.error || "Hidden-user list unavailable");
+    }catch(e){
+        console.debug("Server hidden-user list unavailable; using local cache:", e);
+    }
+
+    serverHiddenUsers = getLocalHiddenUsers();
+    return serverHiddenUsers;
+}
+
+async function toggleHiddenUser(username, hidden = null){
+    const target = String(username || "").trim();
+    if (!target) return false;
+    if (target.toLowerCase() === String(CURRENT_DASHBOARD_USER || "").trim().toLowerCase()) return false;
+
+    const alreadyHidden = isUserHidden(target);
+    const nextHidden = hidden === null ? !alreadyHidden : !!hidden;
+    if (hidden === null && !alreadyHidden) {
+        const confirmed = window.confirm(`Hide ${target} from your Chats list? You can restore them from Hidden users.`);
+        if (!confirmed) return false;
+    }
+    const mutationKey = target.toLowerCase();
+    if (hiddenUserMutationPromises.has(mutationKey)) return hiddenUserMutationPromises.get(mutationKey);
+
+    const previous = [...getHiddenUsers()];
+    const next = nextHidden
+        ? [...new Set([...previous, target])]
+        : previous.filter(name => String(name || "").trim().toLowerCase() !== mutationKey);
+
+    serverHiddenUsers = next;
+    saveHiddenUsers(next);
+    closeChatMenu();
+
+    if (nextHidden) removeHiddenChatRow(target);
+
+    const run = (async () => {
+        try{
+            const res = await fetch("/hidden-users", {
+                method:"POST",
+                credentials:"same-origin",
+                cache:"no-store",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({username:target, hidden:nextHidden})
+            });
+
+            if (handleDashboardAuthFailure(res.status)) return false;
+            if(!res.ok) throw new Error("HTTP " + res.status);
+            const data = await res.json();
+            if(!data.success || !Array.isArray(data.hidden)) throw new Error(data.error || "Hidden-user update failed");
+
+            serverHiddenUsers = data.hidden.map(item => String(item || "").trim()).filter(Boolean);
+            saveHiddenUsers(serverHiddenUsers);
+            await refreshDashboard();
+            showStatusToast(nextHidden ? `Hidden ${target} from Chats` : `Unhidden ${target}`);
+            return true;
+        }catch(e){
+            serverHiddenUsers = previous;
+            saveHiddenUsers(previous);
+            console.debug("Could not persist hidden user:", e);
+            await refreshDashboard();
+            showStatusToast("Could not update hidden user", true);
+            return false;
+        }finally{
+            hiddenUserMutationPromises.delete(mutationKey);
+        }
+    })();
+
+    hiddenUserMutationPromises.set(mutationKey, run);
+    return run;
+}
+
+function closeHiddenUsers(){
+    const overlay = document.getElementById("hiddenUsersOverlay");
+    if (overlay) overlay.remove();
+}
+
+function renderHiddenUsersList(items){
+    const list = document.getElementById("hiddenUsersList");
+    if (!list) return;
+    const rows = Array.isArray(items) ? items : [];
+    list.innerHTML = "";
+
+    if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "hidden-users-empty";
+        empty.innerHTML = "<b>No hidden users</b><small>Users you hide from Chats will appear here.</small>";
+        list.appendChild(empty);
+        return;
+    }
+
+    rows.forEach(item => {
+        const username = String(item?.username || "").trim();
+        if (!username) return;
+        const displayName = String(item?.display_name || username);
+        const profile = String(item?.profile || "/static/profile/default.png");
+
+        const row = document.createElement("div");
+        row.className = "hidden-user-row";
+
+        const image = document.createElement("img");
+        image.className = "hidden-user-avatar";
+        image.src = profile;
+        image.alt = "";
+        image.onerror = () => { image.src = "/static/profile/default.png"; };
+
+        const info = document.createElement("div");
+        info.className = "hidden-user-info";
+        const name = document.createElement("b");
+        name.textContent = displayName;
+        const handle = document.createElement("small");
+        handle.textContent = "@" + username;
+        info.append(name, handle);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "hidden-user-unhide";
+        button.textContent = "Unhide";
+        button.addEventListener("click", async () => {
+            await toggleHiddenUser(username, false);
+            if (!isUserHidden(username)) await loadHiddenUsersForDialog();
+        });
+
+        row.append(image, info, button);
+        list.appendChild(row);
+    });
+}
+
+async function loadHiddenUsersForDialog(){
+    const list = document.getElementById("hiddenUsersList");
+    if (list) list.innerHTML = '<div class="hidden-users-loading">Loading hidden users…</div>';
+
+    try{
+        const res = await fetch("/hidden-users", { credentials:"same-origin", cache:"no-store" });
+        if (handleDashboardAuthFailure(res.status)) return;
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        if(!data.success || !Array.isArray(data.hidden)) throw new Error(data.error || "Hidden-user list failed");
+        serverHiddenUsers = data.hidden.map(item => String(item?.username || "").trim()).filter(Boolean);
+        saveHiddenUsers(serverHiddenUsers);
+        renderHiddenUsersList(data.hidden);
+        return;
+    }catch(e){
+        console.debug("Could not load hidden users dialog:", e);
+    }
+
+    const fallback = getHiddenUsers().map(username => ({
+        username,
+        display_name: username,
+        profile: "/static/profile/default.png"
+    }));
+    renderHiddenUsersList(fallback);
+}
+
+function openHiddenUsers(){
+    closeChatMenu();
+    closeHiddenUsers();
+
+    const overlay = document.createElement("div");
+    overlay.id = "hiddenUsersOverlay";
+    overlay.className = "hidden-users-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "hiddenUsersTitle");
+    overlay.addEventListener("click", event => {
+        if (event.target === overlay) closeHiddenUsers();
+    });
+
+    const panel = document.createElement("section");
+    panel.className = "hidden-users-panel";
+
+    const head = document.createElement("div");
+    head.className = "hidden-users-head";
+    head.innerHTML = '<div><span>CHAT PRIVACY</span><h3 id="hiddenUsersTitle">Hidden users</h3><p>Hidden users stay out of your Chats list.</p></div>';
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "hidden-users-close";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Close hidden users");
+    close.addEventListener("click", closeHiddenUsers);
+    head.appendChild(close);
+
+    const list = document.createElement("div");
+    list.id = "hiddenUsersList";
+    list.className = "hidden-users-list";
+
+    panel.append(head, list);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    void loadHiddenUsersForDialog();
+}
+
 function showChatMenu(event, username){
     event.preventDefault();
     event.stopPropagation();
@@ -4208,6 +4478,14 @@ function showChatMenu(event, username){
         closeChatMenu();
     };
     menu.appendChild(button);
+
+    const hideButton=document.createElement("button");
+    hideButton.textContent=isUserHidden(username) ? "👁 Unhide user" : "🙈 Hide user";
+    hideButton.onclick=async ()=>{
+        await toggleHiddenUser(username);
+        closeChatMenu();
+    };
+    menu.appendChild(hideButton);
     document.body.appendChild(menu);
 
     const x=Math.min(event.clientX, window.innerWidth-menu.offsetWidth-8);
@@ -4493,6 +4771,7 @@ function buildDashboardChatHtml(chat){
         }
 
         ${badge}
+        <button class="chat-action-btn" type="button" aria-label="Chat options" title="Chat options" onclick="event.stopPropagation(); showChatMenu(event, this.closest('.chat-item').dataset.username)">⋮</button>
     </div>
 </div>
 
@@ -4514,7 +4793,8 @@ function renderDashboardChats(chats){
     const chatList = document.querySelector(".chat-list");
     if (!chatList) return false;
 
-    const orderedChats = sortDashboardChats(chats);
+    const visibleChats = chats.filter(chat => chat && !isUserHidden(chat.username));
+    const orderedChats = sortDashboardChats(visibleChats);
     if (!orderedChats.length) return false;
 
     let renderedChatList = "";

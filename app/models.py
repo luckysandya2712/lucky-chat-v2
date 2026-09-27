@@ -206,6 +206,33 @@ class StatusReaction(Base):
     )
 
 
+class HiddenUser(Base):
+    __tablename__ = "hidden_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, index=True, nullable=False)
+    hidden_username = Column(String, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "username",
+            "hidden_username",
+            name="uq_hidden_user_owner_target"
+        ),
+        Index(
+            "ix_hidden_users_owner_created",
+            "username",
+            "created_at",
+        ),
+        Index(
+            "ix_hidden_users_owner_target",
+            "username",
+            "hidden_username",
+        ),
+    )
+
+
 class StatusReply(Base):
     __tablename__ = "status_replies"
 
