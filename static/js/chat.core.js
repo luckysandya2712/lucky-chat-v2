@@ -5171,28 +5171,105 @@ function clearDocumentPreview() {
     if (documentInput) documentInput.value = "";
 }
 
-async function uploadChatImage() {
-    const file = imageInput?.files?.[0];
+async function prepareChatImageForUpload(file) {
+    if (!file) return file;
 
-    if (!file) return;
+    // Avoid sending unnecessarily large camera images over a mobile connection.
+    // Small images stay byte-for-byte unchanged. Larger images are resized only
+    // when needed, keeping the existing PNG/JPEG/WebP formats accepted by the
+    // backend.
+    const MAX_DIMENSION = 1920;
+    const COMPRESS_THRESHOLD = 1.5 * 1024 * 1024;
+
+    if (file.size <= COMPRESS_THRESHOLD && typeof createImageBitmap !== "function") {
+        return file;
+    }
+
+    if (typeof createImageBitmap !== "function") {
+        return file;
+    }
+
+    let bitmap = null;
+    try {
+        bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+
+        const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+        const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
+        const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
+
+        if (scale === 1 && file.size <= COMPRESS_THRESHOLD) {
+            return file;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        const ctx = canvas.getContext("2d", { alpha: true });
+        if (!ctx) return file;
+
+        ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+
+        const outputType = file.type === "image/png"
+            ? "image/png"
+            : (file.type === "image/webp" ? "image/webp" : "image/jpeg");
+        const quality = outputType === "image/png" ? undefined : 0.82;
+
+        const blob = await new Promise(resolve => {
+            canvas.toBlob(resolve, outputType, quality);
+        });
+
+        if (!blob || blob.size >= file.size) {
+            return file;
+        }
+
+        const extension = outputType === "image/png"
+            ? ".png"
+            : (outputType === "image/webp" ? ".webp" : ".jpg");
+        const baseName = String(file.name || "image").replace(/\.[^.]*$/, "");
+
+        return new File(
+            [blob],
+            `${baseName}${extension}`,
+            { type: outputType, lastModified: Date.now() }
+        );
+    } catch (error) {
+        console.warn("IMAGE OPTIMIZATION SKIPPED:", error);
+        return file;
+    } finally {
+        try {
+            bitmap?.close();
+        } catch (_) {}
+    }
+}
+
+async function uploadChatImage() {
+    const originalFile = imageInput?.files?.[0];
+
+    if (!originalFile) return;
 
     const preview = document.getElementById("imagePreview");
     const previewImage = document.getElementById("previewImage");
 
-    // Show preview immediately
+    // Show preview immediately from the original file while optimization/upload
+    // happens in the background.
     if (previewImage) {
-        previewImage.src = URL.createObjectURL(file);
+        previewImage.src = URL.createObjectURL(originalFile);
     }
     if (preview) {
         preview.style.display = "block";
     }
 
     try {
-        const formData = new FormData();
-        formData.append("file", file);
+        const file = await prepareChatImageForUpload(originalFile);
 
+        const formData = new FormData();
+        formData.append("file", file, file.name);
+
+        const uploadStartedAt = performance.now();
         const response = await fetch("/upload-chat-image", {
             method: "POST",
+            credentials: "same-origin",
             body: formData
         });
 
@@ -5207,7 +5284,13 @@ async function uploadChatImage() {
             return;
         }
 
-        console.log("IMAGE UPLOADED:", result);
+        console.log(
+            "IMAGE UPLOADED:",
+            result,
+            "originalBytes:", originalFile.size,
+            "uploadedBytes:", file.size,
+            "seconds:", ((performance.now() - uploadStartedAt) / 1000).toFixed(2)
+        );
 
         window.selectedChatImage = result;
 

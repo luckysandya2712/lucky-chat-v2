@@ -120,18 +120,34 @@ def _cloudinary_upload_image(data: bytes, filename: str) -> str:
         guessed_type, _ = mimetypes.guess_type(filename)
         mime_type = guessed_type if guessed_type and guessed_type.startswith("image/") else "application/octet-stream"
 
-    file_data_uri = (
-        f"data:{mime_type};base64,"
-        + base64.b64encode(data).decode("ascii")
-    )
+    # Send the original binary bytes as multipart/form-data instead of first
+    # converting the image to a Base64 Data URI. Base64 adds roughly 33% to the
+    # request size and extra CPU/memory work, which is especially noticeable for
+    # camera images on mobile deployments.
+    boundary = "----LuckyChatCloudinary" + hashlib.sha256(
+        os.urandom(16)
+    ).hexdigest()[:24]
 
-    fields = {
-        "file": file_data_uri,
-        "folder": folder,
-        "public_id": public_id,
-    }
+    def multipart_field(name: str, value: str) -> bytes:
+        return (
+            f"--{boundary}\r\n"
+            f"Content-Disposition: form-data; name=\"{name}\"\r\n\r\n"
+            f"{value}\r\n"
+        ).encode("utf-8")
 
-    body = urllib.parse.urlencode(fields).encode("utf-8")
+    body_parts = [
+        multipart_field("folder", folder),
+        multipart_field("public_id", public_id),
+        (
+            f"--{boundary}\r\n"
+            f"Content-Disposition: form-data; name=\"file\"; filename=\"{Path(filename).name}\"\r\n"
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode("utf-8"),
+        data,
+        b"\r\n",
+        f"--{boundary}--\r\n".encode("utf-8"),
+    ]
+    body = b"".join(body_parts)
 
     endpoint = (
         f"https://api.cloudinary.com/v1_1/"
@@ -144,7 +160,7 @@ def _cloudinary_upload_image(data: bytes, filename: str) -> str:
         method="POST",
         headers={
             "Authorization": f"Basic {authorization}",
-            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
             "Accept": "application/json",
         },
     )
