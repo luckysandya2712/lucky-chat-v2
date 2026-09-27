@@ -7863,9 +7863,23 @@ body.status-block-shots #statusViewerImage{
                             <b>➤</b>
                         </button>
                     </form>
+                    <button class="status-reaction-btn" id="statusReactionButton" type="button" onclick="openStatusReactionPicker(event)" aria-label="React to status" title="React to status">
+                        <span id="statusReactionButtonEmoji" aria-hidden="true">😊</span>
+                    </button>
                     <button class="status-heart-btn" id="statusHeartButton" type="button" aria-label="Like status" aria-pressed="false">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 8.6c0 5.2-8.8 11-8.8 11S3.2 13.8 3.2 8.6A4.6 4.6 0 0 1 12 6.7a4.6 4.6 0 0 1 8.8 1.9z"></path></svg>
                     </button>
+                </div>
+
+                <div class="status-reaction-picker" id="statusReactionPicker" hidden aria-hidden="true" role="group" aria-label="Status reactions">
+                    <button type="button" data-status-reaction="👍" onclick="selectStatusReaction('👍',event)" aria-label="React with thumbs up" aria-pressed="false">👍</button>
+                    <button type="button" data-status-reaction="😂" onclick="selectStatusReaction('😂',event)" aria-label="React with laughing" aria-pressed="false">😂</button>
+                    <button type="button" data-status-reaction="😮" onclick="selectStatusReaction('😮',event)" aria-label="React with surprised" aria-pressed="false">😮</button>
+                    <button type="button" data-status-reaction="😢" onclick="selectStatusReaction('😢',event)" aria-label="React with sad" aria-pressed="false">😢</button>
+                    <button type="button" data-status-reaction="😡" onclick="selectStatusReaction('😡',event)" aria-label="React with angry" aria-pressed="false">😡</button>
+                    <button type="button" data-status-reaction="🙏" onclick="selectStatusReaction('🙏',event)" aria-label="React with prayer" aria-pressed="false">🙏</button>
+                    <button type="button" data-status-reaction="🎉" onclick="selectStatusReaction('🎉',event)" aria-label="React with celebration" aria-pressed="false">🎉</button>
+                    <button type="button" data-status-reaction="🔥" onclick="selectStatusReaction('🔥',event)" aria-label="React with fire" aria-pressed="false">🔥</button>
                 </div>
 
                 <div class="status-viewer-toolbar status-viewer-toolbar-30">
@@ -8036,6 +8050,7 @@ body.status-block-shots #statusViewerImage{
             </div>
         </div>
     </div>
+
 
 <style id="lucky-status-delete-confirm-v1">
 .status-delete-confirm-overlay{
@@ -8449,7 +8464,7 @@ body.status-block-shots #statusViewerImage{
 
 <script src="/static/js/crypto.core.js?v=20260923-crypto-local-decrypt-v22" onerror="console.error('Lucky Chat crypto failed to load')"></script>
 <script src="/static/js/notification.js?v=20260927-notification-stability-v1"></script>
-<script src="/static/js/dashboard.core.js?v=20260928-status-visibility-v1"></script>
+<script src="/static/js/dashboard.core.js?v=20260928-status-reactions-v1"></script>
 
 <style id="lucky-liquid-glass-v1">
 /* Lucky Chat — Liquid Glass dashboard pass
@@ -10282,6 +10297,116 @@ html.lucky-light .status-modal-card{
   }
 })();
 </script>
+
+
+<style id="lucky-status-reactions-v1-final">
+.status-viewer-30 .status-reaction-btn{
+  width:41px!important;
+  height:41px!important;
+  flex:0 0 41px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  padding:0!important;
+  margin:0!important;
+  border:1px solid rgba(255,255,255,.14)!important;
+  border-radius:13px!important;
+  background:rgba(8,12,22,.52)!important;
+  color:#fff!important;
+  font-size:20px!important;
+  line-height:1!important;
+  box-shadow:0 10px 24px rgba(0,0,0,.22)!important;
+  pointer-events:auto!important;
+  touch-action:manipulation!important;
+  cursor:pointer!important;
+}
+.status-viewer-30 .status-reaction-btn.selected{
+  background:rgba(96,165,250,.16)!important;
+  border-color:rgba(96,165,250,.42)!important;
+}
+.status-viewer-30.status-own .status-reaction-btn{
+  display:none!important;
+}
+.status-viewer-30 .status-reaction-picker{
+  position:absolute!important;
+  right:12px!important;
+  bottom:calc(68px + var(--sv-safe-bottom))!important;
+  z-index:290!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:5px!important;
+  width:max-content!important;
+  max-width:calc(100% - 24px)!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  padding:7px!important;
+  border:1px solid rgba(170,200,255,.16)!important;
+  border-radius:20px!important;
+  background:rgba(8,12,24,.96)!important;
+  box-shadow:0 18px 50px rgba(0,0,0,.46),inset 0 1px 0 rgba(255,255,255,.05)!important;
+  backdrop-filter:blur(24px) saturate(1.2)!important;
+  -webkit-backdrop-filter:blur(24px) saturate(1.2)!important;
+  scrollbar-width:none!important;
+}
+.status-viewer-30 .status-reaction-picker[hidden]{
+  display:none!important;
+}
+.status-viewer-30 .status-reaction-picker::-webkit-scrollbar{
+  display:none!important;
+}
+.status-viewer-30 .status-reaction-picker button{
+  width:36px!important;
+  height:36px!important;
+  min-width:36px!important;
+  flex:0 0 36px!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:0!important;
+  border:1px solid transparent!important;
+  border-radius:11px!important;
+  background:transparent!important;
+  color:#fff!important;
+  font-size:21px!important;
+  line-height:1!important;
+  cursor:pointer!important;
+  touch-action:manipulation!important;
+}
+.status-viewer-30 .status-reaction-picker button.selected,
+.status-viewer-30 .status-reaction-picker button:active{
+  background:rgba(96,165,250,.18)!important;
+  border-color:rgba(96,165,250,.34)!important;
+  transform:scale(1.05)!important;
+}
+.status-viewer-30.status-reaction-open .status-reaction-picker{
+  pointer-events:auto!important;
+}
+.status-engage-stats{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+.viewer-reaction{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:28px!important;
+  height:28px!important;
+  margin-left:auto!important;
+  border-radius:999px!important;
+  background:rgba(96,165,250,.12)!important;
+  border:1px solid rgba(96,165,250,.20)!important;
+  font-size:17px!important;
+  line-height:1!important;
+}
+@media(max-width:520px){
+  .status-engage-stats{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .status-viewer-30 .status-reaction-picker{
+    left:10px!important;
+    right:10px!important;
+    width:auto!important;
+  }
+}
+</style>
 
 </body>
 

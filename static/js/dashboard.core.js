@@ -107,6 +107,8 @@ const STATUS_PRIVACY_KEY = "lucky_status_privacy_v30";
 const STATUS_SEEN_KEY = "lucky_status_seen_ids";
 const STATUS_LIKES_KEY = "lucky_status_liked_ids";
 const STATUS_REACTION_STATE_KEY = "lucky_status_reaction_state_v1";
+const STATUS_EMOJI_REACTIONS_KEY = "lucky_status_emoji_reactions_v1";
+const STATUS_EMOJI_REACTIONS = ["👍","😂","😮","😢","😡","🙏","🎉","🔥"];
 const STATUS_VIEWERS_KEY = "lucky_status_viewers_by_id_v1";
 const STATUS_LIKERS_KEY = "lucky_status_likers_by_id_v1";
 const STATUS_REPLIES_KEY = "lucky_status_replies_by_id_v1";
@@ -219,6 +221,7 @@ function stopStatusProgress(){
 function closeStatusViewer(){
     closeStatusMenu();
     closeStatusSheets();
+    closeStatusReactionPicker(false);
     stopStatusProgress();
 
     // The age-refresh timer belongs to the viewer lifecycle. Stop it as
@@ -463,6 +466,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     document.addEventListener("click", event => {
+        const picker = document.getElementById("statusReactionPicker");
+        const reactionButton = document.getElementById("statusReactionButton");
+        if (
+            picker &&
+            !picker.hidden &&
+            !picker.contains(event.target) &&
+            !reactionButton?.contains(event.target)
+        ) {
+            closeStatusReactionPicker(true);
+        }
+
         const menu = document.getElementById("statusActionMenu");
         const more = document.getElementById("statusMoreButton");
         if (!menu || menu.hidden) return;
@@ -762,6 +776,178 @@ function paintStatusHeart(button, liked){
     button.setAttribute("title", liked ? "Unlike status" : "Like status");
 }
 
+function getStatusEmojiReactionStorageKey(){
+    const username = String(CURRENT_DASHBOARD_USER || "").trim() || "anonymous";
+    return `${STATUS_EMOJI_REACTIONS_KEY}:v1:${username}`;
+}
+
+function getStatusEmojiReactionMap(){
+    try {
+        const raw = JSON.parse(localStorage.getItem(getStatusEmojiReactionStorageKey()) || "{}");
+        return raw && typeof raw === "object" ? raw : {};
+    } catch (_error) {
+        return {};
+    }
+}
+
+function getStoredStatusEmojiReaction(statusId){
+    if (statusId == null) return "";
+    const value = getStatusEmojiReactionMap()[String(statusId)];
+    return STATUS_EMOJI_REACTIONS.includes(value) ? value : "";
+}
+
+function saveStoredStatusEmojiReaction(statusId, reaction){
+    if (statusId == null) return;
+    const map = getStatusEmojiReactionMap();
+    const key = String(statusId);
+    if (reaction) map[key] = reaction;
+    else delete map[key];
+    const entries = Object.entries(map);
+    const trimmed = entries.length > 300 ? entries.slice(-300) : entries;
+    try {
+        localStorage.setItem(
+            getStatusEmojiReactionStorageKey(),
+            JSON.stringify(Object.fromEntries(trimmed))
+        );
+    } catch (_error) {}
+}
+
+function paintStatusEmojiReaction(reaction){
+    const button = document.getElementById("statusReactionButton");
+    const emoji = document.getElementById("statusReactionButtonEmoji");
+    if (!button || !emoji) return;
+    const value = STATUS_EMOJI_REACTIONS.includes(reaction) ? reaction : "";
+    emoji.textContent = value || "😊";
+    button.classList.toggle("selected", !!value);
+    button.setAttribute("aria-label", value ? `Reacted ${value}` : "React to status");
+    button.setAttribute("title", value ? `Current reaction ${value}` : "React to status");
+    const picker = document.getElementById("statusReactionPicker");
+    picker?.querySelectorAll("[data-status-reaction]").forEach(item => {
+        item.classList.toggle("selected", item.getAttribute("data-status-reaction") === value);
+        item.setAttribute("aria-pressed", item.getAttribute("data-status-reaction") === value ? "true" : "false");
+    });
+}
+
+function closeStatusReactionPicker(resumeViewer=false){
+    const picker = document.getElementById("statusReactionPicker");
+    if (!picker) return;
+    picker.hidden = true;
+    picker.setAttribute("aria-hidden", "true");
+    document.getElementById("statusViewerCard")?.classList.remove("status-reaction-open");
+
+    if (
+        resumeViewer &&
+        statusPaused &&
+        currentStatus &&
+        !document.querySelector(".status-sheet.open") &&
+        !(document.getElementById("statusActionMenu")?.hidden === false)
+    ) {
+        statusProgressStartedAt = performance.now();
+        statusPaused = false;
+        document.getElementById("statusViewerCard")?.classList.remove("status-holding");
+    }
+}
+
+function openStatusReactionPicker(event){
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const status = currentStatus;
+    const picker = document.getElementById("statusReactionPicker");
+    if (!picker || !status || status.is_mine) return;
+    const willOpen = picker.hidden !== false;
+    if (willOpen) {
+        closeStatusMenu();
+        closeStatusSheets();
+        picker.hidden = false;
+        picker.removeAttribute("hidden");
+        picker.setAttribute("aria-hidden", "false");
+        document.getElementById("statusViewerCard")?.classList.add("status-reaction-open");
+        paintStatusEmojiReaction(getStoredStatusEmojiReaction(status.id));
+        if (!statusPaused && statusProgressStartedAt) {
+            statusProgressElapsed += Math.max(0, performance.now() - statusProgressStartedAt);
+            statusPaused = true;
+            document.getElementById("statusViewerCard")?.classList.add("status-holding");
+        }
+    } else {
+        closeStatusReactionPicker(true);
+    }
+}
+
+let statusReactionSending = false;
+
+async function recordStatusReaction(status, reaction){
+    if (!status?.id || status.is_mine) return {success:false};
+    try {
+        const res = await fetch(
+            "/statuses/" + encodeURIComponent(status.id) + "/reaction",
+            {
+                method: "POST",
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify({reaction: reaction || ""})
+            }
+        );
+        if (!res.ok) return {success:false};
+        const data = await res.json();
+        return data && data.success === true ? data : {success:false};
+    } catch (error) {
+        console.error("STATUS REACTION ERROR:", error);
+        return {success:false};
+    }
+}
+
+async function syncStatusEmojiReactionFromServer(status){
+    if (!status?.id || status.is_mine) return;
+    try {
+        const id = encodeURIComponent(status.id);
+        const res = await fetch(
+            "/statuses/" + id + "/reaction",
+            {credentials:"same-origin", cache:"no-store"}
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.success) return;
+        if (!currentStatus || getStatusReactionId(currentStatus) !== getStatusReactionId(status)) return;
+        const reaction = STATUS_EMOJI_REACTIONS.includes(data.reaction) ? data.reaction : "";
+        saveStoredStatusEmojiReaction(status.id, reaction);
+        paintStatusEmojiReaction(reaction);
+    } catch (error) {
+        console.debug("Status reaction state refresh failed:", error);
+    }
+}
+
+async function selectStatusReaction(reaction, event){
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (statusReactionSending) return;
+    if (!currentStatus || currentStatus.is_mine) return;
+    const value = STATUS_EMOJI_REACTIONS.includes(reaction) ? reaction : "";
+    if (!value) return;
+
+    const status = currentStatus;
+    const previous = getStoredStatusEmojiReaction(status.id);
+    const next = previous === value ? "" : value;
+
+    statusReactionSending = true;
+    saveStoredStatusEmojiReaction(status.id, next);
+    paintStatusEmojiReaction(next);
+    closeStatusReactionPicker(true);
+
+    const result = await recordStatusReaction(status, next);
+    if (!result.success) {
+        saveStoredStatusEmojiReaction(status.id, previous);
+        paintStatusEmojiReaction(previous);
+        showStatusToast("Could not save reaction", true);
+    } else {
+        const serverReaction = STATUS_EMOJI_REACTIONS.includes(result.reaction) ? result.reaction : "";
+        saveStoredStatusEmojiReaction(status.id, serverReaction);
+        paintStatusEmojiReaction(serverReaction);
+        showStatusToast(serverReaction ? `Reacted ${serverReaction}` : "Reaction removed");
+    }
+
+    statusReactionSending = false;
+}
 
 function showStatusToast(message, error){
     const host = document.getElementById("statusToastHost");
@@ -1859,6 +2045,10 @@ function hydrateStatusViewer(entry){
         seen_at: entry.seen_at || entry.viewed_at || entry.seenAt || entry.last_viewed_at || "",
         liked_at: entry.liked_at || entry.like_at || entry.likedAt || entry.like_created_at || entry.liked_at_ts || "",
         replied_at: entry.replied_at || entry.reply_at || entry.repliedAt || entry.reply_created_at || "",
+        reacted_at: entry.reacted_at || entry.reaction_at || entry.reactedAt || "",
+        reaction: STATUS_EMOJI_REACTIONS.includes(String(entry.reaction || "").trim())
+            ? String(entry.reaction || "").trim()
+            : "",
         text: entry.text || entry.message || "",
         liked: !!(entry.liked || entry.reacted || entry.like)
     };
@@ -1877,6 +2067,8 @@ function mergeStatusViewers(...groups){
                 seen_at: pickStatusEventTime("latest", created, merged[index].seen_at, viewer.seen_at) || "",
                 liked_at: pickStatusEventTime("earliest", created, merged[index].liked_at, viewer.liked_at) || "",
                 replied_at: pickStatusEventTime("earliest", created, merged[index].replied_at, viewer.replied_at) || "",
+                reacted_at: pickStatusEventTime("earliest", created, merged[index].reacted_at, viewer.reacted_at) || "",
+                reaction: viewer.reaction || merged[index].reaction || "",
                 liked: !!(merged[index].liked || viewer.liked)
             };
         }
@@ -1995,8 +2187,11 @@ async function fetchStatusViewers(status){
             views: 0,
             likes: 0,
             replies: 0,
+            reactions: 0,
+            reactionCounts: {},
             likers: [],
             repliesList: [],
+            reactionsList: [],
             fromApi: false,
             raw: status
         };
@@ -2018,6 +2213,7 @@ async function fetchStatusViewers(status){
                 const viewers = mergeServerStatusPeople(data.viewers);
                 const likers = mergeServerStatusPeople(data.likers);
                 const repliesList = mergeServerStatusPeople(data.replies_list);
+                const reactionsList = mergeServerStatusPeople(data.reactions_list);
 
                 viewers.forEach(person => {
                     rememberStatusPersonTimes(status.id, person, {
@@ -2041,8 +2237,15 @@ async function fetchStatusViewers(status){
                     views: Number(data.views) || viewers.length,
                     likes: Number(data.likes) || likers.length,
                     replies: Number(data.replies) || repliesList.length,
+                    reactions: Number(data.reactions) || reactionsList.length,
+                    reactionCounts: (
+                        data.reaction_counts && typeof data.reaction_counts === "object"
+                            ? data.reaction_counts
+                            : {}
+                    ),
                     likers,
                     repliesList,
+                    reactionsList,
                     fromApi: true,
                     raw: data
                 };
@@ -2057,8 +2260,11 @@ async function fetchStatusViewers(status){
         views: 0,
         likes: 0,
         replies: 0,
+        reactions: 0,
+        reactionCounts: {},
         likers: [],
         repliesList: [],
+        reactionsList: [],
         fromApi: false,
         raw: null
     };
@@ -2205,6 +2411,7 @@ async function openStatusViewersSheet(){
                 <div class="status-engage-chip"><b>—</b><span>Views</span></div>
                 <div class="status-engage-chip"><b>—</b><span>Likes</span></div>
                 <div class="status-engage-chip"><b>—</b><span>Replies</span></div>
+                <div class="status-engage-chip"><b>—</b><span>Reactions</span></div>
             `;
         }
         if (list) {
@@ -2310,6 +2517,16 @@ async function openStatusViewersSheet(){
                 ]);
         }
 
+        const reaction = Array.isArray(fetched.reactionsList)
+            ? fetched.reactionsList.find(item =>
+                String(item.username || "").trim().toLowerCase() === key
+            )
+            : null;
+        if (reaction) {
+            viewer.reaction = reaction.reaction || "";
+            viewer.reacted_at = reaction.reacted_at || "";
+        }
+
         const reply = replyMap.get(key);
         if (reply) {
             viewer.replied = true;
@@ -2325,7 +2542,8 @@ async function openStatusViewersSheet(){
         rememberStatusPersonTimes(statusId, viewer, {
             seen_at: viewer.seen_at,
             liked_at: viewer.liked_at,
-            replied_at: viewer.replied_at
+            replied_at: viewer.replied_at,
+            reacted_at: viewer.reacted_at
         });
     }
 
@@ -2343,6 +2561,10 @@ async function openStatusViewersSheet(){
             <div class="status-engage-chip">
                 <b>${fetched.fromApi ? displayReplyCount : replies.length}</b>
                 <span>Replies</span>
+            </div>
+            <div class="status-engage-chip status-reaction-summary-chip">
+                <b>${fetched.fromApi ? Number(fetched.reactions || 0) : 0}</b>
+                <span>Reactions</span>
             </div>
         `;
     }
@@ -2413,6 +2635,17 @@ async function openStatusViewersSheet(){
                 }
             }
 
+            if (viewer.reaction) {
+                const reactedAt = resolvePersonEventTime(statusId, viewer, "reacted_at", [
+                    viewer.reacted_at
+                ], "earliest");
+                bits.push(
+                    reactedAt
+                        ? `reacted ${viewer.reaction} ${formatStatusAge(reactedAt)}`
+                        : `reacted ${viewer.reaction}`
+                );
+            }
+
             if (viewer.replied) {
                 const replyText = String(
                     viewer.reply_text || ""
@@ -2467,6 +2700,37 @@ async function openStatusViewersSheet(){
                 person,
                 likedAt ? ("Liked " + formatStatusAge(likedAt)) : "Liked this status",
                 '<span class="viewer-like">♥</span>'
+            );
+        }).join("");
+    }
+
+    const viewerReactionNames = new Set(
+        viewers
+            .map(item => String(item.username || "").trim().toLowerCase())
+            .filter(Boolean)
+    );
+    const extraReactions = Array.isArray(fetched.reactionsList)
+        ? fetched.reactionsList.filter(person =>
+            !viewerReactionNames.has(
+                String(person.username || "").trim().toLowerCase()
+            )
+        )
+        : [];
+
+    if (extraReactions.length) {
+        html +=
+            '<div class="status-viewers-section-title">Reactions</div>';
+        html += extraReactions.map(person => {
+            const reactedAt = resolvePersonEventTime(statusId, person, "reacted_at", [
+                person.reacted_at
+            ]);
+            const reaction = String(person.reaction || "").trim();
+            return renderPersonRow(
+                person,
+                reactedAt
+                    ? `Reacted ${reaction} · ${formatStatusAge(reactedAt)}`
+                    : `Reacted ${reaction}`,
+                `<span class="viewer-reaction">${escapeHtml(reaction)}</span>`
             );
         }).join("");
     }
@@ -3082,6 +3346,7 @@ function openStatusById(id){
 function openCurrentStatusViewer(){
     if (!currentStatus) return;
 
+    closeStatusReactionPicker(false);
     statusPaused = false;
     document.getElementById("statusViewerCard")?.classList.remove("status-holding");
 
@@ -3177,6 +3442,17 @@ function openCurrentStatusViewer(){
         swipeLabel.textContent = currentStatus.is_mine ? "Pull up for viewers" : "Swipe up to reply";
     }
 
+    const reactionButton = document.getElementById("statusReactionButton");
+    if (reactionButton) {
+        reactionButton.style.display = currentStatus.is_mine ? "none" : "flex";
+        if (currentStatus.is_mine) {
+            closeStatusReactionPicker();
+            paintStatusEmojiReaction("");
+        } else {
+            paintStatusEmojiReaction(getStoredStatusEmojiReaction(currentStatus.id));
+        }
+    }
+
     const heartButton = document.getElementById("statusHeartButton");
     if (heartButton) {
         heartButton.style.display = currentStatus.is_mine ? "none" : "flex";
@@ -3194,6 +3470,9 @@ function openCurrentStatusViewer(){
         }
 
         if (!currentStatus.is_mine) {
+            paintStatusEmojiReaction(getStoredStatusEmojiReaction(currentStatus.id));
+            void syncStatusEmojiReactionFromServer(currentStatus);
+
             const openedStatus = currentStatus;
 
             void fetchStatusViewers(openedStatus).then(result => {
@@ -3645,6 +3924,7 @@ function connectDashboardSocket() {
                 data.type === "status_viewed" ||
                 data.type === "status_like" ||
                 data.type === "status_unlike" ||
+                data.type === "status_reaction" ||
                 data.type === "status_reply"
             ) {
                 const statusId =
@@ -3665,6 +3945,10 @@ function connectDashboardSocket() {
                     if (actorName && (data.type === "status_view" || data.type === "status_seen" || data.type === "status_viewed")) {
                         rememberStatusPersonTimes(statusId, { username: actorName }, {
                             seen_at: data.seen_at || data.timestamp || Date.now()
+                        });
+                    } else if (actorName && data.type === "status_reaction" && data.reaction) {
+                        rememberStatusPersonTimes(statusId, { username: actorName }, {
+                            reacted_at: data.timestamp || Date.now()
                         });
                     }
                     fetchStatusViewers(currentStatus)

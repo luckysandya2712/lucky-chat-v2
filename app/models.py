@@ -178,6 +178,34 @@ class StatusLike(Base):
     )
 
 
+class StatusReaction(Base):
+    __tablename__ = "status_reactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    status_id = Column(Integer, index=True, nullable=False)
+    username = Column(String, index=True, nullable=False)
+    reaction = Column(String(16), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "status_id",
+            "username",
+            name="uq_status_reaction_status_user"
+        ),
+        Index(
+            "ix_status_reactions_status_created",
+            "status_id",
+            "created_at",
+        ),
+        Index(
+            "ix_status_reactions_status_reaction",
+            "status_id",
+            "reaction",
+        ),
+    )
+
+
 class StatusReply(Base):
     __tablename__ = "status_replies"
 

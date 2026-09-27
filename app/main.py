@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.websocket import manager
-from app.models import Message, User, Status, StatusView, StatusLike, StatusReply
+from app.models import Message, User, Status, StatusView, StatusLike, StatusReaction, StatusReply
 from app.database import SessionLocal, Base, engine
 from app import models
 from app.auth import hash_password, verify_password
@@ -670,6 +670,10 @@ def _ensure_model_indexes():
         "status_likes": {
             "ix_status_likes_status_created",
         },
+        "status_reactions": {
+            "ix_status_reactions_status_created",
+            "ix_status_reactions_status_reaction",
+        },
         "status_replies": {
             "ix_status_replies_status_replied",
         },
@@ -683,6 +687,7 @@ def _ensure_model_indexes():
             "statuses": Status.__table__,
             "status_views": StatusView.__table__,
             "status_likes": StatusLike.__table__,
+            "status_reactions": StatusReaction.__table__,
             "status_replies": StatusReply.__table__,
         }
 
@@ -1258,8 +1263,26 @@ class StatusLikePayload(BaseModel):
     liked: bool = True
 
 
+class StatusReactionPayload(BaseModel):
+    reaction: str = ""
+
+
 class StatusReplyPayload(BaseModel):
     encrypted_text: str
+
+
+# Quick Status reactions. The existing heart/Like remains a separate interaction.
+STATUS_REACTION_OPTIONS = (
+    "👍",
+    "😂",
+    "😮",
+    "😢",
+    "😡",
+    "🙏",
+    "🎉",
+    "🔥",
+)
+STATUS_REACTION_SET = set(STATUS_REACTION_OPTIONS)
 
 
 @app.get("/crypto/backup")
@@ -4025,6 +4048,16 @@ def _collect_expired_status_media_urls(db, now):
         if row[0]
     ]
 
+    if expired_rows:
+        expired_status_ids = [
+            int(row[0])
+            for row in db.query(Status.id).filter(Status.expires_at <= now).all()
+        ]
+        if expired_status_ids:
+            db.query(StatusReaction).filter(
+                StatusReaction.status_id.in_(expired_status_ids)
+            ).delete(synchronize_session=False)
+
     db.query(Status).filter(Status.expires_at <= now).delete(
         synchronize_session=False
     )
@@ -4414,10 +4447,16 @@ async def get_status_engagement(status_id: int, request: Request):
             .order_by(StatusReply.replied_at.desc())
             .all()
         )
+        reactions = (
+            db.query(StatusReaction)
+            .filter(StatusReaction.status_id == status_id)
+            .order_by(StatusReaction.created_at.desc())
+            .all()
+        )
 
         usernames = {
             str(row.username).strip()
-            for row in [*views, *likes, *replies]
+            for row in [*views, *likes, *replies, *reactions]
             if getattr(row, "username", None)
         }
 
@@ -4448,6 +4487,16 @@ async def get_status_engagement(status_id: int, request: Request):
             if key not in reply_by_user:
                 reply_by_user[key] = reply
 
+        reaction_by_user = {}
+        reaction_counts = {}
+        for reaction_row in reactions:
+            key = str(reaction_row.username).strip().casefold()
+            value = str(reaction_row.reaction or "").strip()
+            if key not in reaction_by_user:
+                reaction_by_user[key] = reaction_row
+            if value:
+                reaction_counts[value] = int(reaction_counts.get(value, 0)) + 1
+
         def person(username_value):
             raw = str(username_value or "").strip()
             profile = profiles.get(raw, {})
@@ -4463,11 +4512,20 @@ async def get_status_engagement(status_id: int, request: Request):
         viewer_items = []
         for view in views:
             key = str(view.username).strip().casefold()
+            reaction_row = reaction_by_user.get(key)
             viewer_items.append({
                 **person(view.username),
                 "seen_at": status_timestamp_iso(view.seen_at),
                 "liked": key in like_users,
                 "replied": key in reply_by_user,
+                "reaction": (
+                    str(reaction_row.reaction or "").strip()
+                    if reaction_row is not None else ""
+                ),
+                "reacted_at": (
+                    status_timestamp_iso(reaction_row.created_at)
+                    if reaction_row is not None else None
+                ),
             })
 
         liker_items = [
@@ -4487,15 +4545,28 @@ async def get_status_engagement(status_id: int, request: Request):
             for row in replies
         ]
 
+        reaction_items = [
+            {
+                **person(row.username),
+                "reaction": str(row.reaction or "").strip(),
+                "reacted_at": status_timestamp_iso(row.created_at),
+            }
+            for row in reactions
+            if str(row.reaction or "").strip()
+        ]
+
         return {
             "success": True,
             "status_id": status_id,
             "views": len(viewer_items),
             "likes": len(liker_items),
             "replies": len(reply_items),
+            "reactions": len(reaction_items),
+            "reaction_counts": reaction_counts,
             "viewers": viewer_items,
             "likers": liker_items,
             "replies_list": reply_items,
+            "reactions_list": reaction_items,
         }
     finally:
         db.close()
@@ -4672,6 +4743,151 @@ async def record_status_like(
         print("STATUS LIKE ERROR:", exc)
         traceback.print_exc()
         return {"success": False, "error": "Could not update status like"}
+    finally:
+        db.close()
+
+
+@app.get("/statuses/{status_id}/reaction")
+async def get_status_reaction(status_id: int, request: Request):
+    """Return the signed-in viewer's current emoji reaction to a Status."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        status = db.query(Status).filter(Status.id == status_id).first()
+        if not status:
+            return {"success": False, "error": "Status not found"}
+
+        if status.expires_at and status.expires_at <= datetime.utcnow():
+            return {"success": False, "error": "Status has expired"}
+
+        if status.username == username:
+            return {"success": True, "reaction": ""}
+
+        if not status_user_can_view(status, username):
+            return {"success": False, "error": "Status is not available to you"}
+
+        row = (
+            db.query(StatusReaction)
+            .filter(
+                StatusReaction.status_id == status_id,
+                StatusReaction.username == username,
+            )
+            .first()
+        )
+        return {
+            "success": True,
+            "reaction": str(row.reaction or "").strip() if row else "",
+        }
+    finally:
+        db.close()
+
+
+@app.post("/statuses/{status_id}/reaction")
+async def record_status_reaction(
+    status_id: int,
+    data: StatusReactionPayload,
+    request: Request,
+):
+    """Persist one viewer's selected emoji reaction on a Status."""
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    reaction = str(data.reaction or "").strip()
+    if reaction and reaction not in STATUS_REACTION_SET:
+        return {"success": False, "error": "Unsupported Status reaction"}
+
+    db = SessionLocal()
+    try:
+        status = db.query(Status).filter(Status.id == status_id).first()
+        if not status:
+            return {"success": False, "error": "Status not found"}
+
+        if status.username == username:
+            return {
+                "success": False,
+                "error": "You cannot react to your own status",
+            }
+
+        if status.expires_at and status.expires_at <= datetime.utcnow():
+            return {"success": False, "error": "Status has expired"}
+
+        if not status_user_can_view(status, username):
+            return {"success": False, "error": "Status is not available to you"}
+
+        row = (
+            db.query(StatusReaction)
+            .filter(
+                StatusReaction.status_id == status_id,
+                StatusReaction.username == username,
+            )
+            .first()
+        )
+
+        now = datetime.utcnow()
+        if reaction:
+            if row is None:
+                row = StatusReaction(
+                    status_id=status_id,
+                    username=username,
+                    reaction=reaction,
+                    created_at=now,
+                )
+                db.add(row)
+            else:
+                row.reaction = reaction
+                row.created_at = now
+        elif row is not None:
+            db.delete(row)
+
+        db.commit()
+
+        rows = (
+            db.query(StatusReaction)
+            .filter(StatusReaction.status_id == status_id)
+            .order_by(StatusReaction.created_at.desc())
+            .all()
+        )
+        reaction_counts = {}
+        for item in rows:
+            value = str(item.reaction or "").strip()
+            if value:
+                reaction_counts[value] = int(reaction_counts.get(value, 0)) + 1
+
+        viewer = resolve_user_by_username(db, username)
+        await manager.send_dashboard(
+            status.username,
+            {
+                "type": "status_reaction",
+                "status_id": status_id,
+                "viewer": username,
+                "username": username,
+                "display_name": viewer.display_name if viewer else username,
+                "profile_picture": (
+                    viewer.profile_picture
+                    if viewer and viewer.profile_picture
+                    else "/static/profile/default.png"
+                ),
+                "reaction": reaction,
+                "reactions": len(rows),
+                "reaction_counts": reaction_counts,
+            }
+        )
+
+        return {
+            "success": True,
+            "reaction": reaction,
+            "reactions": len(rows),
+            "reaction_counts": reaction_counts,
+        }
+    except Exception as exc:
+        db.rollback()
+        print("STATUS REACTION ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not update Status reaction"}
     finally:
         db.close()
 
@@ -4859,6 +5075,9 @@ async def delete_status(status_id: int, request: Request):
         ).delete(synchronize_session=False)
         db.query(StatusLike).filter(
             StatusLike.status_id == status_id
+        ).delete(synchronize_session=False)
+        db.query(StatusReaction).filter(
+            StatusReaction.status_id == status_id
         ).delete(synchronize_session=False)
         db.query(StatusReply).filter(
             StatusReply.status_id == status_id
