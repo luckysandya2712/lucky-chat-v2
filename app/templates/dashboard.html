@@ -8393,7 +8393,7 @@ body.status-block-shots #statusViewerImage{
 
 <script src="/static/js/crypto.core.js?v=20260923-crypto-local-decrypt-v22" onerror="console.error('Lucky Chat crypto failed to load')"></script>
 <script src="/static/js/notification.js?v=20260927-notification-stability-v1"></script>
-<script src="/static/js/dashboard.core.js?v=20260927-dashboard-core-stability-v2"></script>
+<script src="/static/js/dashboard.core.js?v=20260926-dashboard-core-v1"></script>
 
 <style id="lucky-liquid-glass-v1">
 /* Lucky Chat — Liquid Glass dashboard pass
@@ -10054,49 +10054,52 @@ html.lucky-light .status-modal-card{
 </style>
 
 
-<style id="lucky-status-shelf-final-grid-v2">
+<style id="lucky-status-shelf-runtime-fix-v3">
 /*
- * Final Status shelf geometry guard.
- * Must remain the last Status shelf rule in the cascade.
- * Use one explicit grid row so later flex-oriented Status styles
- * cannot place story cards underneath one another.
+ * Runtime shelf isolation.
+ * The dashboard contains several historical Status CSS layers, so the
+ * cards are placed in a dedicated one-row track after every render.
+ * This does not change Status data, ordering, click handlers, or viewer logic.
  */
 #statusRow.status-row{
+  display:block!important;
+  width:100%!important;
+  min-width:0!important;
+  height:auto!important;
+  min-height:0!important;
+  max-height:96px!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  margin:0!important;
+  padding:0!important;
+  scrollbar-width:none!important;
+}
+#statusRow.status-row::-webkit-scrollbar{display:none!important}
+
+#statusRow.status-row > .status-shelf-track{
   display:grid!important;
   grid-auto-flow:column!important;
   grid-auto-columns:74px!important;
   grid-template-rows:96px!important;
-  grid-template-columns:none!important;
   align-items:start!important;
   justify-content:start!important;
-  align-content:start!important;
-  width:100%!important;
-  min-width:0!important;
-  min-height:0!important;
-  height:96px!important;
-  max-height:96px!important;
-  overflow-x:auto!important;
-  overflow-y:hidden!important;
   gap:9px!important;
+  width:max-content!important;
+  min-width:max-content!important;
+  height:96px!important;
+  min-height:96px!important;
+  max-height:96px!important;
   margin:0!important;
-  padding:1px 1px 3px!important;
-  box-sizing:border-box!important;
-  scrollbar-width:none!important;
-  overscroll-behavior-inline:contain!important;
+  padding:0!important;
 }
 
-#statusRow.status-row::-webkit-scrollbar{
-  width:0!important;
-  height:0!important;
-  display:none!important;
-  background:transparent!important;
-}
-
-#statusRow.status-row > .status-card.story-card{
-  display:flex!important;
+#statusRow.status-row > .status-shelf-track > .status-card.story-card{
   position:relative!important;
+  inset:auto!important;
+  float:none!important;
+  clear:none!important;
+  display:flex!important;
   grid-column:auto!important;
-  grid-row:1!important;
   width:74px!important;
   min-width:74px!important;
   max-width:74px!important;
@@ -10107,45 +10110,52 @@ html.lucky-light .status-modal-card{
   padding:3px 2px 2px!important;
   box-sizing:border-box!important;
   flex:none!important;
-  flex-basis:auto!important;
   flex-direction:column!important;
+  flex-wrap:nowrap!important;
   align-items:center!important;
   justify-content:flex-start!important;
-  overflow:visible!important;
+  transform:none!important;
 }
 
-#statusRow.status-row > .status-card.story-card .story-card-top{
-  flex:none!important;
+#statusRow.status-row > .status-shelf-track > .status-card.story-card .story-card-top{
+  position:relative!important;
   width:58px!important;
-  height:58px!important;
   min-width:58px!important;
+  height:58px!important;
   min-height:58px!important;
   margin:0 auto 4px!important;
+  flex:0 0 58px!important;
 }
 
-#statusRow.status-row > .status-card.story-card .story-avatar-wrap{
+#statusRow.status-row > .status-shelf-track > .status-card.story-card .story-avatar-wrap{
   width:58px!important;
-  height:58px!important;
   min-width:58px!important;
+  height:58px!important;
   min-height:58px!important;
 }
 
-#statusRow.status-row > .status-card.story-card .story-card-bottom{
+#statusRow.status-row > .status-shelf-track > .status-card.story-card .story-card-bottom{
+  position:relative!important;
   width:100%!important;
   min-width:0!important;
-  flex:none!important;
+  flex:0 0 auto!important;
+}
+
+#statusRow.status-row > .status-loading{
+  display:none!important;
 }
 
 @media(max-width:390px){
-  #statusRow.status-row{
+  #statusRow.status-row{max-height:84px!important;}
+  #statusRow.status-row > .status-shelf-track{
     grid-auto-columns:64px!important;
     grid-template-rows:84px!important;
     height:84px!important;
+    min-height:84px!important;
     max-height:84px!important;
     gap:8px!important;
   }
-
-  #statusRow.status-row > .status-card.story-card{
+  #statusRow.status-row > .status-shelf-track > .status-card.story-card{
     width:64px!important;
     min-width:64px!important;
     max-width:64px!important;
@@ -10153,22 +10163,69 @@ html.lucky-light .status-modal-card{
     min-height:84px!important;
     max-height:84px!important;
   }
-
-  #statusRow.status-row > .status-card.story-card .story-card-top{
+  #statusRow.status-row > .status-shelf-track > .status-card.story-card .story-card-top{
     width:52px!important;
-    height:52px!important;
     min-width:52px!important;
+    height:52px!important;
     min-height:52px!important;
+    flex-basis:52px!important;
   }
-
-  #statusRow.status-row > .status-card.story-card .story-avatar-wrap{
+  #statusRow.status-row > .status-shelf-track > .status-card.story-card .story-avatar-wrap{
     width:52px!important;
-    height:52px!important;
     min-width:52px!important;
+    height:52px!important;
     min-height:52px!important;
   }
 }
 </style>
+
+<script>
+(function installStatusShelfRuntimeFix(){
+  function normalizeStatusShelf(){
+    const row = document.getElementById("statusRow");
+    if (!row) return;
+
+    let track = row.querySelector(":scope > .status-shelf-track");
+    if (!track) {
+      track = document.createElement("div");
+      track.className = "status-shelf-track";
+      track.setAttribute("aria-hidden", "false");
+      row.appendChild(track);
+    }
+
+    const directCards = Array.from(row.children).filter(el =>
+      el !== track && el.matches(".status-card.story-card")
+    );
+
+    directCards.forEach(card => track.appendChild(card));
+
+    Array.from(track.children).forEach(child => {
+      if (!child.matches(".status-card.story-card")) child.remove();
+    });
+  }
+
+  function install(){
+    const row = document.getElementById("statusRow");
+    if (!row) return;
+
+    normalizeStatusShelf();
+
+    if (row.__luckyStatusShelfObserver) {
+      row.__luckyStatusShelfObserver.disconnect();
+    }
+
+    const observer = new MutationObserver(() => normalizeStatusShelf());
+    observer.observe(row, { childList:true });
+    row.__luckyStatusShelfObserver = observer;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", install, { once:true });
+  } else {
+    install();
+  }
+})();
+</script>
 
 </body>
 
