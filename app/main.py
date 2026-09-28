@@ -4641,14 +4641,20 @@ def _parse_status_audience_users(status):
 
 def status_user_can_view(status, viewer_username, db=None):
     """Return whether an authenticated user belongs to the Status audience."""
-    viewer = str(viewer_username or "").strip().casefold()
-    owner = str(getattr(status, "username", "") or "").strip().casefold()
+    # Keep the original stored usernames for BlockedUser lookup. The block
+    # table stores canonical account names, while the audience comparison below
+    # is intentionally case-insensitive. Passing case-folded values into the
+    # exact-match block query would miss rows such as "Mom" vs "mom".
+    viewer_raw = str(viewer_username or "").strip()
+    owner_raw = str(getattr(status, "username", "") or "").strip()
+    viewer = viewer_raw.casefold()
+    owner = owner_raw.casefold()
     if not viewer or not owner:
         return False
     if viewer == owner:
         return True
 
-    if db is not None and _users_are_blocked(db, viewer, owner):
+    if db is not None and _users_are_blocked(db, viewer_raw, owner_raw):
         return False
 
     visibility = str(getattr(status, "visibility", "contacts") or "contacts").strip().lower()

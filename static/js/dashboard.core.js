@@ -2935,13 +2935,24 @@ function buildStatusViewerList(statuses){
 }
 
 let statusLoadInFlight = null;
+let statusLoadGeneration = 0;
 
-async function loadStatuses(){
+async function loadStatuses(force = false){
     const row = document.getElementById("statusRow");
     if (!row) return;
-    if (statusLoadInFlight) return statusLoadInFlight;
 
-    statusLoadInFlight = (async () => {
+    if (force) {
+        // A privacy-changing event must not reuse a status request that may
+        // have started before the block/unblock was committed on the server.
+        // Advance the generation so any older response is discarded.
+        statusLoadGeneration++;
+    } else if (statusLoadInFlight) {
+        return statusLoadInFlight;
+    }
+
+    const requestGeneration = statusLoadGeneration;
+
+    const loadPromise = (async () => {
         try {
             const res = await fetch("/statuses", {
                 credentials:"same-origin",
@@ -2954,6 +2965,10 @@ async function loadStatuses(){
                 throw new Error(data.error || "Could not load statuses");
             }
 
+            // Never let an older pre-change response overwrite the result of a
+            // newer forced privacy refresh.
+            if (requestGeneration !== statusLoadGeneration) return;
+
             loadedStatuses = Array.isArray(data.statuses) ? data.statuses : [];
             statusViewerStatuses = buildStatusViewerList(loadedStatuses);
             renderStatuses();
@@ -2962,13 +2977,28 @@ async function loadStatuses(){
         }
     })();
 
-    const currentLoad = statusLoadInFlight;
-    currentLoad.then(
-        () => { if (statusLoadInFlight === currentLoad) statusLoadInFlight = null; },
-        () => { if (statusLoadInFlight === currentLoad) statusLoadInFlight = null; }
+    statusLoadInFlight = loadPromise;
+    loadPromise.then(
+        () => { if (statusLoadInFlight === loadPromise) statusLoadInFlight = null; },
+        () => { if (statusLoadInFlight === loadPromise) statusLoadInFlight = null; }
     );
 
-    return currentLoad;
+    return loadPromise;
+}
+
+function invalidateStatusesForBlockedUser(username){
+    const blockedKey = String(username || "").trim().toLowerCase();
+    if (!blockedKey) return;
+
+    const next = loadedStatuses.filter(status =>
+        String(status?.username || "").trim().toLowerCase() !== blockedKey
+    );
+
+    if (next.length === loadedStatuses.length) return;
+
+    loadedStatuses = next;
+    statusViewerStatuses = buildStatusViewerList(loadedStatuses);
+    renderStatuses();
 }
 
 function recoverMyStatusEmptyState(image){
@@ -3935,16 +3965,25 @@ function connectDashboardSocket() {
                         saveBlockedUsers(serverBlockedUsers);
                     }
 
-                    void loadStatuses();
+                    if (data.blocked) {
+                        // Remove the now-private owner's statuses immediately so
+                        // an already-rendered shelf cannot continue to expose a
+                        // status while the authoritative refresh is in flight.
+                        invalidateStatusesForBlockedUser(blockedUsername);
 
-                    if (
-                        data.blocked &&
-                        currentStatus &&
-                        !currentStatus.is_mine &&
-                        String(currentStatus.username || "").trim().toLowerCase() === blockedUsername.toLowerCase()
-                    ) {
-                        closeStatusViewer();
+                        if (
+                            currentStatus &&
+                            !currentStatus.is_mine &&
+                            String(currentStatus.username || "").trim().toLowerCase() === blockedUsername.toLowerCase()
+                        ) {
+                            closeStatusViewer();
+                        }
                     }
+
+                    // Force a fresh server-side audience evaluation. This also
+                    // handles unblock events and defeats any in-flight response
+                    // created before the privacy change.
+                    void loadStatuses(true);
                 }
             }
 
@@ -4674,6 +4713,11 @@ async function toggleBlockedUser(username, blocked = null){
                 .filter(Boolean);
             saveBlockedUsers(serverBlockedUsers);
             await loadServerBlockedUsers();
+
+            // Refresh Status visibility immediately after a local block/unblock
+            // mutation. Do not depend on the dashboard WebSocket event arriving.
+            await loadStatuses(true);
+
             showStatusToast(
                 nextBlocked ? `Blocked ${target}` : `Unblocked ${target}`
             );
