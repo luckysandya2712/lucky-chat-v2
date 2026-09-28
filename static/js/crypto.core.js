@@ -1,3 +1,5 @@
+const LUCKY_CRYPTO_DB_TIMEOUT_MS = 8000;
+
 const LuckyCrypto = {
     initialized: false,
     keyPair: null,
@@ -812,9 +814,34 @@ async restoreRecoveryBackup(recoveryCode) {
     async saveKeyPairToDB(keyStore) {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open("LuckyChatCrypto", 1);
+            let db = null;
+            let transaction = null;
+            let settled = false;
+
+            const finish = (error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+
+                try {
+                    db?.close();
+                } catch (_) {}
+
+                if (error) reject(error);
+                else resolve();
+            };
+
+            const timeoutId = setTimeout(() => {
+                try {
+                    transaction?.abort();
+                } catch (_) {}
+                finish(new Error(
+                    "Local encryption storage timed out while saving keys"
+                ));
+            }, LUCKY_CRYPTO_DB_TIMEOUT_MS);
 
             request.onupgradeneeded = () => {
-                const db = request.result;
+                db = request.result;
 
                 if (!db.objectStoreNames.contains("keys")) {
                     db.createObjectStore("keys");
@@ -822,33 +849,63 @@ async restoreRecoveryBackup(recoveryCode) {
             };
 
             request.onsuccess = () => {
-                const db = request.result;
-                const transaction = db.transaction("keys", "readwrite");
-                const store = transaction.objectStore("keys");
+                db = request.result;
 
-                store.put(keyStore, "identity");
+                try {
+                    transaction = db.transaction("keys", "readwrite");
+                    const store = transaction.objectStore("keys");
+                    store.put(keyStore, "identity");
 
-                transaction.oncomplete = () => {
-                    db.close();
-                    resolve();
-                };
-
-                transaction.onerror = () => {
-                    db.close();
-                    reject(transaction.error);
-                };
+                    transaction.oncomplete = () => finish();
+                    transaction.onerror = () => finish(
+                        transaction.error || new Error("Could not save encryption keys")
+                    );
+                    transaction.onabort = () => finish(
+                        transaction.error || new Error("Encryption key save was aborted")
+                    );
+                } catch (error) {
+                    finish(error);
+                }
             };
 
-            request.onerror = () => reject(request.error);
+            request.onerror = () => finish(
+                request.error || new Error("Could not open local encryption storage")
+            );
+            request.onblocked = () => {
+                // Keep the timeout as the final escape hatch. A blocked IndexedDB
+                // request can otherwise leave crypto initialization pending forever.
+                console.warn("⚠️ LuckyCrypto IndexedDB open is blocked");
+            };
         });
     },
 
     async loadKeyPairFromDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open("LuckyChatCrypto", 1);
+            let db = null;
+            let settled = false;
+
+            const finish = (result, error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+
+                try {
+                    db?.close();
+                } catch (_) {}
+
+                if (error) reject(error);
+                else resolve(result);
+            };
+
+            const timeoutId = setTimeout(() => {
+                finish(null, new Error(
+                    "Local encryption storage timed out while loading keys"
+                ));
+            }, LUCKY_CRYPTO_DB_TIMEOUT_MS);
 
             request.onupgradeneeded = () => {
-                const db = request.result;
+                db = request.result;
 
                 if (!db.objectStoreNames.contains("keys")) {
                     db.createObjectStore("keys");
@@ -856,24 +913,44 @@ async restoreRecoveryBackup(recoveryCode) {
             };
 
             request.onsuccess = () => {
-                const db = request.result;
-                const transaction = db.transaction("keys", "readonly");
-                const store = transaction.objectStore("keys");
-                const getRequest = store.get("identity");
+                db = request.result;
 
-                getRequest.onsuccess = () => {
-                    const result = getRequest.result || null;
-                    db.close();
-                    resolve(result);
-                };
+                try {
+                    const transaction = db.transaction("keys", "readonly");
+                    const store = transaction.objectStore("keys");
+                    const getRequest = store.get("identity");
 
-                getRequest.onerror = () => {
-                    db.close();
-                    reject(getRequest.error);
-                };
+                    getRequest.onsuccess = () => {
+                        finish(getRequest.result || null);
+                    };
+
+                    getRequest.onerror = () => {
+                        finish(null,
+                            getRequest.error ||
+                            new Error("Could not read local encryption keys")
+                        );
+                    };
+
+                    transaction.onabort = () => {
+                        finish(null,
+                            transaction.error ||
+                            new Error("Encryption key read was aborted")
+                        );
+                    };
+                } catch (error) {
+                    finish(null, error);
+                }
             };
 
-            request.onerror = () => reject(request.error);
+            request.onerror = () => finish(
+                null,
+                request.error || new Error("Could not open local encryption storage")
+            );
+            request.onblocked = () => {
+                // Keep the timeout as the final escape hatch. A blocked IndexedDB
+                // request can otherwise leave crypto initialization pending forever.
+                console.warn("⚠️ LuckyCrypto IndexedDB open is blocked");
+            };
         });
     }
 };

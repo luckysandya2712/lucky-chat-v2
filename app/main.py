@@ -46,6 +46,66 @@ def utc_now_iso():
 
 app = FastAPI(title="Lucky Chat v2")
 
+
+# Defense-in-depth against repeated password guessing. This tracker is deliberately
+# process-local so it adds no new infrastructure or database writes. It is not a
+# substitute for a shared rate limiter when the application runs multiple workers.
+_LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
+_LOGIN_FAILURE_MAX_TRACKED = 10_000
+_LOGIN_BACKOFF_BASE_SECONDS = 0.5
+_LOGIN_BACKOFF_MAX_SECONDS = 5.0
+_LOGIN_HARD_LIMIT = 10
+_LOGIN_HARD_LIMIT_COOLDOWN_SECONDS = 120
+_login_failure_state: dict[str, tuple[int, float]] = {}
+
+
+def _login_throttle_key(username: str) -> str:
+    # Bound attacker-controlled state and treat username casing consistently.
+    return str(username or "").strip().casefold()[:320]
+
+
+def _login_backoff_seconds(failures: int) -> float:
+    if failures <= 0:
+        return 0.0
+    return min(
+        _LOGIN_BACKOFF_BASE_SECONDS * (2 ** max(0, failures - 1)),
+        _LOGIN_BACKOFF_MAX_SECONDS,
+    )
+
+
+def _get_login_failure_state(username: str, now: float) -> tuple[int, float | None]:
+    key = _login_throttle_key(username)
+    record = _login_failure_state.get(key)
+    if not record:
+        return 0, None
+
+    failures, last_failure = record
+    if now - last_failure >= _LOGIN_FAILURE_WINDOW_SECONDS:
+        _login_failure_state.pop(key, None)
+        return 0, None
+
+    return failures, last_failure
+
+
+def _record_login_failure(username: str, now: float) -> int:
+    key = _login_throttle_key(username)
+    failures, _ = _get_login_failure_state(username, now)
+    failures += 1
+
+    if len(_login_failure_state) >= _LOGIN_FAILURE_MAX_TRACKED and key not in _login_failure_state:
+        oldest_key = min(
+            _login_failure_state,
+            key=lambda candidate: _login_failure_state[candidate][1],
+        )
+        _login_failure_state.pop(oldest_key, None)
+
+    _login_failure_state[key] = (failures, now)
+    return failures
+
+
+def _clear_login_failure(username: str) -> None:
+    _login_failure_state.pop(_login_throttle_key(username), None)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 UPLOAD_DIR = Path("static/uploads/chat")
@@ -343,6 +403,83 @@ if not SESSION_SECRET_KEY:
     raise RuntimeError(
         "SESSION_SECRET_KEY is not configured. "
         "Set a long random secret in the deployment environment before startup."
+    )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add low-risk browser security headers without changing app routing/UI behavior."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(self), microphone=(self), geolocation=(), payment=()"
+    )
+
+    # Railway serves the production app over HTTPS. Keep HSTS disabled for local
+    # development so a developer cannot accidentally lock an HTTP-only dev host.
+    if os.environ.get("RAILWAY_PROJECT_ID", "").strip():
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains"
+        )
+
+    return response
+
+
+@app.middleware("http")
+async def protect_chat_media(request: Request, call_next: Request):
+    """Protect direct local chat-media URLs with authenticated chat authorization."""
+    path = request.url.path
+    if not path.startswith(CHAT_MEDIA_URL_PREFIX) or request.method not in {"GET", "HEAD"}:
+        return await call_next(request)
+
+    username = get_authenticated_username(request)
+    if not username:
+        return JSONResponse({"success": False, "error": "Not logged in"}, status_code=401)
+
+    filename = Path(urllib.parse.urlparse(path).path).name
+    if not filename or filename in {".", ".."} or Path(filename).name != filename:
+        return JSONResponse({"success": False, "error": "Chat media not found"}, status_code=404)
+
+    canonical_url = CHAT_MEDIA_URL_PREFIX + filename
+
+    # A freshly uploaded local asset belongs to the authenticated uploader even
+    # before its Message row is committed. This preserves the existing immediate
+    # sender-side rendering path without making the whole upload directory public.
+    owner_prefix = _storage_user_key(username) + "_"
+    if filename.startswith(owner_prefix):
+        filepath = (UPLOAD_DIR / filename).resolve()
+        upload_root = UPLOAD_DIR.resolve()
+        if filepath.parent == upload_root and filepath.is_file():
+            return await call_next(request)
+
+    # Once an asset is attached to a persisted chat message, only participants
+    # in that exact 1:1 conversation may fetch it. This also covers forwarded
+    # local chat media because the forwarding row references the same asset.
+    db = SessionLocal()
+    try:
+        authorized_message = (
+            db.query(Message.id)
+            .filter(
+                Message.media_url == canonical_url,
+                or_(
+                    Message.sender == username,
+                    Message.receiver == username,
+                ),
+            )
+            .first()
+        )
+        if authorized_message is not None:
+            return await call_next(request)
+    finally:
+        db.close()
+
+    return JSONResponse(
+        {"success": False, "error": "Chat media is not available to you"},
+        status_code=403,
     )
 
 
@@ -1099,6 +1236,80 @@ def get_authenticated_username(scope):
     return str(username).strip()
 
 
+def _normalize_ws_origin(origin: str):
+    """Normalize an Origin value to scheme://host[:port], rejecting malformed URLs."""
+    raw = str(origin or "").strip()
+    if not raw:
+        return None
+
+    parsed = urllib.parse.urlsplit(raw)
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if not parsed.hostname:
+        return None
+    if parsed.username or parsed.password or parsed.path not in {"", "/"}:
+        return None
+    if parsed.query or parsed.fragment:
+        return None
+
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname.lower().rstrip(".")
+    default_port = 80 if scheme == "http" else 443
+
+    if port is None or port == default_port:
+        netloc = hostname
+    else:
+        netloc = f"{hostname}:{port}"
+
+    return f"{scheme}://{netloc}"
+
+
+def _allowed_websocket_origins(scope):
+    """Return explicitly configured or same-origin browser origins for WebSockets."""
+    configured = os.environ.get("ALLOWED_WS_ORIGINS", "")
+    configured_origins = {
+        normalized
+        for value in configured.split(",")
+        for normalized in [_normalize_ws_origin(value)]
+        if normalized
+    }
+    if configured_origins:
+        return configured_origins
+
+    host = str(scope.headers.get("host") or "").strip()
+    if not host:
+        return set()
+
+    forwarded_proto = str(
+        scope.headers.get("x-forwarded-proto")
+        or scope.headers.get("x-forwarded-scheme")
+        or ""
+    ).split(",", 1)[0].strip().lower()
+
+    if forwarded_proto in {"https", "wss"}:
+        scheme = "https"
+    elif forwarded_proto in {"http", "ws"}:
+        scheme = "http"
+    else:
+        scheme = "https" if str(scope.url.scheme or "").lower() == "wss" else "http"
+
+    normalized = _normalize_ws_origin(f"{scheme}://{host}")
+    return {normalized} if normalized else set()
+
+
+def _websocket_origin_allowed(scope):
+    """Require a browser Origin that matches the configured/same-origin host."""
+    origin = _normalize_ws_origin(scope.headers.get("origin"))
+    if not origin:
+        return False
+    return origin in _allowed_websocket_origins(scope)
+
+
 
 TURN_SERVER_URL = os.environ.get("TURN_SERVER_URL", "").strip()
 TURN_SHARED_SECRET = os.environ.get("TURN_SHARED_SECRET", "").strip()
@@ -1691,6 +1902,27 @@ async def login_user(
     password: str = Form(...)
 ):
 
+    throttle_key = _login_throttle_key(username)
+    now = time.monotonic()
+    previous_failures, last_failure = _get_login_failure_state(throttle_key, now)
+
+    if last_failure is not None:
+        elapsed = max(0.0, now - last_failure)
+        if elapsed < _LOGIN_HARD_LIMIT_COOLDOWN_SECONDS and previous_failures >= _LOGIN_HARD_LIMIT:
+            return JSONResponse(
+                {"message": "Too many failed login attempts. Please try again later."},
+                status_code=429,
+                headers={
+                    "Retry-After": str(
+                        max(1, int(_LOGIN_HARD_LIMIT_COOLDOWN_SECONDS - elapsed))
+                    )
+                },
+            )
+
+        backoff = _login_backoff_seconds(previous_failures)
+        if backoff > 0:
+            await asyncio.sleep(backoff)
+
     db = SessionLocal()
     try:
 
@@ -1699,14 +1931,17 @@ async def login_user(
         ).first()
 
         if not user:
-            db.close()
+            failures = _record_login_failure(throttle_key, time.monotonic())
+            await asyncio.sleep(_login_backoff_seconds(failures))
             return {"message": "Invalid username or password"}
 
 
         if not verify_password(password, user.password):
-            db.close()
+            failures = _record_login_failure(throttle_key, time.monotonic())
+            await asyncio.sleep(_login_backoff_seconds(failures))
             return {"message": "Invalid username or password"}
 
+        _clear_login_failure(throttle_key)
         request.session["username"] = user.username
 
         response = RedirectResponse(
@@ -1745,6 +1980,13 @@ async def logout(request: Request):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+
+    # Reject cross-origin browser WebSocket attempts before authentication or
+    # socket registration can proceed. The signed session remains the identity
+    # boundary; Origin is an additional browser-side CSWSH defense.
+    if not _websocket_origin_allowed(websocket):
+        await websocket.close(code=1008)
+        return
 
     # Authenticate the WebSocket using the same signed-session helper used
     # by normal HTTP routes. Never trust a username supplied by the query string.
@@ -3082,6 +3324,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.websocket("/dashboard_ws")
 async def dashboard_ws(websocket: WebSocket):
+    # Apply the same browser Origin boundary as the main chat WebSocket.
+    if not _websocket_origin_allowed(websocket):
+        await websocket.close(code=1008)
+        return
+
     # Authenticate the dashboard WebSocket through the same signed-session
     # helper used everywhere else.
     username = get_authenticated_username(websocket)
