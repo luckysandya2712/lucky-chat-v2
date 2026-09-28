@@ -579,7 +579,65 @@ let socketLastActivityAt = 0;      // last frame received (incl. heartbeat acks)
 let socketHasOpenedBefore = false; // true after the first successful open
 let socketAllowed = false;         // set once initial history has loaded
 let historyResyncInFlight = false;
-let pendingReadIds = new Set();
+
+let chatBlockedState = {
+    blocked: false,
+    blockedByMe: false,
+    blockedByThem: false
+};
+const originalMessagePlaceholder = input?.getAttribute("placeholder") || "Type a message";
+
+function applyChatBlockState(payload){
+    chatBlockedState = {
+        blocked: !!payload?.blocked,
+        blockedByMe: !!payload?.blocked_by_me,
+        blockedByThem: !!payload?.blocked_by_them
+    };
+
+    const disabled = chatBlockedState.blocked;
+
+    [input, button, imageBtn, videoBtn, voiceBtn, documentBtn].forEach(element => {
+        if (element) element.disabled = disabled;
+    });
+
+    if (input) {
+        input.placeholder = disabled
+            ? "Messaging is blocked for this user"
+            : originalMessagePlaceholder;
+        input.setAttribute("aria-disabled", String(disabled));
+    }
+
+    document.documentElement.classList.toggle("lucky-chat-blocked", disabled);
+}
+
+async function loadChatBlockStatus(){
+    const target = String(friend || "").trim();
+    if (!target) return;
+
+    try {
+        const response = await fetch(
+            "/block-status/" + encodeURIComponent(target) + "?_=" + Date.now(),
+            {
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: {
+                    "Cache-Control": "no-store",
+                    "Pragma": "no-cache"
+                }
+            }
+        );
+
+        if (!response.ok) return;
+
+        const data = await response.json().catch(() => null);
+        if (data?.success) {
+            applyChatBlockState(data);
+        }
+    } catch (error) {
+        console.debug("Chat block-state refresh failed:", error);
+    }
+}
+
 let pendingDeliveredIds = new Set();
 
 // Messages rendered locally before the server echoes them back.
@@ -2545,6 +2603,39 @@ async function handleSocketMessage(event) {
 
     const data = JSON.parse(event.data);
 
+    if (data.type === "block_status_update") {
+        applyChatBlockState(data);
+        return;
+    }
+
+    if (data.type === "message_send_rejected") {
+        if (data.client_id) {
+            const pending = pendingOutgoingMessages.find(
+                item => item.clientId === data.client_id
+            );
+            if (pending) {
+                removeOptimisticMessage(pending.tempId);
+            }
+        }
+
+        if (data.reason === "blocked") {
+            applyChatBlockState({
+                blocked: true,
+                blocked_by_me: !!data.blocked_by_me,
+                blocked_by_them: !!data.blocked_by_them
+            });
+            alert("Messaging is blocked for this user.");
+        }
+        return;
+    }
+
+    if (data.type === "forward_rejected") {
+        if (data.reason === "blocked") {
+            alert("Forwarding is blocked for this user.");
+        }
+        return;
+    }
+
     if (data.type === "call_offer" && window.LuckyVoiceCall?.handleOffer) { window.LuckyVoiceCall.handleOffer(data); return; }
     if (data.type === "call_answer" && window.LuckyVoiceCall?.handleAnswer) { window.LuckyVoiceCall.handleAnswer(data); return; }
     if (data.type === "call_ice" && window.LuckyVoiceCall?.handleIce) { window.LuckyVoiceCall.handleIce(data); return; }
@@ -2857,6 +2948,7 @@ async function initChatCore() {
     // was still loading.
     ensureLuckyCryptoReady();
     void updateFriendStatus();
+    void loadChatBlockStatus();
 
     bindImageAndSendControls();
     bindStaticChatInteractions();
@@ -3338,7 +3430,7 @@ function initLuckyReferenceEnhancements(){
 
 initLuckyReferenceEnhancements();
 
-window.LUCKY_CHAT_CORE_VERSION = "document-sharing-v14-visible-docs";
+window.LUCKY_CHAT_CORE_VERSION = "block-user-v1";
 window.addMessage = addMessage;
 window.addMessage = addMessage;
 console.log("JavaScript loaded | Lucky Chat core reply-quote-fix-v1");
@@ -3515,6 +3607,10 @@ function reconcileOutgoingMessage(msg) {
 
 async function sendMessage() {
 
+    if (chatBlockedState.blocked) {
+        return;
+    }
+
     const text = input.value.trim();
     const image = window.selectedChatImage;
     const audio = window.selectedChatAudio;
@@ -3577,6 +3673,11 @@ async function sendMessage() {
 
 async function sendOptimisticMessage(optimisticMessage, image, audio, video, documentFile) {
     try {
+        if (chatBlockedState.blocked) {
+            removeOptimisticMessage(optimisticMessage.id);
+            return;
+        }
+
         const pending = pendingOutgoingMessages.find(
             item => item.tempId === optimisticMessage.id
         );
@@ -5404,6 +5505,13 @@ function reactToMessage() {
 
 function chooseReaction(emoji) {
 
+    if (chatBlockedState.blocked) {
+        reactionMessageId = null;
+        const blockedPicker = document.getElementById("reactionPicker");
+        if (blockedPicker) blockedPicker.style.display = "none";
+        return;
+    }
+
     if (reactionMessageId == null) return;
 
     const msg = messageMap[reactionMessageId];
@@ -5477,6 +5585,7 @@ function chooseReaction(emoji) {
 
     function sendTyping(type) {
         try {
+            if (chatBlockedState.blocked) return;
             if (typeof socket !== "undefined" && socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({ type }));
             }
@@ -7373,6 +7482,10 @@ async function voiceCallGetLocalStream(){
 }
 async function voiceCallStart(){
     if(voiceCallState!=="idle" || voiceCallStarting) return;
+    if(chatBlockedState.blocked){
+        voiceCallSetStatus("Calling is blocked for this user","Unavailable");
+        return;
+    }
     if(!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection){
         alert("Voice calling is not supported by this browser.");
         return;
@@ -7423,6 +7536,10 @@ async function voiceCallStart(){
 }
 async function voiceCallAccept(){
     if(voiceCallState!=="incoming" || !voiceCallPendingOffer || voiceCallStarting) return;
+    if(chatBlockedState.blocked){
+        voiceCallSetStatus("Calling is blocked for this user","Unavailable");
+        return;
+    }
     voiceCallStarting=true;
     try{
         await voiceCallGetLocalStream();

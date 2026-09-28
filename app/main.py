@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.websocket import manager
-from app.models import Message, User, Status, StatusView, StatusLike, StatusReaction, HiddenUser, StatusReply
+from app.models import Message, User, Status, StatusView, StatusLike, StatusReaction, HiddenUser, BlockedUser, StatusReply
 from app.database import SessionLocal, Base, engine
 from app import models
 from app.auth import hash_password, verify_password
@@ -371,7 +371,7 @@ async def protect_status_media(request: Request, call_next):
         )
 
         if status is not None and status.expires_at and status.expires_at > datetime.utcnow():
-            if status_user_can_view(status, username):
+            if status_user_can_view(status, username, db):
                 return await call_next(request)
 
         # A status may have been forwarded into a private chat. The recipient
@@ -677,6 +677,10 @@ def _ensure_model_indexes():
         "status_replies": {
             "ix_status_replies_status_replied",
         },
+        "blocked_users": {
+            "ix_blocked_users_owner_created",
+            "ix_blocked_users_owner_target",
+        },
     }
 
     try:
@@ -689,6 +693,7 @@ def _ensure_model_indexes():
             "status_likes": StatusLike.__table__,
             "status_reactions": StatusReaction.__table__,
             "status_replies": StatusReply.__table__,
+            "blocked_users": BlockedUser.__table__,
         }
 
         created = 0
@@ -821,6 +826,65 @@ def resolve_user_by_username(db, username):
         db.query(User)
         .filter(func.lower(func.trim(User.username)) == value.lower())
         .first()
+    )
+
+
+def _user_has_blocked(db, blocker_username, blocked_username):
+    blocker = str(blocker_username or "").strip()
+    target = str(blocked_username or "").strip()
+    if not blocker or not target:
+        return False
+
+    return (
+        db.query(BlockedUser.id)
+        .filter(
+            BlockedUser.username == blocker,
+            BlockedUser.blocked_username == target,
+        )
+        .first()
+        is not None
+    )
+
+
+def _users_are_blocked(db, username_a, username_b):
+    """Return whether either participant has blocked the other."""
+    a = str(username_a or "").strip()
+    b = str(username_b or "").strip()
+    if not a or not b or a.casefold() == b.casefold():
+        return False
+
+    return _user_has_blocked(db, a, b) or _user_has_blocked(db, b, a)
+
+
+def _get_block_state(db, viewer_username, target_username):
+    """Return the authenticated viewer's directional block state."""
+    viewer = str(viewer_username or "").strip()
+    target = str(target_username or "").strip()
+    if not viewer or not target or viewer.casefold() == target.casefold():
+        return {
+            "blocked": False,
+            "blocked_by_me": False,
+            "blocked_by_them": False,
+        }
+
+    blocked_by_me = _user_has_blocked(db, viewer, target)
+    blocked_by_them = _user_has_blocked(db, target, viewer)
+    return {
+        "blocked": blocked_by_me or blocked_by_them,
+        "blocked_by_me": blocked_by_me,
+        "blocked_by_them": blocked_by_them,
+    }
+
+
+async def _send_message_rejection(username, receiver, client_id=None):
+    await manager.send(
+        username,
+        {
+            "type": "message_send_rejected",
+            "reason": "blocked",
+            "receiver": str(receiver or "").strip(),
+            "client_id": client_id,
+        },
     )
 
 
@@ -1905,8 +1969,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 db = SessionLocal()
+                blocked_target = False
                 try:
                     target_user = resolve_user_by_username(db, requested_target)
+                    if target_user:
+                        blocked_target = _users_are_blocked(
+                            db,
+                            username,
+                            target_user.username,
+                        )
                 finally:
                     db.close()
 
@@ -1930,6 +2001,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 target = target_user.username
                 if target == username:
+                    continue
+
+                if blocked_target:
+                    print(
+                        "VOICE CALL BLOCKED:",
+                        username,
+                        "->",
+                        target,
+                        signal_type,
+                    )
+                    if signal_type in {"call_ping", "call_offer"}:
+                        await manager.send(username, {
+                            "type": "call_unavailable",
+                            "call_id": data.get("call_id"),
+                            "target": target,
+                            "reason": "blocked",
+                        })
                     continue
 
                 # A chat WebSocket is bound to one conversation. Never allow
@@ -2105,6 +2193,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not friend:
                     continue
 
+                db = SessionLocal()
+                try:
+                    if _users_are_blocked(db, username, friend):
+                        continue
+                finally:
+                    db.close()
+
                 payload = {
                     "type": "typing",
                     "sender": username
@@ -2116,6 +2211,13 @@ async def websocket_endpoint(websocket: WebSocket):
             if message_type == "stop_typing":
                 if not friend:
                     continue
+
+                db = SessionLocal()
+                try:
+                    if _users_are_blocked(db, username, friend):
+                        continue
+                finally:
+                    db.close()
 
                 payload = {
                     "type": "stop_typing",
@@ -2201,6 +2303,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Only participants in this message's conversation
                     # may change its reaction.
                     if username not in (msg.sender, msg.receiver):
+                        continue
+
+                    if _users_are_blocked(db, msg.sender, msg.receiver):
                         continue
 
                     reaction = (data.get("reaction") or "").strip()
@@ -2349,6 +2454,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     target = target_user.username
 
+                    if _users_are_blocked(db, username, target):
+                        print("FORWARD BLOCKED:", username, "->", target)
+                        await manager.send(username, {
+                            "type": "forward_rejected",
+                            "reason": "blocked",
+                            "target": target,
+                            "client_id": data.get("client_id"),
+                        })
+                        continue
+
                     # Prefer the authoritative attachment metadata from the
                     # original message. Only the original sender may forward it.
                     source_message = None
@@ -2391,7 +2506,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                         if (
                             source_status is None
-                            or not status_user_can_view(source_status, username)
+                            or not status_user_can_view(source_status, username, db)
                             or (source_status.expires_at and source_status.expires_at <= datetime.utcnow())
                         ):
                             print(
@@ -2649,6 +2764,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not receiver_name:
                         continue
 
+                    if _users_are_blocked(db, username, receiver_name):
+                        print("DOCUMENT MESSAGE BLOCKED:", username, "->", receiver_name)
+                        await _send_message_rejection(
+                            username,
+                            receiver_name,
+                            data.get("client_id"),
+                        )
+                        continue
+
                     preview_text = "📄 " + (document_name or "Document")
                     message = Message(
                         sender=username,
@@ -2817,6 +2941,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     receiver_name = target_user.username
 
                     if not receiver_name:
+                        continue
+
+                    if _users_are_blocked(db, username, receiver_name):
+                        print("MESSAGE BLOCKED:", username, "->", receiver_name)
+                        await _send_message_rejection(
+                            username,
+                            receiver_name,
+                            data.get("client_id"),
+                        )
                         continue
 
                     if is_forward:
@@ -3325,6 +3458,12 @@ async def send_chat_document(request: Request):
             return {"success": False, "error": "Recipient not found"}
 
         receiver_name = target_user.username
+
+        if _users_are_blocked(db, username, receiver_name):
+            return {
+                "success": False,
+                "error": "Messaging is blocked for this user",
+            }
 
         preview_text = "📄 " + (document_name or "Document")
         message = Message(
@@ -3843,6 +3982,203 @@ async def set_hidden_user(request: Request):
 
 
 # ---------------------------------------------------------
+# SERVER-PERSISTENT BLOCKED USERS
+# ---------------------------------------------------------
+
+
+def _blocked_user_event(username, other_username, blocked, blocked_by_me, blocked_by_them):
+    return {
+        "type": "block_status_update",
+        "username": other_username,
+        "blocked": bool(blocked),
+        "blocked_by_me": bool(blocked_by_me),
+        "blocked_by_them": bool(blocked_by_them),
+    }
+
+
+@app.get("/blocked-users")
+async def get_blocked_users(request: Request):
+    """Return users explicitly blocked by the authenticated account."""
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "blocked": []}
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(BlockedUser, User.display_name, User.profile_picture)
+            .outerjoin(User, User.username == BlockedUser.blocked_username)
+            .filter(BlockedUser.username == username)
+            .order_by(BlockedUser.created_at.desc(), BlockedUser.id.desc())
+            .all()
+        )
+
+        blocked = []
+        for blocked_row, display_name, profile_picture in rows:
+            target = str(blocked_row.blocked_username or "").strip()
+            if not target:
+                continue
+            blocked.append({
+                "username": target,
+                "display_name": str(display_name or target),
+                "profile": profile_picture or "/static/profile/default.png",
+            })
+
+        return {"success": True, "blocked": blocked}
+    finally:
+        db.close()
+
+
+@app.get("/block-status/{target_username}")
+async def get_block_status(target_username: str, request: Request):
+    """Return the authenticated user's effective block state for one user."""
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        target_user = resolve_user_by_username(db, target_username)
+        if not target_user:
+            return {"success": False, "error": "User not found"}
+
+        state = _get_block_state(db, username, target_user.username)
+        return {
+            "success": True,
+            "username": target_user.username,
+            **state,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/blocked-users")
+async def set_blocked_user(request: Request):
+    """Block or unblock one user for the authenticated account."""
+    username = get_authenticated_username(request)
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    try:
+        body = await request.json()
+    except Exception:
+        return {"success": False, "error": "Invalid request"}
+
+    raw_target = str(
+        body.get("username", "")
+        or body.get("user", "")
+        or body.get("target", "")
+    ).strip()
+
+    raw_blocked = body.get("blocked", False)
+    if isinstance(raw_blocked, str):
+        blocked = raw_blocked.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        blocked = bool(raw_blocked)
+
+    if not raw_target:
+        return {"success": False, "error": "Missing username"}
+
+    db = SessionLocal()
+    try:
+        target_user = resolve_user_by_username(db, raw_target)
+        if not target_user:
+            return {"success": False, "error": "User not found"}
+
+        target = str(target_user.username or "").strip()
+        if not target or target.casefold() == str(username).strip().casefold():
+            return {"success": False, "error": "You cannot block yourself"}
+
+        existing = (
+            db.query(BlockedUser)
+            .filter(
+                BlockedUser.username == username,
+                BlockedUser.blocked_username == target,
+            )
+            .first()
+        )
+
+        if blocked:
+            if existing is None:
+                db.add(BlockedUser(
+                    username=username,
+                    blocked_username=target,
+                ))
+        elif existing is not None:
+            db.delete(existing)
+
+        db.commit()
+
+        actor_state = _get_block_state(db, username, target)
+        target_state = _get_block_state(db, target, username)
+
+        actor_event = _blocked_user_event(
+            username,
+            target,
+            actor_state["blocked"],
+            actor_state["blocked_by_me"],
+            actor_state["blocked_by_them"],
+        )
+        target_event = _blocked_user_event(
+            target,
+            username,
+            target_state["blocked"],
+            target_state["blocked_by_me"],
+            target_state["blocked_by_them"],
+        )
+
+        try:
+            await manager.send_dashboard(username, actor_event)
+            await manager.send_dashboard(target, target_event)
+            await manager.send_chat(username, target, actor_event)
+            await manager.send_chat(target, username, target_event)
+        except Exception as exc:
+            print("BLOCK USER LIVE SYNC ERROR:", exc)
+
+        rows = (
+            db.query(BlockedUser.blocked_username)
+            .filter(BlockedUser.username == username)
+            .order_by(BlockedUser.created_at.desc(), BlockedUser.id.desc())
+            .all()
+        )
+        blocked_users = [
+            str(row[0]).strip()
+            for row in rows
+            if str(row[0] or "").strip()
+        ]
+
+        return {
+            "success": True,
+            "blocked": blocked_users,
+            "state": actor_state,
+        }
+
+    except IntegrityError:
+        db.rollback()
+        rows = (
+            db.query(BlockedUser.blocked_username)
+            .filter(BlockedUser.username == username)
+            .order_by(BlockedUser.created_at.desc(), BlockedUser.id.desc())
+            .all()
+        )
+        return {
+            "success": True,
+            "blocked": [
+                str(row[0]).strip()
+                for row in rows
+                if str(row[0] or "").strip()
+            ],
+        }
+    except Exception as exc:
+        db.rollback()
+        print("BLOCK USER ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not update blocked user"}
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------
 # SERVER-PERSISTENT DASHBOARD PINNED CHATS
 # ---------------------------------------------------------
 # Pinned-chat state used to live in data/pinned_chats.json. That location is
@@ -4303,7 +4639,7 @@ def _parse_status_audience_users(status):
     }
 
 
-def status_user_can_view(status, viewer_username):
+def status_user_can_view(status, viewer_username, db=None):
     """Return whether an authenticated user belongs to the Status audience."""
     viewer = str(viewer_username or "").strip().casefold()
     owner = str(getattr(status, "username", "") or "").strip().casefold()
@@ -4311,6 +4647,9 @@ def status_user_can_view(status, viewer_username):
         return False
     if viewer == owner:
         return True
+
+    if db is not None and _users_are_blocked(db, viewer, owner):
+        return False
 
     visibility = str(getattr(status, "visibility", "contacts") or "contacts").strip().lower()
     if visibility not in STATUS_VISIBILITY_VALUES:
@@ -4536,7 +4875,7 @@ async def get_statuses(request: Request):
         result = []
 
         for status in statuses:
-            if not status_user_can_view(status, username):
+            if not status_user_can_view(status, username, db):
                 continue
 
             is_mine = str(status.username or "").strip().casefold() == str(username or "").strip().casefold()
@@ -4748,7 +5087,7 @@ async def record_status_view(status_id: int, request: Request):
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
 
-        if not status_user_can_view(status, username):
+        if not status_user_can_view(status, username, db):
             return {"success": False, "error": "Status is not available to you"}
 
         seen_at = datetime.utcnow()
@@ -4837,7 +5176,7 @@ async def record_status_like(
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
 
-        if not status_user_can_view(status, username):
+        if not status_user_can_view(status, username, db):
             return {"success": False, "error": "Status is not available to you"}
 
         # Viewing is recorded only by the explicit /view endpoint.
@@ -4920,7 +5259,7 @@ async def get_status_reaction(status_id: int, request: Request):
         if status.username == username:
             return {"success": True, "reaction": ""}
 
-        if not status_user_can_view(status, username):
+        if not status_user_can_view(status, username, db):
             return {"success": False, "error": "Status is not available to you"}
 
         row = (
@@ -4969,7 +5308,7 @@ async def record_status_reaction(
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
 
-        if not status_user_can_view(status, username):
+        if not status_user_can_view(status, username, db):
             return {"success": False, "error": "Status is not available to you"}
 
         row = (
@@ -5083,7 +5422,7 @@ async def record_status_reply(
         if status.expires_at and status.expires_at <= datetime.utcnow():
             return {"success": False, "error": "Status has expired"}
 
-        if not status_user_can_view(status, username):
+        if not status_user_can_view(status, username, db):
             return {"success": False, "error": "Status is not available to you"}
 
         # A reply also implies a view, keeping the viewer and engagement

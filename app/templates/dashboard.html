@@ -729,8 +729,130 @@ body{
     margin-left:auto !important;
     margin-right:8px !important;
 }
-.hidden-users-btn + .settings-btn{
+.hidden-users-btn + .blocked-users-btn{
     margin-left:0 !important;
+}
+.blocked-users-btn{
+    margin-left:0 !important;
+    margin-right:8px !important;
+}
+.blocked-users-btn + .settings-btn{
+    margin-left:0 !important;
+}
+.blocked-users-overlay{
+    position:fixed;
+    inset:0;
+    z-index:10050;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+    background:rgba(2,6,23,.72);
+    backdrop-filter:blur(16px);
+}
+.blocked-users-panel{
+    width:min(100%,430px);
+    max-height:min(82dvh,640px);
+    overflow:hidden;
+    border:1px solid rgba(251,113,133,.20);
+    border-radius:26px;
+    background:linear-gradient(180deg,rgba(24,15,28,.98),rgba(12,8,17,.98));
+    box-shadow:0 30px 90px rgba(0,0,0,.50);
+}
+.blocked-users-head{
+    display:flex;
+    align-items:flex-start;
+    gap:14px;
+    padding:20px 20px 15px;
+    border-bottom:1px solid rgba(248,113,113,.10);
+}
+.blocked-users-head > div{flex:1;min-width:0;}
+.blocked-users-head span{
+    display:block;
+    color:#fb7185;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:.14em;
+}
+.blocked-users-head h3{
+    margin:5px 0 2px;
+    color:#fff4f6;
+    font-size:20px;
+}
+.blocked-users-head p{
+    margin:0;
+    color:#c39ba5;
+    font-size:11px;
+}
+.blocked-users-close{
+    width:36px;
+    height:36px;
+    flex:0 0 36px;
+    border:1px solid rgba(248,113,113,.14);
+    border-radius:12px;
+    background:rgba(59,24,34,.70);
+    color:#ffe4e8;
+    font-size:24px;
+    cursor:pointer;
+}
+.blocked-users-list{
+    max-height:58dvh;
+    overflow:auto;
+    padding:10px 14px 16px;
+}
+.blocked-user-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:11px 7px;
+    border-bottom:1px solid rgba(248,113,113,.07);
+}
+.blocked-user-row:last-child{border-bottom:0;}
+.blocked-user-avatar{
+    width:46px;
+    height:46px;
+    min-width:46px;
+    object-fit:cover;
+    border-radius:14px;
+    border:1px solid rgba(251,113,133,.20);
+}
+.blocked-user-info{flex:1;min-width:0;}
+.blocked-user-info b{
+    display:block;
+    color:#fff0f3;
+    font-size:13px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+.blocked-user-info small{
+    display:block;
+    margin-top:2px;
+    color:#aa8290;
+    font-size:10px;
+}
+.blocked-user-unblock{
+    border:1px solid rgba(251,113,133,.18);
+    border-radius:12px;
+    background:rgba(244,63,94,.08);
+    color:#ffb3bf;
+    padding:8px 11px;
+    font:600 11px Poppins,sans-serif;
+    cursor:pointer;
+}
+.blocked-users-empty,.blocked-users-loading{
+    display:grid;
+    place-items:center;
+    gap:4px;
+    padding:36px 14px;
+    color:#b79ca7;
+    text-align:center;
+}
+.blocked-users-empty b{color:#ffe4e8;font-size:13px;}
+.blocked-users-empty small{font-size:11px;}
+@media(max-width:768px){
+    .blocked-users-overlay{padding:12px;}
+    .blocked-users-panel{max-height:88dvh;border-radius:22px;}
 }
 .hidden-users-overlay{
     position:fixed;
@@ -6377,6 +6499,157 @@ body{
 }
 </style>
 
+
+<style id="lucky-block-user-confirm-v3">
+/* =========================================================
+   LUCKY CHAT — BLOCK USER CONFIRMATION V3
+   Static DOM modal for reliable Android/mobile rendering.
+   ========================================================= */
+.block-user-confirm-overlay{
+    position:fixed!important;
+    inset:0!important;
+    z-index:2147483000!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    padding:16px!important;
+    background:rgba(2,6,23,.80)!important;
+    backdrop-filter:blur(18px) saturate(1.08)!important;
+    -webkit-backdrop-filter:blur(18px) saturate(1.08)!important;
+    visibility:visible!important;
+    opacity:1!important;
+    pointer-events:auto!important;
+    isolation:isolate!important;
+}
+.block-user-confirm-overlay[hidden]{
+    display:none!important;
+}
+.block-user-confirm-panel{
+    position:relative!important;
+    z-index:1!important;
+    width:min(100%,420px)!important;
+    max-width:420px!important;
+    margin:0!important;
+    padding:22px!important;
+    border:1px solid rgba(251,113,133,.22)!important;
+    border-radius:26px!important;
+    background:
+        radial-gradient(340px 180px at 4% 0%,rgba(244,63,94,.13),transparent 72%),
+        radial-gradient(300px 190px at 100% 100%,rgba(139,92,246,.10),transparent 74%),
+        linear-gradient(180deg,rgba(26,15,27,.99),rgba(10,7,16,.99))!important;
+    box-shadow:0 32px 100px rgba(0,0,0,.60),inset 0 1px 0 rgba(255,255,255,.045)!important;
+    color:#fff!important;
+}
+.block-user-confirm-icon{
+    width:48px!important;
+    height:48px!important;
+    display:grid!important;
+    place-items:center!important;
+    border-radius:16px!important;
+    background:rgba(244,63,94,.11)!important;
+    border:1px solid rgba(251,113,133,.18)!important;
+    font-size:24px!important;
+    margin-bottom:12px!important;
+}
+.block-user-confirm-kicker{
+    display:block!important;
+    color:#fb7185!important;
+    font-size:10px!important;
+    font-weight:700!important;
+    letter-spacing:.15em!important;
+}
+.block-user-confirm-title{
+    margin:5px 0 15px!important;
+    color:#fff4f6!important;
+    font-size:22px!important;
+    line-height:1.2!important;
+    font-weight:750!important;
+}
+.block-user-confirm-person{
+    display:flex!important;
+    align-items:center!important;
+    gap:12px!important;
+    padding:11px!important;
+    border:1px solid rgba(251,113,133,.11)!important;
+    border-radius:16px!important;
+    background:rgba(59,20,31,.30)!important;
+}
+.block-user-confirm-avatar{
+    width:48px!important;
+    height:48px!important;
+    min-width:48px!important;
+    object-fit:cover!important;
+    border-radius:15px!important;
+    border:1px solid rgba(251,113,133,.20)!important;
+    background:#1f2937!important;
+}
+.block-user-confirm-person b{
+    display:block!important;
+    color:#fff0f3!important;
+    font-size:14px!important;
+    line-height:1.25!important;
+}
+.block-user-confirm-person small{
+    display:block!important;
+    margin-top:3px!important;
+    color:#b58e9a!important;
+    font-size:11px!important;
+}
+.block-user-confirm-text{
+    margin:15px 2px 9px!important;
+    color:#f2dbe0!important;
+    font-size:13px!important;
+    line-height:1.55!important;
+}
+.block-user-confirm-note{
+    margin:0 2px 18px!important;
+    color:#ac929c!important;
+    font-size:11px!important;
+    line-height:1.5!important;
+}
+.block-user-confirm-actions{
+    display:grid!important;
+    grid-template-columns:1fr 1.05fr!important;
+    gap:9px!important;
+}
+.block-user-confirm-actions button{
+    min-height:44px!important;
+    border-radius:13px!important;
+    padding:10px 13px!important;
+    font:600 13px Poppins,sans-serif!important;
+    cursor:pointer!important;
+    touch-action:manipulation!important;
+}
+.block-user-confirm-cancel{
+    border:1px solid rgba(148,163,184,.15)!important;
+    background:rgba(30,41,59,.78)!important;
+    color:#d7e0ea!important;
+}
+.block-user-confirm-primary{
+    border:1px solid rgba(251,113,133,.27)!important;
+    background:linear-gradient(145deg,#ef476f,#d9365b)!important;
+    color:#fff!important;
+    box-shadow:0 12px 28px rgba(217,54,91,.24)!important;
+}
+.block-user-confirm-primary:hover{filter:brightness(1.06)!important;}
+.block-user-confirm-cancel:active,
+.block-user-confirm-primary:active{transform:scale(.975)!important;}
+.block-user-confirm-cancel:focus-visible,
+.block-user-confirm-primary:focus-visible{
+    outline:2px solid rgba(125,211,252,.72)!important;
+    outline-offset:2px!important;
+}
+@media(max-width:520px){
+    .block-user-confirm-overlay{padding:12px!important;}
+    .block-user-confirm-panel{
+        width:100%!important;
+        max-width:420px!important;
+        padding:18px!important;
+        border-radius:23px!important;
+    }
+}
+</style>
+
 </head>
 
 <body>
@@ -6389,6 +6662,9 @@ body{
 
     <button class="settings-btn hidden-users-btn" onclick="openHiddenUsers()" aria-label="Hidden users" title="Hidden users">
     🙈
+</button>
+    <button class="settings-btn blocked-users-btn" onclick="openBlockedUsers()" aria-label="Blocked users" title="Blocked users">
+    🚫
 </button>
     <button class="settings-btn" onclick="openSettings()" aria-label="Settings" title="Settings">
     ⚙️
@@ -8616,7 +8892,7 @@ body.status-block-shots #statusViewerImage{
 
 <script src="/static/js/crypto.core.js?v=20260923-crypto-local-decrypt-v22" onerror="console.error('Lucky Chat crypto failed to load')"></script>
 <script src="/static/js/notification.js?v=20260927-notification-stability-v1"></script>
-<script src="/static/js/dashboard.core.js?v=20260928-hide-user-popup-v1"></script>
+<script src="/static/js/dashboard.core.js?v=20260928-block-user-v3"></script>
 
 <style id="lucky-liquid-glass-v1">
 /* Lucky Chat — Liquid Glass dashboard pass
@@ -10559,6 +10835,43 @@ html.lucky-light .status-modal-card{
   }
 }
 </style>
+
+
+<!-- Lucky Chat — static Block User confirmation dialog -->
+<div id="blockUserConfirmOverlay"
+     class="block-user-confirm-overlay"
+     hidden
+     aria-hidden="true"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="blockUserConfirmTitle"
+     aria-describedby="blockUserConfirmText">
+    <section class="block-user-confirm-panel">
+        <div class="block-user-confirm-icon" aria-hidden="true">🚫</div>
+        <span class="block-user-confirm-kicker">CHAT PRIVACY</span>
+        <h3 id="blockUserConfirmTitle" class="block-user-confirm-title">Block user?</h3>
+        <div class="block-user-confirm-person">
+            <img id="blockUserConfirmAvatar"
+                 class="block-user-confirm-avatar"
+                 src="/static/profile/default.png"
+                 alt="">
+            <div>
+                <b id="blockUserConfirmName">User</b>
+                <small id="blockUserConfirmHandle">@user</small>
+            </div>
+        </div>
+        <p id="blockUserConfirmText" class="block-user-confirm-text">
+            You and this user won't be able to send new messages or start voice calls with each other.
+        </p>
+        <div class="block-user-confirm-note">
+            Your existing conversation and messages stay untouched. You can unblock this user later from Blocked users.
+        </div>
+        <div class="block-user-confirm-actions">
+            <button id="blockUserConfirmCancel" type="button" class="block-user-confirm-cancel">Cancel</button>
+            <button id="blockUserConfirmPrimary" type="button" class="block-user-confirm-primary">Block user</button>
+        </div>
+    </section>
+</div>
 
 </body>
 

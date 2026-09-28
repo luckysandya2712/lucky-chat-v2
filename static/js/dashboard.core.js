@@ -3922,6 +3922,32 @@ function connectDashboardSocket() {
                 }
             }
 
+            if (data.type === "block_status_update") {
+                const blockedUsername = String(data.username || data.user || "").trim();
+                if (blockedUsername) {
+                    if (data.blocked_by_me) {
+                        const current = getBlockedUsers().filter(
+                            name => String(name).trim().toLowerCase() !== blockedUsername.toLowerCase()
+                        );
+                        serverBlockedUsers = data.blocked
+                            ? [...current, blockedUsername]
+                            : current;
+                        saveBlockedUsers(serverBlockedUsers);
+                    }
+
+                    void loadStatuses();
+
+                    if (
+                        data.blocked &&
+                        currentStatus &&
+                        !currentStatus.is_mine &&
+                        String(currentStatus.username || "").trim().toLowerCase() === blockedUsername.toLowerCase()
+                    ) {
+                        closeStatusViewer();
+                    }
+                }
+            }
+
             if (data.type === "status_update" || data.type === "new_status" || data.type === "status") {
                 loadStatuses();
                 const who = data.username || data.user || data.status?.username;
@@ -4071,6 +4097,7 @@ requestAnimationFrame(() => {
         startDashboardTimers();
         void loadServerPinnedChats();
         void loadServerHiddenUsers();
+        void loadServerBlockedUsers();
         void refreshDashboard();
     }, 0);
 });
@@ -4133,6 +4160,15 @@ let serverPinnedChats = null;
 const HIDDEN_USERS_KEY = "lucky_chat_hidden_users_v1";
 let serverHiddenUsers = null;
 let hiddenUserMutationPromises = new Map();
+
+const BLOCKED_USERS_KEY = "lucky_chat_blocked_users_v1";
+let serverBlockedUsers = null;
+let blockedUserMutationPromises = new Map();
+
+function getBlockedUsersStorageKey(){
+    const username = String(CURRENT_DASHBOARD_USER || "").trim() || "anonymous";
+    return `${BLOCKED_USERS_KEY}:${username}`;
+}
 
 function getHiddenUsersStorageKey(){
     const username = String(CURRENT_DASHBOARD_USER || "").trim() || "anonymous";
@@ -4278,6 +4314,423 @@ async function loadServerHiddenUsers(){
 
     serverHiddenUsers = getLocalHiddenUsers();
     return serverHiddenUsers;
+}
+
+function getLocalBlockedUsers(){
+    try{
+        const value = JSON.parse(localStorage.getItem(getBlockedUsersStorageKey()) || "[]");
+        return Array.isArray(value)
+            ? [...new Set(value.map(item => String(item || "").trim()).filter(Boolean))]
+            : [];
+    }catch(_error){
+        return [];
+    }
+}
+
+function saveBlockedUsers(list){
+    const normalized = Array.isArray(list)
+        ? [...new Set(list.map(item => String(item || "").trim()).filter(Boolean))]
+        : [];
+    localStorage.setItem(getBlockedUsersStorageKey(), JSON.stringify(normalized));
+}
+
+function getBlockedUsers(){
+    return Array.isArray(serverBlockedUsers)
+        ? serverBlockedUsers
+        : getLocalBlockedUsers();
+}
+
+function isUserBlocked(username){
+    const target = String(username || "").trim().toLowerCase();
+    if (!target) return false;
+    return getBlockedUsers().some(
+        name => String(name || "").trim().toLowerCase() === target
+    );
+}
+
+async function loadServerBlockedUsers(){
+    try{
+        const res = await fetch("/blocked-users", {
+            credentials:"same-origin",
+            cache:"no-store"
+        });
+        if (handleDashboardAuthFailure(res.status)) return;
+        if(!res.ok) throw new Error("HTTP " + res.status);
+
+        const data = await res.json();
+        if(data.success && Array.isArray(data.blocked)){
+            serverBlockedUsers = data.blocked
+                .map(item => String(item?.username || item || "").trim())
+                .filter(Boolean);
+            saveBlockedUsers(serverBlockedUsers);
+            return serverBlockedUsers;
+        }
+        throw new Error(data.error || "Blocked-user list unavailable");
+    }catch(e){
+        console.debug("Server blocked-user list unavailable; using local cache:", e);
+    }
+
+    serverBlockedUsers = getLocalBlockedUsers();
+    return serverBlockedUsers;
+}
+
+function closeBlockedUsers(){
+    const overlay = document.getElementById("blockedUsersOverlay");
+    if (overlay) overlay.remove();
+}
+
+function renderBlockedUsersList(items){
+    const list = document.getElementById("blockedUsersList");
+    if (!list) return;
+
+    const rows = Array.isArray(items) ? items : [];
+    list.innerHTML = "";
+
+    if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "blocked-users-empty";
+        empty.innerHTML = "<b>No blocked users</b><small>Users you block will appear here.</small>";
+        list.appendChild(empty);
+        return;
+    }
+
+    rows.forEach(item => {
+        const target = String(item?.username || "").trim();
+        if (!target) return;
+
+        const displayName = String(item?.display_name || target);
+        const profile = String(item?.profile || "/static/profile/default.png");
+
+        const row = document.createElement("div");
+        row.className = "blocked-user-row";
+
+        const image = document.createElement("img");
+        image.className = "blocked-user-avatar";
+        image.src = profile;
+        image.alt = "";
+        image.onerror = () => { image.src = "/static/profile/default.png"; };
+
+        const info = document.createElement("div");
+        info.className = "blocked-user-info";
+
+        const name = document.createElement("b");
+        name.textContent = displayName;
+
+        const handle = document.createElement("small");
+        handle.textContent = "@" + target;
+        info.append(name, handle);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "blocked-user-unblock";
+        button.textContent = "Unblock";
+        button.addEventListener("click", async () => {
+            await toggleBlockedUser(target, false);
+            if (!isUserBlocked(target)) await loadBlockedUsersForDialog();
+        });
+
+        row.append(image, info, button);
+        list.appendChild(row);
+    });
+}
+
+async function loadBlockedUsersForDialog(){
+    const list = document.getElementById("blockedUsersList");
+    if (list) {
+        list.innerHTML = '<div class="blocked-users-loading">Loading blocked users…</div>';
+    }
+
+    try{
+        const res = await fetch("/blocked-users", {
+            credentials:"same-origin",
+            cache:"no-store"
+        });
+        if (handleDashboardAuthFailure(res.status)) return;
+        if(!res.ok) throw new Error("HTTP " + res.status);
+
+        const data = await res.json();
+        if(!data.success || !Array.isArray(data.blocked)){
+            throw new Error(data.error || "Blocked-user list failed");
+        }
+
+        serverBlockedUsers = data.blocked
+            .map(item => String(item?.username || "").trim())
+            .filter(Boolean);
+        saveBlockedUsers(serverBlockedUsers);
+        renderBlockedUsersList(data.blocked);
+        return;
+    }catch(e){
+        console.debug("Could not load blocked users dialog:", e);
+    }
+
+    const fallback = getBlockedUsers().map(username => ({
+        username,
+        display_name: username,
+        profile: "/static/profile/default.png"
+    }));
+    renderBlockedUsersList(fallback);
+}
+
+let blockUserConfirmResolver = null;
+let blockUserConfirmKey = "";
+let blockUserConfirmEscapeHandler = null;
+let blockUserConfirmDelegationInstalled = false;
+let blockUserConfirmActionLock = false;
+
+function installBlockUserConfirmDelegation(){
+    if (blockUserConfirmDelegationInstalled) return;
+    blockUserConfirmDelegationInstalled = true;
+
+    const handleAction = event => {
+        const overlay = document.getElementById("blockUserConfirmOverlay");
+        if (!overlay || overlay.hasAttribute("hidden")) return;
+
+        const target = event.target instanceof Element
+            ? event.target.closest("#blockUserConfirmCancel, #blockUserConfirmPrimary")
+            : null;
+        if (!target || !overlay.contains(target)) return;
+
+        // Handle touch/pointer actions at document capture level so another
+        // ancestor handler cannot swallow the modal button interaction.
+        if (event.type === "click" && blockUserConfirmActionLock) return;
+        if (event.type !== "click") blockUserConfirmActionLock = true;
+
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === "function") {
+            event.stopImmediatePropagation();
+        }
+
+        closeBlockUserConfirm(target.id === "blockUserConfirmPrimary");
+
+        if (event.type !== "click") {
+            setTimeout(() => { blockUserConfirmActionLock = false; }, 0);
+        } else {
+            blockUserConfirmActionLock = false;
+        }
+    };
+
+    document.addEventListener("pointerup", handleAction, true);
+    document.addEventListener("touchend", handleAction, true);
+    document.addEventListener("click", handleAction, true);
+}
+
+function closeBlockUserConfirm(result = false){
+    const overlay = document.getElementById("blockUserConfirmOverlay");
+
+    if (blockUserConfirmEscapeHandler) {
+        document.removeEventListener("keydown", blockUserConfirmEscapeHandler, true);
+        blockUserConfirmEscapeHandler = null;
+    }
+
+    if (overlay) {
+        overlay.classList.remove("open");
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.setAttribute("hidden", "");
+    }
+
+    const resolver = blockUserConfirmResolver;
+    blockUserConfirmResolver = null;
+    blockUserConfirmKey = "";
+    if (typeof resolver === "function") resolver(!!result);
+}
+
+function openBlockUserConfirm(username){
+    const target = String(username || "").trim();
+    if (!target) return Promise.resolve(false);
+
+    const existing = document.getElementById("blockUserConfirmOverlay");
+    if (!existing) return Promise.resolve(false);
+
+    if (blockUserConfirmResolver) {
+        if (blockUserConfirmKey === target.toLowerCase()) {
+            return new Promise(resolve => {
+                const previous = blockUserConfirmResolver;
+                blockUserConfirmResolver = value => {
+                    try { previous(value); } finally { resolve(!!value); }
+                };
+            });
+        }
+        closeBlockUserConfirm(false);
+    }
+
+    const meta = getHideUserDisplayMeta(target);
+    const avatar = document.getElementById("blockUserConfirmAvatar");
+    const name = document.getElementById("blockUserConfirmName");
+    const handle = document.getElementById("blockUserConfirmHandle");
+    const cancel = document.getElementById("blockUserConfirmCancel");
+    const primary = document.getElementById("blockUserConfirmPrimary");
+
+    // The Block User dialog is rendered as static HTML. Bind the controls here
+    // instead of relying on inline HTML handlers, and assign through .onclick so
+    // reopening the dialog never stacks duplicate listeners.
+    if (cancel) {
+        cancel.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeBlockUserConfirm(false);
+        };
+    }
+    if (primary) {
+        primary.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeBlockUserConfirm(true);
+        };
+    }
+    if (existing) {
+        existing.onclick = event => {
+            if (event.target === existing) {
+                closeBlockUserConfirm(false);
+            }
+        };
+    }
+
+    if (avatar) {
+        avatar.src = meta.avatar || "/static/profile/default.png";
+        avatar.alt = "";
+        avatar.onerror = () => { avatar.src = "/static/profile/default.png"; };
+    }
+    if (name) name.textContent = meta.displayName || target;
+    if (handle) handle.textContent = "@" + target;
+
+    existing.setAttribute("aria-hidden", "false");
+    existing.removeAttribute("hidden");
+    existing.classList.add("open");
+    blockUserConfirmKey = target.toLowerCase();
+
+    blockUserConfirmEscapeHandler = event => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            closeBlockUserConfirm(false);
+        }
+    };
+    document.addEventListener("keydown", blockUserConfirmEscapeHandler, true);
+
+    const finishOpen = () => {
+        try { cancel?.focus({preventScroll:true}); } catch (_error) {}
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(finishOpen);
+    else setTimeout(finishOpen, 0);
+
+    return new Promise(resolve => {
+        blockUserConfirmResolver = resolve;
+    });
+}
+
+async function toggleBlockedUser(username, blocked = null){
+    const target = String(username || "").trim();
+    if (!target) return false;
+    if (target.toLowerCase() === String(CURRENT_DASHBOARD_USER || "").trim().toLowerCase()) return false;
+
+    const alreadyBlocked = isUserBlocked(target);
+    const nextBlocked = blocked === null ? !alreadyBlocked : !!blocked;
+
+    if (blocked === null && !alreadyBlocked) {
+        const confirmed = await openBlockUserConfirm(target);
+        if (!confirmed) return false;
+    }
+
+    const mutationKey = target.toLowerCase();
+    if (blockedUserMutationPromises.has(mutationKey)) {
+        return blockedUserMutationPromises.get(mutationKey);
+    }
+
+    const previous = [...getBlockedUsers()];
+    const next = nextBlocked
+        ? [...new Set([...previous, target])]
+        : previous.filter(
+            name => String(name || "").trim().toLowerCase() !== mutationKey
+        );
+
+    serverBlockedUsers = next;
+    saveBlockedUsers(next);
+    closeChatMenu();
+
+    const run = (async () => {
+        try{
+            const res = await fetch("/blocked-users", {
+                method:"POST",
+                credentials:"same-origin",
+                cache:"no-store",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({
+                    username:target,
+                    blocked:nextBlocked
+                })
+            });
+
+            if (handleDashboardAuthFailure(res.status)) return false;
+            if(!res.ok) throw new Error("HTTP " + res.status);
+
+            const data = await res.json();
+            if(!data.success || !Array.isArray(data.blocked)){
+                throw new Error(data.error || "Blocked-user update failed");
+            }
+
+            serverBlockedUsers = data.blocked
+                .map(item => String(item || "").trim())
+                .filter(Boolean);
+            saveBlockedUsers(serverBlockedUsers);
+            await loadServerBlockedUsers();
+            showStatusToast(
+                nextBlocked ? `Blocked ${target}` : `Unblocked ${target}`
+            );
+            return true;
+        }catch(e){
+            serverBlockedUsers = previous;
+            saveBlockedUsers(previous);
+            console.debug("Could not persist blocked user:", e);
+            showStatusToast("Could not update blocked user", true);
+            return false;
+        }finally{
+            blockedUserMutationPromises.delete(mutationKey);
+        }
+    })();
+
+    blockedUserMutationPromises.set(mutationKey, run);
+    return run;
+}
+
+function openBlockedUsers(){
+    closeChatMenu();
+    closeBlockedUsers();
+
+    const overlay = document.createElement("div");
+    overlay.id = "blockedUsersOverlay";
+    overlay.className = "blocked-users-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "blockedUsersTitle");
+
+    overlay.addEventListener("click", event => {
+        if (event.target === overlay) closeBlockedUsers();
+    });
+
+    const panel = document.createElement("section");
+    panel.className = "blocked-users-panel";
+
+    const head = document.createElement("div");
+    head.className = "blocked-users-head";
+    head.innerHTML = '<div><span>CHAT PRIVACY</span><h3 id="blockedUsersTitle">Blocked users</h3><p>Blocked users cannot start new messages or voice calls with you.</p></div>';
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "blocked-users-close";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Close blocked users");
+    close.addEventListener("click", closeBlockedUsers);
+    head.appendChild(close);
+
+    const list = document.createElement("div");
+    list.id = "blockedUsersList";
+    list.className = "blocked-users-list";
+
+    panel.append(head, list);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    void loadBlockedUsersForDialog();
 }
 
 let hideUserConfirmResolver = null;
@@ -4837,6 +5290,15 @@ function showChatMenu(event, username){
         closeChatMenu();
     };
     menu.appendChild(hideButton);
+
+    const blockButton=document.createElement("button");
+    blockButton.textContent=isUserBlocked(username) ? "✅ Unblock user" : "🚫 Block user";
+    blockButton.onclick=async ()=>{
+        await toggleBlockedUser(username);
+        closeChatMenu();
+    };
+    menu.appendChild(blockButton);
+
     document.body.appendChild(menu);
 
     const x=Math.min(event.clientX, window.innerWidth-menu.offsetWidth-8);
