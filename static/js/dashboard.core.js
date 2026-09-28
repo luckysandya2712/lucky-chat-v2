@@ -4280,6 +4280,357 @@ async function loadServerHiddenUsers(){
     return serverHiddenUsers;
 }
 
+let hideUserConfirmResolver = null;
+let hideUserConfirmKey = "";
+let hideUserConfirmEscapeHandler = null;
+
+function getHideUserDisplayMeta(username){
+    const target = String(username || "").trim();
+    const item = [...document.querySelectorAll(".chat-list .chat-item[data-username]")]
+        .find(node => String(node.getAttribute("data-username") || "").trim().toLowerCase() === target.toLowerCase());
+
+    const displayName = String(
+        item?.querySelector(".chat-name-row h4, .chat-top h4, h4")?.textContent
+            ?.replace("📌", "")
+            ?.trim()
+            || target
+    );
+
+    const avatar = String(
+        item?.querySelector("img.avatar")?.getAttribute("src")
+            || "/static/profile/default.png"
+    );
+
+    return { displayName, avatar };
+}
+
+function closeHideUserConfirm(result = false){
+    const overlay = document.getElementById("hideUserConfirmOverlay");
+    if (hideUserConfirmEscapeHandler) {
+        document.removeEventListener("keydown", hideUserConfirmEscapeHandler, true);
+        hideUserConfirmEscapeHandler = null;
+    }
+
+    if (overlay) {
+        overlay.classList.remove("open");
+        overlay.setAttribute("aria-hidden", "true");
+        setTimeout(() => overlay.remove(), 160);
+    }
+
+    const resolver = hideUserConfirmResolver;
+    hideUserConfirmResolver = null;
+    hideUserConfirmKey = "";
+    if (typeof resolver === "function") resolver(!!result);
+}
+
+function openHideUserConfirm(username){
+    const target = String(username || "").trim();
+    if (!target) return Promise.resolve(false);
+
+    const existing = document.getElementById("hideUserConfirmOverlay");
+    if (existing && hideUserConfirmResolver) {
+        if (hideUserConfirmKey === target.toLowerCase()) return new Promise(resolve => {
+            const previous = hideUserConfirmResolver;
+            hideUserConfirmResolver = value => {
+                try { previous(value); } finally { resolve(!!value); }
+            };
+        });
+        closeHideUserConfirm(false);
+    }
+
+    const meta = getHideUserDisplayMeta(target);
+
+    const overlay = document.createElement("div");
+    overlay.id = "hideUserConfirmOverlay";
+    overlay.className = "hide-user-confirm-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.setAttribute("aria-labelledby", "hideUserConfirmTitle");
+    overlay.setAttribute("aria-describedby", "hideUserConfirmText");
+
+    const panel = document.createElement("section");
+    panel.className = "hide-user-confirm-panel";
+
+    const head = document.createElement("div");
+    head.className = "hide-user-confirm-head";
+
+    const icon = document.createElement("div");
+    icon.className = "hide-user-confirm-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "🙈";
+
+    const copy = document.createElement("div");
+    copy.className = "hide-user-confirm-copy";
+
+    const kicker = document.createElement("span");
+    kicker.className = "hide-user-confirm-kicker";
+    kicker.textContent = "CHAT PRIVACY";
+
+    const title = document.createElement("h3");
+    title.id = "hideUserConfirmTitle";
+    title.textContent = "Hide user?";
+
+    copy.append(kicker, title);
+    head.append(icon, copy);
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "hide-user-confirm-close";
+    close.setAttribute("aria-label", "Cancel hiding user");
+    close.textContent = "×";
+    close.addEventListener("click", () => closeHideUserConfirm(false));
+
+    const identity = document.createElement("div");
+    identity.className = "hide-user-confirm-identity";
+
+    const avatar = document.createElement("img");
+    avatar.className = "hide-user-confirm-avatar";
+    avatar.src = meta.avatar;
+    avatar.alt = "";
+    avatar.onerror = () => { avatar.src = "/static/profile/default.png"; };
+
+    const identityCopy = document.createElement("div");
+    identityCopy.className = "hide-user-confirm-identity-copy";
+
+    const name = document.createElement("strong");
+    name.textContent = meta.displayName;
+
+    const handle = document.createElement("span");
+    handle.textContent = "@" + target;
+
+    identityCopy.append(name, handle);
+    identity.append(avatar, identityCopy);
+
+    const text = document.createElement("p");
+    text.id = "hideUserConfirmText";
+    text.textContent = `Hide ${meta.displayName} from your Chats list?`;
+
+    const note = document.createElement("div");
+    note.className = "hide-user-confirm-note";
+    note.innerHTML =
+        '<span aria-hidden="true">↺</span>' +
+        '<span>Your conversation and messages stay untouched. Restore this user anytime from <b>Hidden users</b>.</span>';
+
+    const actions = document.createElement("div");
+    actions.className = "hide-user-confirm-actions";
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "hide-user-confirm-cancel";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => closeHideUserConfirm(false));
+
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "hide-user-confirm-primary";
+    confirm.textContent = "Hide user";
+    confirm.addEventListener("click", () => closeHideUserConfirm(true));
+
+    actions.append(cancel, confirm);
+    panel.append(head, close, identity, text, note, actions);
+    overlay.appendChild(panel);
+
+    if (!document.getElementById("hide-user-confirm-style-v1")) {
+        const style = document.createElement("style");
+        style.id = "hide-user-confirm-style-v1";
+        style.textContent = `
+.hide-user-confirm-overlay{
+    position:fixed;
+    inset:0;
+    z-index:11000;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    background:rgba(1,5,14,.78);
+    backdrop-filter:blur(18px) saturate(1.08);
+    -webkit-backdrop-filter:blur(18px) saturate(1.08);
+    opacity:0;
+    transition:opacity .16s ease;
+}
+.hide-user-confirm-overlay.open{opacity:1}
+.hide-user-confirm-panel{
+    position:relative;
+    width:min(100%,430px);
+    padding:21px;
+    border:1px solid rgba(125,211,252,.18);
+    border-radius:26px;
+    background:
+        radial-gradient(320px 170px at 5% 0%,rgba(56,189,248,.14),transparent 72%),
+        radial-gradient(300px 180px at 100% 100%,rgba(129,140,248,.10),transparent 74%),
+        linear-gradient(180deg,rgba(10,21,38,.99),rgba(5,11,22,.99));
+    box-shadow:0 30px 90px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.045);
+    transform:translateY(10px) scale(.985);
+    transition:transform .18s ease;
+}
+.hide-user-confirm-overlay.open .hide-user-confirm-panel{transform:translateY(0) scale(1)}
+.hide-user-confirm-head{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding-right:38px;
+}
+.hide-user-confirm-icon{
+    width:46px;
+    height:46px;
+    min-width:46px;
+    display:grid;
+    place-items:center;
+    border:1px solid rgba(125,211,252,.18);
+    border-radius:15px;
+    background:linear-gradient(145deg,rgba(56,189,248,.16),rgba(59,130,246,.08));
+    box-shadow:0 10px 24px rgba(14,165,233,.12);
+    font-size:24px;
+}
+.hide-user-confirm-kicker{
+    display:block;
+    margin-bottom:4px;
+    color:#79c9ff;
+    font:800 8px/1 Poppins,sans-serif;
+    letter-spacing:.19em;
+}
+.hide-user-confirm-copy h3{
+    margin:0;
+    color:#f7fbff;
+    font:850 20px/1.05 Poppins,sans-serif;
+    letter-spacing:-.035em;
+}
+.hide-user-confirm-close{
+    position:absolute;
+    top:17px;
+    right:17px;
+    width:36px;
+    height:36px;
+    border:1px solid rgba(148,163,184,.13);
+    border-radius:12px;
+    background:rgba(30,41,59,.64);
+    color:#dbe7f4;
+    font:400 23px/1 Poppins,sans-serif;
+    cursor:pointer;
+}
+.hide-user-confirm-close:active{transform:scale(.93)}
+.hide-user-confirm-identity{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-top:19px;
+    padding:11px;
+    border:1px solid rgba(148,163,184,.09);
+    border-radius:17px;
+    background:rgba(15,23,42,.58);
+}
+.hide-user-confirm-avatar{
+    width:48px;
+    height:48px;
+    min-width:48px;
+    object-fit:cover;
+    border-radius:15px;
+    border:1px solid rgba(125,211,252,.18);
+    background:#142239;
+}
+.hide-user-confirm-identity-copy{min-width:0}
+.hide-user-confirm-identity-copy strong{
+    display:block;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#f4f9ff;
+    font:750 14px/1.2 Poppins,sans-serif;
+}
+.hide-user-confirm-identity-copy span{
+    display:block;
+    margin-top:4px;
+    color:#7087a0;
+    font:550 10px/1 Poppins,sans-serif;
+}
+.hide-user-confirm-panel>p{
+    margin:16px 2px 0;
+    color:#b0bdcc;
+    font:550 12px/1.6 Poppins,sans-serif;
+}
+.hide-user-confirm-note{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    margin-top:12px;
+    padding:11px 12px;
+    border:1px solid rgba(96,165,250,.10);
+    border-radius:14px;
+    background:rgba(59,130,246,.055);
+    color:#8ea4bc;
+    font:500 10px/1.55 Poppins,sans-serif;
+}
+.hide-user-confirm-note span:first-child{
+    color:#6cc7ff;
+    font-size:16px;
+    line-height:1;
+    margin-top:1px;
+}
+.hide-user-confirm-note b{color:#cfe8ff}
+.hide-user-confirm-actions{
+    display:grid;
+    grid-template-columns:1fr 1.08fr;
+    gap:10px;
+    margin-top:18px;
+}
+.hide-user-confirm-actions button{
+    min-height:48px;
+    border-radius:15px;
+    font:700 12px Poppins,sans-serif;
+    cursor:pointer;
+    transition:transform .15s ease,background .15s ease,border-color .15s ease,filter .15s ease;
+}
+.hide-user-confirm-actions button:active{transform:scale(.975)}
+.hide-user-confirm-cancel{
+    border:1px solid rgba(148,163,184,.15);
+    background:rgba(30,41,59,.70);
+    color:#d4deeb;
+}
+.hide-user-confirm-cancel:hover{background:rgba(51,65,85,.72)}
+.hide-user-confirm-primary{
+    border:1px solid rgba(125,211,252,.22);
+    background:linear-gradient(145deg,#3388ee,#2563eb);
+    color:#fff;
+    box-shadow:0 12px 28px rgba(37,99,235,.20);
+}
+.hide-user-confirm-primary:hover{filter:brightness(1.07)}
+@media(max-width:520px){
+    .hide-user-confirm-overlay{padding:13px}
+    .hide-user-confirm-panel{padding:18px;border-radius:23px}
+    .hide-user-confirm-actions{grid-template-columns:1fr 1.08fr}
+}
+`;
+        document.head.appendChild(style);
+    }
+
+    overlay.addEventListener("click", event => {
+        if (event.target === overlay) closeHideUserConfirm(false);
+    });
+
+    document.body.appendChild(overlay);
+    hideUserConfirmKey = target.toLowerCase();
+
+    hideUserConfirmEscapeHandler = event => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            closeHideUserConfirm(false);
+        }
+    };
+    document.addEventListener("keydown", hideUserConfirmEscapeHandler, true);
+
+    requestAnimationFrame(() => {
+        overlay.setAttribute("aria-hidden", "false");
+        overlay.classList.add("open");
+        cancel.focus({preventScroll:true});
+    });
+
+    return new Promise(resolve => {
+        hideUserConfirmResolver = resolve;
+    });
+}
+
 async function toggleHiddenUser(username, hidden = null){
     const target = String(username || "").trim();
     if (!target) return false;
@@ -4288,7 +4639,7 @@ async function toggleHiddenUser(username, hidden = null){
     const alreadyHidden = isUserHidden(target);
     const nextHidden = hidden === null ? !alreadyHidden : !!hidden;
     if (hidden === null && !alreadyHidden) {
-        const confirmed = window.confirm(`Hide ${target} from your Chats list? You can restore them from Hidden users.`);
+        const confirmed = await openHideUserConfirm(target);
         if (!confirmed) return false;
     }
     const mutationKey = target.toLowerCase();
