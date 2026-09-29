@@ -639,6 +639,7 @@ async function loadChatBlockStatus(){
 }
 
 let pendingDeliveredIds = new Set();
+let pendingReadIds = new Set();
 
 // Messages rendered locally before the server echoes them back.
 // The queue lets us reconcile the server's real message id/timestamp
