@@ -1787,45 +1787,72 @@ async function loadMessages() {
         }
     }
 
-    // Restore optimistic messages immediately, before any asynchronous crypto
-    // work completes.
-    pendingOptimistic.forEach(msg => {
-        if (msg && !document.querySelector(`[data-msg="${msg.id}"]`)) {
-            addMessage(msg);
-        }
-    });
-
-    // Queue delivery/read acknowledgements without delaying first paint.
-    data.forEach(msg => {
-        if (msg.sender !== username && !deletedMessages[msg.id]) {
-            if (!msg.delivered) pendingDeliveredIds.add(Number(msg.id));
-            if (!document.hidden && isReadReceiptsEnabled() && !msg.read) {
-                pendingReadIds.add(Number(msg.id));
-            }
-        }
-    });
-
-    flushPendingReceiptAcknowledgements();
-
-    // Keep the embedded-document safety net, but do not render duplicates.
-    const embedded = Array.isArray(window.LUCKY_EMBEDDED_DOCUMENTS)
-        ? window.LUCKY_EMBEDDED_DOCUMENTS
-        : [];
-    embedded.forEach(msg => {
-        if (!msg || msg.id == null) return;
-        if (typeof isDocumentMessage === "function" && isDocumentMessage(msg)) {
-            if (!document.querySelector(`[data-msg="${msg.id}"]`)) {
+    // Non-crypto hydration helpers must never be allowed to abort the
+    // decryption worker. A single receipt/layout/embedded-document exception
+    // can otherwise leave every encrypted message permanently on
+    // "🔐 Decrypting…".
+    try {
+        // Restore optimistic messages immediately, before any asynchronous crypto
+        // work completes.
+        pendingOptimistic.forEach(msg => {
+            if (msg && !document.querySelector(`[data-msg="${msg.id}"]`)) {
                 addMessage(msg);
             }
-        }
-    });
+        });
+    } catch (error) {
+        console.error("HISTORY OPTIMISTIC RESTORE FAILED:", error);
+    }
+
+    try {
+        // Queue delivery/read acknowledgements without delaying first paint.
+        data.forEach(msg => {
+            if (msg.sender !== username && !deletedMessages[msg.id]) {
+                if (!msg.delivered) pendingDeliveredIds.add(Number(msg.id));
+                if (!document.hidden && isReadReceiptsEnabled() && !msg.read) {
+                    pendingReadIds.add(Number(msg.id));
+                }
+            }
+        });
+    } catch (error) {
+        console.error("HISTORY RECEIPT QUEUE FAILED:", error);
+    }
+
+    try {
+        // Receipt transport is best-effort and must never block decryption.
+        flushPendingReceiptAcknowledgements();
+    } catch (error) {
+        console.error("HISTORY RECEIPT FLUSH FAILED:", error);
+    }
+
+    try {
+        // Keep the embedded-document safety net, but do not render duplicates.
+        const embedded = Array.isArray(window.LUCKY_EMBEDDED_DOCUMENTS)
+            ? window.LUCKY_EMBEDDED_DOCUMENTS
+            : [];
+        embedded.forEach(msg => {
+            if (!msg || msg.id == null) return;
+            if (typeof isDocumentMessage === "function" && isDocumentMessage(msg)) {
+                if (!document.querySelector(`[data-msg="${msg.id}"]`)) {
+                    addMessage(msg);
+                }
+            }
+        });
+    } catch (error) {
+        console.error("HISTORY EMBEDDED-DOCUMENT RESTORE FAILED:", error);
+    }
 
     try {
         window.dispatchEvent(new CustomEvent("lucky-history-loaded"));
-    } catch (_) {}
+    } catch (error) {
+        console.error("HISTORY LOADED EVENT FAILED:", error);
+    }
 
-    bindLuckyComposerClearance();
-    updateLuckyComposerClearance(true);
+    try {
+        bindLuckyComposerClearance();
+        updateLuckyComposerClearance(true);
+    } catch (error) {
+        console.error("HISTORY LAYOUT PREP FAILED:", error);
+    }
 
     const finishInitialHistoryAutoFollow = () => {
         luckyInitialHistoryAutoFollow = true;
