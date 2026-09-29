@@ -1,5 +1,5 @@
 // Cache v5: force fresh authenticated chat-page HTML after crypto/decryption diagnostics.
-const CACHE_NAME = "lucky-chat-pwa-v5";
+const CACHE_NAME = "lucky-chat-pwa-v6";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [
@@ -163,6 +163,14 @@ self.addEventListener("fetch", event => {
         } else {
             event.respondWith(networkFirst(request, OFFLINE_URL));
         }
+        return;
+    }
+
+    // The chat core is actively changing during the decryption audit.
+    // Fetch it network-first so a stale service-worker copy cannot keep an
+    // older decryption worker alive on authenticated chat pages.
+    if (url.pathname === "/static/js/chat.core.js") {
+        event.respondWith(networkFirst(request));
         return;
     }
 
