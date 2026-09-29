@@ -1746,6 +1746,21 @@ async function loadMessages() {
     const savedReactions = loadSavedReactions();
     const decryptQueue = [];
 
+    // Temporary decryption diagnostics. This state is intentionally local to
+    // the chat runtime and does not alter message storage or crypto keys.
+    const decryptDiagnostic = {
+        queueLength: 0,
+        workersStarted: 0,
+        decryptStarted: 0,
+        decryptCompleted: 0,
+        decryptFailed: 0,
+        domUpdated: 0,
+        poolFailed: false,
+        fallbackCount: 0,
+        completedIds: new Set()
+    };
+    window.luckyDecryptDiagnostic = decryptDiagnostic;
+
     // Render in small batches so the browser can paint early on long chats.
     // Encrypted text gets a tiny placeholder and is decrypted in the background
     // after the first visible history has reached the screen.
@@ -1786,6 +1801,9 @@ async function loadMessages() {
             await yieldToBrowser();
         }
     }
+
+    decryptDiagnostic.queueLength = decryptQueue.length;
+    console.log("🔐 LUCKY DECRYPT QUEUE:", decryptQueue.length);
 
     // Non-crypto hydration helpers must never be allowed to abort the
     // decryption worker. A single receipt/layout/embedded-document exception
@@ -1877,14 +1895,49 @@ async function loadMessages() {
     // main thread while still finishing all encrypted messages promptly.
     if (decryptQueue.length && typeof LuckyCrypto !== "undefined" && typeof LuckyCrypto.decryptMessage === "function") {
         // Keep public-key upload/startup initialization detached from history
-        // decryption. decryptMessage() now has a local-only key readiness path.
+        // decryption. decryptMessage() has its own local-only key readiness path.
         void ensureLuckyCryptoReady();
 
         const LUCKY_MESSAGE_DECRYPT_TIMEOUT_MS = 12000;
+        const LUCKY_MESSAGE_DECRYPT_FALLBACK_MS = 15000;
+        const decryptFallbackTimers = new Map();
+
+        const applyDecryptFallback = (item, reason) => {
+            const id = String(item?.target?.id ?? "");
+            if (!id || decryptDiagnostic.completedIds.has(id)) return;
+
+            decryptDiagnostic.fallbackCount += 1;
+            const bubble =
+                luckyMessageRowMap.get(id) ||
+                document.querySelector(`[data-msg="${item.target.id}"]`);
+            const textElement = bubble?.querySelector(".msg-text");
+
+            if (
+                textElement &&
+                (
+                    textElement.textContent === "🔐 Decrypting…" ||
+                    textElement.textContent === "🔐 Decrypting..."
+                )
+            ) {
+                textElement.textContent = reason;
+                console.error("🔐 LUCKY DECRYPT FALLBACK:", item.target.id, reason);
+            }
+        };
+
+        decryptQueue.forEach(item => {
+            const timerId = setTimeout(() => {
+                applyDecryptFallback(
+                    item,
+                    "🔒 Unable to decrypt secure message"
+                );
+            }, LUCKY_MESSAGE_DECRYPT_FALLBACK_MS);
+            decryptFallbackTimers.set(String(item.target.id), timerId);
+        });
 
         void (async () => {
             let cursor = 0;
             const workerCount = Math.min(6, decryptQueue.length);
+            console.log("🔐 LUCKY DECRYPT WORKER POOL START:", workerCount);
 
             async function decryptWithTimeout(ciphertext, currentUser, messageId) {
                 let timeoutId = null;
@@ -1898,12 +1951,30 @@ async function loadMessages() {
                 });
 
                 try {
-                    console.log("🔐 LUCKY DECRYPT START:", messageId);
+                    decryptDiagnostic.decryptStarted += 1;
+                    console.log(
+                        "🔐 LUCKY DECRYPT START:",
+                        messageId,
+                        "started=",
+                        decryptDiagnostic.decryptStarted
+                    );
+
                     const plaintext = await Promise.race([
-                        LuckyCrypto.decryptMessage(ciphertext, currentUser),
+                        Promise.resolve().then(() =>
+                            LuckyCrypto.decryptMessage(ciphertext, currentUser)
+                        ),
                         timeoutPromise
                     ]);
-                    console.log("✅ LUCKY DECRYPT DONE:", messageId);
+
+                    decryptDiagnostic.decryptCompleted += 1;
+                    decryptDiagnostic.completedIds.add(String(messageId));
+
+                    console.log(
+                        "✅ LUCKY DECRYPT DONE:",
+                        messageId,
+                        "completed=",
+                        decryptDiagnostic.decryptCompleted
+                    );
                     return plaintext;
                 } finally {
                     if (timeoutId !== null) {
@@ -1913,9 +1984,12 @@ async function loadMessages() {
             }
 
             async function decryptWorker() {
+                decryptDiagnostic.workersStarted += 1;
+
                 while (cursor < decryptQueue.length) {
                     const item = decryptQueue[cursor++];
                     const msg = item.target;
+
                     try {
                         msg.text = await decryptWithTimeout(
                             item.ciphertext,
@@ -1923,25 +1997,76 @@ async function loadMessages() {
                             msg.id
                         );
                     } catch (error) {
-                        console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
+                        decryptDiagnostic.decryptFailed += 1;
+                        decryptDiagnostic.completedIds.add(String(msg.id));
+
+                        console.error(
+                            "MESSAGE DECRYPTION ERROR:",
+                            error,
+                            msg.id
+                        );
+
                         msg.text = error?.message?.includes("timed out")
                             ? "🔒 Decryption timed out"
                             : "🔒 Unable to decrypt this message";
                     }
 
-                    const bubble = luckyMessageRowMap.get(String(msg.id)) ||
+                    const id = String(msg.id);
+                    const fallbackTimer = decryptFallbackTimers.get(id);
+                    if (fallbackTimer !== undefined) {
+                        clearTimeout(fallbackTimer);
+                        decryptFallbackTimers.delete(id);
+                    }
+
+                    const bubble =
+                        luckyMessageRowMap.get(id) ||
                         document.querySelector(`[data-msg="${msg.id}"]`);
                     const textElement = bubble?.querySelector(".msg-text");
+
                     if (textElement) {
                         textElement.textContent = msg.text;
+                        decryptDiagnostic.domUpdated += 1;
+                    } else {
+                        console.warn(
+                            "🔐 LUCKY DECRYPT DOM TARGET MISSING:",
+                            msg.id
+                        );
                     }
                 }
             }
 
             await Promise.all(
-                Array.from({ length: workerCount }, () => decryptWorker())
+                Array.from(
+                    { length: workerCount },
+                    () => decryptWorker()
+                )
             );
-        })().finally(finishInitialHistoryAutoFollow);
+
+            console.log(
+                "✅ LUCKY DECRYPT WORKER POOL COMPLETE:",
+                JSON.stringify({
+                    queueLength: decryptDiagnostic.queueLength,
+                    workersStarted: decryptDiagnostic.workersStarted,
+                    decryptStarted: decryptDiagnostic.decryptStarted,
+                    decryptCompleted: decryptDiagnostic.decryptCompleted,
+                    decryptFailed: decryptDiagnostic.decryptFailed,
+                    domUpdated: decryptDiagnostic.domUpdated,
+                    fallbackCount: decryptDiagnostic.fallbackCount
+                })
+            );
+        })()
+            .catch(error => {
+                decryptDiagnostic.poolFailed = true;
+                console.error("❌ LUCKY DECRYPT WORKER POOL FAILED:", error);
+
+                decryptQueue.forEach(item => {
+                    applyDecryptFallback(
+                        item,
+                        "🔒 Secure message decryption failed"
+                    );
+                });
+            })
+            .finally(finishInitialHistoryAutoFollow);
     } else if (decryptQueue.length) {
         // Never leave historical messages permanently stuck on a loading
         // placeholder when the crypto runtime failed to load.
