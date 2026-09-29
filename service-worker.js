@@ -1,5 +1,5 @@
-// Cache v4: invalidate older static assets after the notification.js migration.
-const CACHE_NAME = "lucky-chat-pwa-v4";
+// Cache v5: force fresh authenticated chat-page HTML after crypto/decryption diagnostics.
+const CACHE_NAME = "lucky-chat-pwa-v5";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [
@@ -146,6 +146,15 @@ self.addEventListener("fetch", event => {
 
     if (!isSameOrigin(url)) return;
     if (url.pathname === "/service-worker.js") return;
+
+    // Chat pages are authenticated, dynamic HTML. Explicitly bypass the
+    // browser HTTP cache so a newly deployed chat.html (including its
+    // cache-busted script versions) is always fetched fresh.
+    if (url.pathname.startsWith("/chat/")) {
+        event.respondWith(fetch(request, { cache: "no-store" }));
+        return;
+    }
+
     if (isNetworkOnlyPath(url.pathname)) return;
 
     if (request.mode === "navigate") {
