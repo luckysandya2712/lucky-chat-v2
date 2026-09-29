@@ -1852,19 +1852,53 @@ async function loadMessages() {
         // decryption. decryptMessage() now has a local-only key readiness path.
         void ensureLuckyCryptoReady();
 
+        const LUCKY_MESSAGE_DECRYPT_TIMEOUT_MS = 12000;
+
         void (async () => {
             let cursor = 0;
             const workerCount = Math.min(6, decryptQueue.length);
+
+            async function decryptWithTimeout(ciphertext, currentUser, messageId) {
+                let timeoutId = null;
+                const timeoutPromise = new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        reject(new Error(
+                            "Message decryption timed out after " +
+                            LUCKY_MESSAGE_DECRYPT_TIMEOUT_MS + "ms"
+                        ));
+                    }, LUCKY_MESSAGE_DECRYPT_TIMEOUT_MS);
+                });
+
+                try {
+                    console.log("🔐 LUCKY DECRYPT START:", messageId);
+                    const plaintext = await Promise.race([
+                        LuckyCrypto.decryptMessage(ciphertext, currentUser),
+                        timeoutPromise
+                    ]);
+                    console.log("✅ LUCKY DECRYPT DONE:", messageId);
+                    return plaintext;
+                } finally {
+                    if (timeoutId !== null) {
+                        clearTimeout(timeoutId);
+                    }
+                }
+            }
 
             async function decryptWorker() {
                 while (cursor < decryptQueue.length) {
                     const item = decryptQueue[cursor++];
                     const msg = item.target;
                     try {
-                        msg.text = await LuckyCrypto.decryptMessage(item.ciphertext, username);
+                        msg.text = await decryptWithTimeout(
+                            item.ciphertext,
+                            username,
+                            msg.id
+                        );
                     } catch (error) {
                         console.error("MESSAGE DECRYPTION ERROR:", error, msg.id);
-                        msg.text = "🔒 Unable to decrypt this message";
+                        msg.text = error?.message?.includes("timed out")
+                            ? "🔒 Decryption timed out"
+                            : "🔒 Unable to decrypt this message";
                     }
 
                     const bubble = luckyMessageRowMap.get(String(msg.id)) ||
