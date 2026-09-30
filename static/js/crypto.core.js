@@ -8,6 +8,226 @@ const LuckyCrypto = {
     publicKeyIdCache: new WeakMap(),
     initPromise: null,
     localKeyPromise: null,
+    accountUsername: null,
+    accountStorageKey: null,
+    publicKeyUploadAllowed: null,
+
+    getCookieValue(name) {
+        try {
+            const target = String(name || "");
+            const encodedTarget = encodeURIComponent(target);
+
+            for (const part of String(document.cookie || "").split(";")) {
+                const trimmed = part.trim();
+                if (!trimmed) continue;
+
+                const separator = trimmed.indexOf("=");
+                if (separator < 0) continue;
+
+                const key = trimmed.slice(0, separator);
+                const value = trimmed.slice(separator + 1);
+
+                if (key === target || key === encodedTarget) {
+                    try {
+                        return decodeURIComponent(value);
+                    } catch (_) {
+                        return value;
+                    }
+                }
+            }
+        } catch (_) {
+            // Restricted cookie access is handled by the explicit username path.
+        }
+
+        return "";
+    },
+
+    normalizeAccountUsername(username) {
+        return String(username || "").trim();
+    },
+
+    getAccountStorageKey(username) {
+        const name = this.normalizeAccountUsername(username);
+        if (!name) {
+            throw new Error("Logged-in username is unavailable for local encryption storage");
+        }
+
+        return "account:v1:" + encodeURIComponent(name);
+    },
+
+    async ensureAccountContext(username) {
+        const explicit = this.normalizeAccountUsername(username);
+        const cookieUsername = this.normalizeAccountUsername(
+            this.getCookieValue("username")
+        );
+
+        if (explicit && cookieUsername && explicit !== cookieUsername) {
+            throw new Error(
+                "Encryption account mismatch; refusing to use another account's local keys"
+            );
+        }
+
+        const resolved = explicit || cookieUsername || this.accountUsername;
+
+        if (!resolved) {
+            throw new Error(
+                "Logged-in username is unavailable; cannot bind local encryption keys to this account"
+            );
+        }
+
+        if (this.accountUsername && this.accountUsername !== resolved) {
+            throw new Error(
+                "Encryption account context changed; refusing to reuse another account's local keys"
+            );
+        }
+
+        this.accountUsername = resolved;
+        this.accountStorageKey = this.getAccountStorageKey(resolved);
+
+        return resolved;
+    },
+
+    async getServerPublicKeyState(username) {
+        const name = await this.ensureAccountContext(username);
+
+        const response = await fetch(
+            "/keys/" + encodeURIComponent(name),
+            {
+                method: "GET",
+                credentials: "same-origin",
+                cache: "no-store"
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "Account public key request failed (HTTP " + response.status + ")"
+            );
+        }
+
+        let data;
+        try {
+            data = await response.json();
+        } catch (_) {
+            throw new Error("Account public key response is invalid");
+        }
+
+        if (!data.success) {
+            const error = String(data.error || "");
+
+            if (/no public key registered/i.test(error)) {
+                return {
+                    publicKeys: [],
+                    currentPublicKey: "",
+                    hasServerKey: false
+                };
+            }
+
+            throw new Error(error || "Could not fetch account public key");
+        }
+
+        const publicKeys = Array.isArray(data.public_keys)
+            ? data.public_keys
+                .map(value => String(value || "").trim())
+                .filter(Boolean)
+            : [String(data.public_key || "").trim()].filter(Boolean);
+
+        return {
+            publicKeys,
+            currentPublicKey:
+                publicKeys.length ? publicKeys[publicKeys.length - 1] : "",
+            hasServerKey: publicKeys.length > 0
+        };
+    },
+
+    async keyIdFromPublicKeyBase64(publicKeyBase64) {
+        const publicKey = await this.importPublicKey(publicKeyBase64);
+        return await this.publicKeyId(publicKey);
+    },
+
+    async findLocalKeyMatch(localPairs, serverPublicKeys) {
+        const pairs = Array.isArray(localPairs)
+            ? localPairs.filter(
+                pair => pair?.privateKey && pair?.publicKey
+            )
+            : [];
+
+        const serverKeys = Array.isArray(serverPublicKeys)
+            ? serverPublicKeys
+                .map(value => String(value || "").trim())
+                .filter(Boolean)
+            : [];
+
+        if (!pairs.length || !serverKeys.length) return null;
+
+        const serverIds = new Set();
+
+        for (const encoded of serverKeys) {
+            try {
+                serverIds.add(await this.keyIdFromPublicKeyBase64(encoded));
+            } catch (_) {
+                // Ignore malformed historical public-key entries.
+            }
+        }
+
+        for (let index = 0; index < pairs.length; index += 1) {
+            try {
+                const localId = await this.publicKeyId(pairs[index].publicKey);
+                if (serverIds.has(localId)) {
+                    return { localIndex: index, keyId: localId };
+                }
+            } catch (_) {
+                // Try the next locally retained key.
+            }
+        }
+
+        return null;
+    },
+
+    async synchronizePublicKeyIfSafe() {
+        try {
+            const username = await this.ensureAccountContext();
+            const serverState = await this.getServerPublicKeyState(username);
+
+            if (!serverState.hasServerKey) {
+                await this.uploadPublicKey();
+                console.log("🔐 Missing server public key restored from local account key");
+                return true;
+            }
+
+            const currentLocalId = await this.publicKeyId(this.keyPair.publicKey);
+            const serverCurrentId = await this.keyIdFromPublicKeyBase64(
+                serverState.currentPublicKey
+            );
+
+            if (currentLocalId === serverCurrentId) {
+                return true;
+            }
+
+            const match = await this.findLocalKeyMatch(
+                [this.keyPair, ...this.keyHistory],
+                serverState.publicKeys
+            );
+
+            if (match) {
+                console.warn(
+                    "🔐 Server has a different current key; local account keys were preserved " +
+                    "and no automatic key rotation was performed."
+                );
+                return false;
+            }
+
+            console.warn(
+                "🔐 Server encryption identity does not match any locally retained key; " +
+                "automatic key replacement was refused."
+            );
+            return false;
+        } catch (error) {
+            // Never block chat/history decryption on a background key-sync request.
+            console.warn("⚠️ Background public-key synchronization skipped:", error);
+            return false;
+        }
+    },
 
     async init() {
         if (this.initialized) return true;
@@ -22,9 +242,26 @@ const LuckyCrypto = {
             // This keeps stored-message decryption usable even if the public
             // key upload endpoint is slow.
             await this.ensureLocalKeyPair();
-            await this.uploadPublicKey();
+
+            if (this.publicKeyUploadAllowed === true) {
+                await this.uploadPublicKey();
+            } else if (this.publicKeyUploadAllowed === false) {
+                // Existing account identities are already safely stored under the
+                // logged-in account. Do not block initialization or overwrite a
+                // different server current key; reconcile in the background.
+                console.log(
+                    "🔐 Account-scoped encryption identity loaded; background server-key " +
+                    "synchronization will preserve the existing server identity."
+                );
+            } else {
+                throw new Error("Encryption key upload policy was not initialized");
+            }
 
             this.initialized = true;
+
+            if (this.publicKeyUploadAllowed === false) {
+                void this.synchronizePublicKeyIfSafe();
+            }
             console.log("✅ LuckyCrypto initialized");
             return true;
         })();
@@ -90,48 +327,113 @@ const LuckyCrypto = {
     },
 
     async loadOrCreateKeyPair() {
-        const stored = await this.loadKeyPairFromDB();
+        const username = await this.ensureAccountContext();
+        const accountStorageKey = this.accountStorageKey;
 
-        // New format:
-        // {
-        //   current: CryptoKeyPair,
-        //   history: CryptoKeyPair[]
-        // }
-        //
-        // Backward compatibility: older builds stored the CryptoKeyPair
-        // directly under the "identity" key.
-        if (stored?.current?.publicKey && stored?.current?.privateKey) {
-            this.keyPair = stored.current;
-            this.keyHistory = Array.isArray(stored.history)
-                ? stored.history.filter(pair => pair?.privateKey && pair?.publicKey)
-                : [];
+        const applyStored = stored => {
+            if (stored?.current?.publicKey && stored?.current?.privateKey) {
+                this.keyPair = stored.current;
+                this.keyHistory = Array.isArray(stored.history)
+                    ? stored.history.filter(
+                        pair => pair?.privateKey && pair?.publicKey
+                    )
+                    : [];
+                return true;
+            }
+
+            if (stored?.publicKey && stored?.privateKey) {
+                this.keyPair = stored;
+                this.keyHistory = [];
+                return true;
+            }
+
+            return false;
+        };
+
+        // Account-scoped storage is always preferred.
+        const accountStored = await this.loadKeyPairFromDB(accountStorageKey);
+
+        if (applyStored(accountStored)) {
+            // Account-scoped storage is already isolated by username. Loading it
+            // must stay local-only so history decryption is never blocked by a
+            // transient network/key-endpoint failure.
+            this.publicKeyUploadAllowed = false;
 
             console.log(
-                "🔑 Encryption key loaded with",
+                "🔑 Account-scoped encryption key loaded for",
+                username,
+                "with",
                 this.keyHistory.length,
                 "archived key(s)"
             );
             return;
         }
 
-        if (stored?.publicKey && stored?.privateKey) {
-            this.keyPair = stored;
-            this.keyHistory = [];
+        // Legacy migration: use the old global identity only after proving that
+        // one of its retained public keys belongs to this logged-in account.
+        const legacyStored = await this.loadKeyPairFromDB("identity");
+
+        if (applyStored(legacyStored)) {
+            const serverState = await this.getServerPublicKeyState(username);
+            const localPairs = [this.keyPair, ...this.keyHistory];
+
+            if (serverState.hasServerKey) {
+                const match = await this.findLocalKeyMatch(
+                    localPairs,
+                    serverState.publicKeys
+                );
+
+                if (!match) {
+                    throw new Error(
+                        "A different account's local encryption key was detected. " +
+                        "The key was not reused, and no new key was generated. " +
+                        "Use this account's recovery backup to restore its encryption identity."
+                    );
+                }
+
+                // Migration is complete without changing the server identity.
+                // Any safe reconciliation happens asynchronously after initialization.
+                this.publicKeyUploadAllowed = false;
+            } else {
+                this.publicKeyUploadAllowed = true;
+            }
+
             await this.saveKeyPairToDB({
                 current: this.keyPair,
-                history: []
-            });
-            console.log("🔑 Existing encryption key migrated to key-history format");
+                history: this.keyHistory
+            }, accountStorageKey);
+
+            console.log(
+                "🔑 Legacy encryption identity migrated into account-scoped storage for",
+                username
+            );
             return;
+        }
+
+        // Never silently generate a replacement when the account already has a
+        // server-side identity. That would strand older encrypted messages.
+        const serverState = await this.getServerPublicKeyState(username);
+
+        if (serverState.hasServerKey) {
+            throw new Error(
+                "This account already has server-side encryption keys, but no local " +
+                "private key is available. Use the account's recovery backup before continuing."
+            );
         }
 
         this.keyPair = await this.generateKeyPair();
         this.keyHistory = [];
+        this.publicKeyUploadAllowed = true;
+
         await this.saveKeyPairToDB({
             current: this.keyPair,
             history: []
-        });
-        console.log("🔑 New encryption key pair generated");
+        }, accountStorageKey);
+
+        console.log(
+            "🔑 New account-scoped encryption key pair generated for",
+            username
+        );
     },
 
     async exportPublicKey() {
@@ -323,15 +625,17 @@ async publicKeyId(publicKey) {
 
 
 async encryptMessage(text, recipientUsername, senderUsername) {
-    await this.ensureReady();
-
     const plaintext = String(text ?? "");
     const recipient = String(recipientUsername || "").trim();
     const sender = String(senderUsername || "").trim();
 
     if (!plaintext) return plaintext;
-    if (!recipient) throw new Error("Recipient username is required");
     if (!sender) throw new Error("Sender username is required");
+
+    await this.ensureAccountContext(sender);
+    await this.ensureReady();
+
+    if (!recipient) throw new Error("Recipient username is required");
 
     const recipientPublicKeys = await this.getPublicKeys(recipient);
     const senderPublicKey = this.keyPair.publicKey;
@@ -410,12 +714,13 @@ async decryptMessage(value, currentUsername) {
     // plaintext render just because IndexedDB/Web Crypto is unavailable.
     if (!this.isEncryptedMessage(value)) return value;
 
-    await this.ensureDecryptReady();
-
     const username = String(currentUsername || "").trim();
     if (!username) {
         throw new Error("Current username is required for decryption");
     }
+
+    await this.ensureAccountContext(username);
+    await this.ensureDecryptReady();
 
     const prefix = value.startsWith("LCE2:") ? "LCE2:" : "LCE1:";
     let envelope;
@@ -569,7 +874,9 @@ async decryptMessage(value, currentUsername) {
 
 
 async loadExistingKeyPair() {
-    const stored = await this.loadKeyPairFromDB();
+    await this.ensureAccountContext();
+
+    const stored = await this.loadKeyPairFromDB(this.accountStorageKey);
 
     if (stored?.current?.publicKey && stored?.current?.privateKey) {
         this.keyPair = stored.current;
@@ -584,6 +891,61 @@ async loadExistingKeyPair() {
     if (stored?.publicKey && stored?.privateKey) {
         this.keyPair = stored;
         this.keyHistory = [];
+        return true;
+    }
+
+    // Recovery backup creation can also perform the guarded legacy migration.
+    const legacyStored = await this.loadKeyPairFromDB("identity");
+
+    if (legacyStored?.current?.publicKey && legacyStored?.current?.privateKey) {
+        const state = await this.getServerPublicKeyState(this.accountUsername);
+        const legacyPairs = [
+            legacyStored.current,
+            ...(Array.isArray(legacyStored.history) ? legacyStored.history : [])
+        ].filter(pair => pair?.publicKey && pair?.privateKey);
+
+        if (state.hasServerKey) {
+            const match = await this.findLocalKeyMatch(
+                legacyPairs,
+                state.publicKeys
+            );
+            if (!match) return false;
+        }
+
+        this.keyPair = legacyStored.current;
+        this.keyHistory = Array.isArray(legacyStored.history)
+            ? legacyStored.history.filter(
+                pair => pair?.privateKey && pair?.publicKey
+            )
+            : [];
+
+        await this.saveKeyPairToDB({
+            current: this.keyPair,
+            history: this.keyHistory
+        }, this.accountStorageKey);
+
+        return true;
+    }
+
+    if (legacyStored?.publicKey && legacyStored?.privateKey) {
+        const state = await this.getServerPublicKeyState(this.accountUsername);
+
+        if (state.hasServerKey) {
+            const match = await this.findLocalKeyMatch(
+                [legacyStored],
+                state.publicKeys
+            );
+            if (!match) return false;
+        }
+
+        this.keyPair = legacyStored;
+        this.keyHistory = [];
+
+        await this.saveKeyPairToDB({
+            current: this.keyPair,
+            history: []
+        }, this.accountStorageKey);
+
         return true;
     }
 
@@ -697,6 +1059,8 @@ async createRecoveryBackup(recoveryCode) {
 },
 
 async restoreRecoveryBackup(recoveryCode) {
+    await this.ensureAccountContext();
+
     const code = String(recoveryCode || "").trim();
     if (code.length < 12) {
         throw new Error("Recovery code must be at least 12 characters");
@@ -800,18 +1164,25 @@ async restoreRecoveryBackup(recoveryCode) {
     await this.saveKeyPairToDB({
         current: this.keyPair,
         history: this.keyHistory
-    });
+    }, this.accountStorageKey);
 
-    // Restore this key as current while the server keeps earlier public
-    // keys in history.
-    await this.uploadPublicKey();
+    // Recovery is an explicit account-owner action, so it may intentionally
+    // restore the recovered identity as the server's current public key while
+    // the server retains its prior public key in history.
+    this.publicKeyUploadAllowed = true;
+    await this.uploadPublicKey(true);
     this.publicKeyCache.clear();
     this.initialized = true;
 
     return true;
 },
 
-    async saveKeyPairToDB(keyStore) {
+    async saveKeyPairToDB(keyStore, storageKey = this.accountStorageKey) {
+        const keyName = String(storageKey || "").trim();
+        if (!keyName) {
+            throw new Error("Account context is required for local encryption storage");
+        }
+
         return new Promise((resolve, reject) => {
             const request = indexedDB.open("LuckyChatCrypto", 1);
             let db = null;
@@ -854,7 +1225,7 @@ async restoreRecoveryBackup(recoveryCode) {
                 try {
                     transaction = db.transaction("keys", "readwrite");
                     const store = transaction.objectStore("keys");
-                    store.put(keyStore, "identity");
+                    store.put(keyStore, keyName);
 
                     transaction.oncomplete = () => finish();
                     transaction.onerror = () => finish(
@@ -879,7 +1250,12 @@ async restoreRecoveryBackup(recoveryCode) {
         });
     },
 
-    async loadKeyPairFromDB() {
+    async loadKeyPairFromDB(storageKey = this.accountStorageKey) {
+        const keyName = String(storageKey || "").trim();
+        if (!keyName) {
+            throw new Error("Account context is required for local encryption storage");
+        }
+
         return new Promise((resolve, reject) => {
             const request = indexedDB.open("LuckyChatCrypto", 1);
             let db = null;
@@ -918,7 +1294,7 @@ async restoreRecoveryBackup(recoveryCode) {
                 try {
                     const transaction = db.transaction("keys", "readonly");
                     const store = transaction.objectStore("keys");
-                    const getRequest = store.get("identity");
+                    const getRequest = store.get(keyName);
 
                     getRequest.onsuccess = () => {
                         finish(getRequest.result || null);
