@@ -1688,6 +1688,138 @@ function ensureLuckyCryptoReady() {
     return luckyCryptoInitPromise;
 }
 
+// Temporary, read-only key diagnostics for encrypted-history failures.
+// This never exports or logs private-key material. It only records public-key
+// fingerprints/IDs so we can determine whether an old message targets a key
+// that is still present locally and/or still listed by the server.
+let luckyDecryptServerKeyDiagnosticsPromise = null;
+
+async function getLuckyDecryptServerKeyIds(currentUser) {
+    const name = String(currentUser || "").trim();
+    if (!name || typeof LuckyCrypto === "undefined") return null;
+
+    if (!luckyDecryptServerKeyDiagnosticsPromise) {
+        luckyDecryptServerKeyDiagnosticsPromise = (async () => {
+            try {
+                if (typeof LuckyCrypto.getPublicKeys !== "function") return null;
+
+                const keys = await LuckyCrypto.getPublicKeys(name);
+                const ids = [];
+
+                for (const entry of Array.isArray(keys) ? keys : []) {
+                    try {
+                        const id = entry?.keyId ||
+                            (entry?.publicKey && typeof LuckyCrypto.publicKeyId === "function"
+                                ? await LuckyCrypto.publicKeyId(entry.publicKey)
+                                : null);
+                        if (id && !ids.includes(id)) ids.push(id);
+                    } catch (_) {
+                        // Ignore an individual malformed server key entry.
+                    }
+                }
+
+                return ids;
+            } catch (error) {
+                console.warn("⚠️ Could not read server key IDs for decrypt diagnostics:", error);
+                return null;
+            }
+        })();
+    }
+
+    return luckyDecryptServerKeyDiagnosticsPromise;
+}
+
+async function collectLuckyDecryptKeyDiagnostics(ciphertext, currentUser, messageId, error) {
+    try {
+        if (typeof LuckyCrypto === "undefined") return null;
+
+        const value = String(ciphertext || "");
+        const prefix = value.startsWith("LCE2:") ? "LCE2:" :
+            (value.startsWith("LCE1:") ? "LCE1:" : "");
+        if (!prefix) return null;
+
+        let envelope = null;
+        try {
+            envelope = JSON.parse(value.slice(prefix.length));
+        } catch (_) {
+            envelope = null;
+        }
+
+        const username = String(currentUser || "").trim();
+        const envelopeKeyIds = [];
+
+        if (envelope?.keys && typeof envelope.keys === "object") {
+            const direct = envelope.keys[username];
+            const entries = typeof direct === "string"
+                ? [{ id: null, wrapped: direct }]
+                : (Array.isArray(direct) ? direct : []);
+
+            const sourceEntries = entries.length
+                ? entries
+                : Object.values(envelope.keys).flatMap(value => {
+                    if (typeof value === "string") return [{ id: null, wrapped: value }];
+                    return Array.isArray(value) ? value : [];
+                });
+
+            sourceEntries.forEach(entry => {
+                const id = String(entry?.id || "").trim();
+                if (id && !envelopeKeyIds.includes(id)) envelopeKeyIds.push(id);
+            });
+        }
+
+        const localKeyIds = [];
+        const localPairs = [
+            LuckyCrypto.keyPair,
+            ...(Array.isArray(LuckyCrypto.keyHistory) ? LuckyCrypto.keyHistory : [])
+        ].filter(pair => pair?.publicKey && pair?.privateKey);
+
+        for (const pair of localPairs) {
+            try {
+                const id = await LuckyCrypto.publicKeyId(pair.publicKey);
+                if (id && !localKeyIds.includes(id)) localKeyIds.push(id);
+            } catch (_) {
+                // Ignore an individual malformed local key.
+            }
+        }
+
+        const serverKeyIds = await getLuckyDecryptServerKeyIds(username);
+        const envelopeIdsMissingLocally = envelopeKeyIds.filter(id => !localKeyIds.includes(id));
+        const envelopeIdsPresentLocally = envelopeKeyIds.filter(id => localKeyIds.includes(id));
+        const envelopeIdsOnServer = serverKeyIds
+            ? envelopeKeyIds.filter(id => serverKeyIds.includes(id))
+            : [];
+
+        const diagnostic = {
+            messageId: String(messageId ?? ""),
+            username,
+            format: prefix.slice(0, -1),
+            error: String(error?.message || error || "Unknown decryption error"),
+            envelopeKeyIds,
+            localKeyIds,
+            serverKeyIds,
+            envelopeIdsPresentLocally,
+            envelopeIdsMissingLocally,
+            envelopeIdsOnServer,
+            likelyMissingLocalKey:
+                envelopeKeyIds.length > 0 && envelopeIdsMissingLocally.length > 0
+        };
+
+        const bucket = window.luckyDecryptDiagnostic?.keyDiagnostics;
+        if (Array.isArray(bucket)) {
+            if (!bucket.some(item => String(item?.messageId) === diagnostic.messageId)) {
+                bucket.push(diagnostic);
+                if (bucket.length > 25) bucket.shift();
+            }
+        }
+
+        console.error("🔎 LUCKY DECRYPT KEY DIAGNOSTIC:", diagnostic);
+        return diagnostic;
+    } catch (diagnosticError) {
+        console.warn("⚠️ Lucky decrypt key diagnostic failed:", diagnosticError);
+        return null;
+    }
+}
+
 async function loadMessages() {
     // During the initial open, keep the conversation following the newest
     // message while encrypted text is hydrated. This prevents late decryption
@@ -1757,7 +1889,8 @@ async function loadMessages() {
         domUpdated: 0,
         poolFailed: false,
         fallbackCount: 0,
-        completedIds: new Set()
+        completedIds: new Set(),
+        keyDiagnostics: []
     };
     window.luckyDecryptDiagnostic = decryptDiagnostic;
 
@@ -2009,6 +2142,15 @@ async function loadMessages() {
                         msg.text = error?.message?.includes("timed out")
                             ? "🔒 Decryption timed out"
                             : "🔒 Unable to decrypt this message";
+
+                        // Record only public-key IDs for this failure. This runs
+                        // in the background and never blocks rendering/decryption.
+                        void collectLuckyDecryptKeyDiagnostics(
+                            item.ciphertext,
+                            username,
+                            msg.id,
+                            error
+                        );
                     }
 
                     const id = String(msg.id);
