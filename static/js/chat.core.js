@@ -1393,6 +1393,7 @@ let longPressTriggered = false;
 let replyToId = null;
 let replyPreview = null;
 let messageMap = {};
+let luckyRecoveredMessageTexts = new Map();
 
 function pinnedStorageKey(){
     return "lucky_chat_pinned_" + username + "_" + friend;
@@ -2143,6 +2144,14 @@ async function loadMessages() {
         throw new Error("Failed to load messages (invalid history payload)");
     }
 
+    try {
+        luckyRecoveredMessageTexts =
+            await luckyLoadRecoveredMessageTextMap(username, friend);
+    } catch (error) {
+        luckyRecoveredMessageTexts = new Map();
+        console.warn("⚠️ Lucky recovered-message overlay unavailable:", error);
+    }
+
     const pendingOptimistic = pendingOutgoingMessages
         .map(item => item.message)
         .filter(Boolean);
@@ -2192,7 +2201,14 @@ async function loadMessages() {
 
             normalizeDocumentMessage(msg);
 
-            if (
+            const recoveredText = luckyRecoveredMessageTexts.get(String(msg.id));
+            if (typeof recoveredText === "string") {
+                // A recovery transfer is an account-bound, locally stored overlay
+                // for messages whose original ciphertext cannot be decrypted here.
+                // Keep the server message untouched and render the recovered
+                // plaintext directly for this account.
+                msg.text = recoveredText;
+            } else if (
                 msg.media_type !== "call" &&
                 !isDocumentMessage(msg) &&
                 typeof msg.text === "string" &&
@@ -8412,3 +8428,643 @@ chatMediaGallery?.querySelector("[data-media-gallery-close='1']")?.addEventListe
 chatMediaGalleryTabs.forEach(t=>t.addEventListener("click",()=>{chatMediaGalleryFilter=t.dataset.mediaGalleryTab||"all";chatMediaGalleryRender();}));
 chatMediaGalleryGrid?.addEventListener("click",e=>{const item=e.target.closest?.("[data-gallery-id]");if(!item)return;const m=messageMap[Number(item.dataset.galleryId)];if(!m)return;if(m.media_type==="image"&&typeof openPhotoViewer==="function"){window.__mediaGalleryViewerReturn=true;setTimeout(()=>{const i=new Image();i.src=m.media_url;i.dataset.photoUrl=m.media_url;openPhotoViewer(i);},40);}else if(m.media_type==="video"&&typeof videoViewerOpen==="function"){window.__mediaGalleryViewerReturn=true;setTimeout(()=>{const v=document.createElement("video");v.src=m.media_url;v.dataset.videoUrl=m.media_url;videoViewerOpen(v);},40);}});
 document.addEventListener("keydown",e=>{if((photoViewerState?.open||videoViewerState?.open))return;if(chatMediaGallery?.classList.contains("is-open")&&e.key==="Escape")chatMediaGalleryClose();});
+
+
+/* =========================================================
+   Lucky Chat — Android message-recovery transfer
+   Safe recovery of readable message text without transferring
+   private encryption keys. The transfer is encrypted to the
+   target account's current public key, then the encrypted pack
+   is stored locally on the target device.
+   ========================================================= */
+
+const LUCKY_RECOVERY_DB_NAME = "LuckyChatRecovery";
+const LUCKY_RECOVERY_DB_VERSION = 1;
+const LUCKY_RECOVERY_DB_TIMEOUT_MS = 8000;
+let luckyRecoveryPanel = null;
+let luckyRecoveryButton = null;
+let luckyRecoveryBody = null;
+let luckyRecoveryStatus = null;
+let luckyRecoveryFileInput = null;
+
+function luckyRecoveryStorageKey(account, chatFriend) {
+    return (
+        encodeURIComponent(String(account || "").trim()) +
+        "::" +
+        encodeURIComponent(String(chatFriend || "").trim())
+    );
+}
+
+async function luckyOpenRecoveryDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(
+            LUCKY_RECOVERY_DB_NAME,
+            LUCKY_RECOVERY_DB_VERSION
+        );
+        let settled = false;
+        let timeoutId = null;
+
+        const finish = (db, error) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            if (error) reject(error);
+            else resolve(db);
+        };
+
+        timeoutId = setTimeout(() => {
+            try { request.result?.close?.(); } catch (_) {}
+            finish(null, new Error("Recovery storage timed out"));
+        }, LUCKY_RECOVERY_DB_TIMEOUT_MS);
+
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains("packs")) {
+                db.createObjectStore("packs");
+            }
+        };
+
+        request.onsuccess = () => finish(request.result);
+        request.onerror = () =>
+            finish(null, request.error || new Error("Could not open recovery storage"));
+        request.onblocked = () =>
+            console.warn("⚠️ Lucky recovery IndexedDB open is blocked");
+    });
+}
+
+async function luckySaveRecoveryPack(account, chatFriend, encryptedPack) {
+    const db = await luckyOpenRecoveryDB();
+    const key = luckyRecoveryStorageKey(account, chatFriend);
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const transaction = db.transaction("packs", "readwrite");
+        const store = transaction.objectStore("packs");
+
+        const finish = error => {
+            if (settled) return;
+            settled = true;
+            try { db.close(); } catch (_) {}
+            if (error) reject(error);
+            else resolve();
+        };
+
+        const request = store.put(String(encryptedPack || ""), key);
+        request.onsuccess = () => {};
+        request.onerror = () =>
+            finish(request.error || new Error("Could not save recovery pack"));
+        transaction.oncomplete = () => finish();
+        transaction.onerror = () =>
+            finish(transaction.error || new Error("Could not save recovery pack"));
+        transaction.onabort = () =>
+            finish(transaction.error || new Error("Recovery pack save aborted"));
+    });
+}
+
+async function luckyLoadRecoveryPack(account, chatFriend) {
+    const db = await luckyOpenRecoveryDB();
+    const key = luckyRecoveryStorageKey(account, chatFriend);
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const transaction = db.transaction("packs", "readonly");
+        const store = transaction.objectStore("packs");
+        const request = store.get(key);
+
+        const finish = (result, error) => {
+            if (settled) return;
+            settled = true;
+            try { db.close(); } catch (_) {}
+            if (error) reject(error);
+            else resolve(result || "");
+        };
+
+        request.onsuccess = () => finish(request.result || "");
+        request.onerror = () =>
+            finish("", request.error || new Error("Could not load recovery pack"));
+        transaction.onabort = () =>
+            finish("", transaction.error || new Error("Recovery pack read aborted"));
+    });
+}
+
+async function luckyLoadRecoveredMessageTextMap(account, chatFriend) {
+    const map = new Map();
+    const encryptedPack = await luckyLoadRecoveryPack(account, chatFriend);
+    if (!encryptedPack) return map;
+
+    if (
+        typeof LuckyCrypto === "undefined" ||
+        typeof LuckyCrypto.decryptRecoveryTransfer !== "function"
+    ) {
+        return map;
+    }
+
+    const result = await LuckyCrypto.decryptRecoveryTransfer(
+        encryptedPack,
+        account
+    );
+
+    const payload = result?.payload;
+    if (!payload || payload.type !== "lucky-message-recovery") {
+        return map;
+    }
+
+    if (
+        String(payload.targetUsername || "").trim() !== String(account || "").trim() ||
+        String(payload.sourceUsername || "").trim() !== String(chatFriend || "").trim()
+    ) {
+        throw new Error("Stored recovery pack does not belong to this conversation");
+    }
+
+    const entries = Array.isArray(payload.messages) ? payload.messages : [];
+    for (const entry of entries) {
+        const id = Number(entry?.id);
+        const textValue = entry?.text;
+
+        if (
+            !Number.isSafeInteger(id) ||
+            id <= 0 ||
+            typeof textValue !== "string"
+        ) {
+            continue;
+        }
+
+        if (textValue.length > 20000) continue;
+        map.set(String(id), textValue);
+    }
+
+    return map;
+}
+
+function luckyRecoveryIsReadableMessage(msg) {
+    if (!msg || typeof msg !== "object") return false;
+
+    const id = Number(msg.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return false;
+
+    const sender = String(msg.sender || "").trim();
+    const receiver = String(msg.receiver || "").trim();
+    const conversationUsers = new Set([username, friend].map(v => String(v || "").trim()));
+
+    if (!conversationUsers.has(sender) || !conversationUsers.has(receiver)) {
+        return false;
+    }
+
+    const textValue = typeof msg.text === "string" ? msg.text : "";
+    if (!textValue.trim()) return false;
+
+    // Never export placeholders or diagnostic/error text.
+    if (
+        textValue === "🔐 Decrypting…" ||
+        textValue === "🔐 Decrypting..." ||
+        textValue.includes("Unable to decrypt") ||
+        textValue.includes("Decryption timed out") ||
+        textValue === "🔒 Secure message decryption failed"
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+async function luckyExportConversationRecoveryPack() {
+    if (
+        typeof LuckyCrypto === "undefined" ||
+        typeof LuckyCrypto.encryptRecoveryTransfer !== "function"
+    ) {
+        throw new Error("Recovery crypto runtime is unavailable");
+    }
+
+    await LuckyCrypto.ensureAccountContext(username);
+    await LuckyCrypto.ensureReady();
+
+    const messagesForTransfer = Object.values(messageMap)
+        .filter(luckyRecoveryIsReadableMessage)
+        .sort((a, b) => Number(a.id) - Number(b.id))
+        .map(msg => ({
+            id: Number(msg.id),
+            sender: String(msg.sender || "").trim(),
+            receiver: String(msg.receiver || "").trim(),
+            timestamp: msg.timestamp ?? null,
+            text: String(msg.text || "")
+        }));
+
+    if (!messagesForTransfer.length) {
+        throw new Error("No readable messages are available for recovery transfer");
+    }
+
+    const payload = {
+        v: 1,
+        type: "lucky-message-recovery",
+        sourceUsername: username,
+        targetUsername: friend,
+        conversationFriend: friend,
+        createdAt: new Date().toISOString(),
+        messages: messagesForTransfer
+    };
+
+    const encryptedPack = await LuckyCrypto.encryptRecoveryTransfer(
+        payload,
+        friend,
+        username
+    );
+
+    const fileName =
+        "lucky-chat-recovery-" +
+        String(friend || "chat").replace(/[^a-z0-9_-]/gi, "_") +
+        "-" +
+        new Date().toISOString().replace(/[:.]/g, "-") +
+        ".lcr";
+
+    const blob = new Blob([encryptedPack], {
+        type: "application/octet-stream"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+
+    return {
+        count: messagesForTransfer.length,
+        fileName
+    };
+}
+
+async function luckyImportConversationRecoveryPack(file) {
+    if (!file) throw new Error("Choose a recovery pack file");
+
+    if (file.size > 10 * 1024 * 1024) {
+        throw new Error("Recovery pack is larger than the 10 MB safety limit");
+    }
+
+    const encryptedPack = String(await file.text()).trim();
+    if (!encryptedPack.startsWith("LCRT1:")) {
+        throw new Error("This is not a valid Lucky Chat recovery pack");
+    }
+
+    if (
+        typeof LuckyCrypto === "undefined" ||
+        typeof LuckyCrypto.decryptRecoveryTransfer !== "function"
+    ) {
+        throw new Error("Recovery crypto runtime is unavailable");
+    }
+
+    const result = await LuckyCrypto.decryptRecoveryTransfer(
+        encryptedPack,
+        username
+    );
+    const payload = result?.payload;
+
+    if (
+        String(result?.sender || "").trim() !== String(friend || "").trim() ||
+        String(payload?.sourceUsername || "").trim() !== String(friend || "").trim() ||
+        String(payload?.targetUsername || "").trim() !== String(username || "").trim() ||
+        String(payload?.conversationFriend || "").trim() !== String(username || "").trim() &&
+        String(payload?.conversationFriend || "").trim() !== String(friend || "").trim()
+    ) {
+        throw new Error("This recovery pack is not for this conversation");
+    }
+
+    const entries = Array.isArray(payload?.messages)
+        ? payload.messages
+        : [];
+
+    if (!entries.length) {
+        throw new Error("The recovery pack contains no messages");
+    }
+
+    const sanitizedEntries = [];
+    const seenIds = new Set();
+
+    for (const entry of entries) {
+        const id = Number(entry?.id);
+        const textValue = typeof entry?.text === "string"
+            ? entry.text
+            : "";
+
+        if (
+            !Number.isSafeInteger(id) ||
+            id <= 0 ||
+            !textValue ||
+            textValue.length > 20000 ||
+            seenIds.has(id)
+        ) {
+            continue;
+        }
+
+        const sender = String(entry?.sender || "").trim();
+        const receiver = String(entry?.receiver || "").trim();
+
+        const allowed = new Set([username, friend].map(v => String(v || "").trim()));
+        if (!allowed.has(sender) || !allowed.has(receiver)) continue;
+
+        seenIds.add(id);
+        sanitizedEntries.push({
+            id,
+            sender,
+            receiver,
+            timestamp: entry?.timestamp ?? null,
+            text: textValue
+        });
+
+        if (sanitizedEntries.length >= 10000) break;
+    }
+
+    if (!sanitizedEntries.length) {
+        throw new Error("No valid messages were found in the recovery pack");
+    }
+
+    const storedPayload = {
+        v: 1,
+        type: "lucky-message-recovery",
+        sourceUsername: String(friend || "").trim(),
+        targetUsername: String(username || "").trim(),
+        conversationFriend: String(friend || "").trim(),
+        createdAt: String(payload.createdAt || new Date().toISOString()),
+        messages: sanitizedEntries
+    };
+
+    // Keep the encrypted source pack at rest. We intentionally do not store the
+    // recovered plaintext in localStorage or another plaintext store.
+    await luckySaveRecoveryPack(username, friend, encryptedPack);
+
+    luckyRecoveredMessageTexts = new Map(
+        sanitizedEntries.map(entry => [String(entry.id), entry.text])
+    );
+
+    return sanitizedEntries.length;
+}
+
+function luckySetRecoveryStatus(message, isError = false) {
+    if (!luckyRecoveryStatus) return;
+    luckyRecoveryStatus.textContent = String(message || "");
+    luckyRecoveryStatus.style.color = isError ? "#fca5a5" : "#9cc7ff";
+}
+
+function ensureLuckyRecoveryPanel() {
+    if (luckyRecoveryPanel?.isConnected) return;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "🔐 Recovery";
+    button.setAttribute(
+        "aria-label",
+        "Open Lucky Chat message recovery tools"
+    );
+
+    Object.assign(button.style, {
+        position: "fixed",
+        right: "12px",
+        bottom: "142px",
+        zIndex: "2147483638",
+        border: "1px solid rgba(96,165,250,.38)",
+        borderRadius: "12px",
+        padding: "8px 11px",
+        background: "rgba(6,14,27,.94)",
+        color: "#e8f1ff",
+        boxShadow: "0 10px 28px rgba(0,0,0,.30)",
+        fontSize: "12px",
+        cursor: "pointer"
+    });
+
+    const panel = document.createElement("div");
+    panel.id = "luckyRecoveryPanel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-label", "Lucky Chat message recovery");
+
+    Object.assign(panel.style, {
+        position: "fixed",
+        left: "50%",
+        bottom: "112px",
+        transform: "translateX(-50%)",
+        width: "min(94vw, 560px)",
+        maxHeight: "56vh",
+        zIndex: "2147483639",
+        display: "none",
+        boxSizing: "border-box",
+        overflow: "hidden",
+        border: "1px solid rgba(96,165,250,.35)",
+        borderRadius: "16px",
+        background: "rgba(6,14,27,.98)",
+        color: "#e8f1ff",
+        boxShadow: "0 20px 70px rgba(0,0,0,.45)",
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
+        fontFamily:
+            "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+    });
+
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "11px 13px",
+        borderBottom: "1px solid rgba(148,163,184,.16)",
+        background: "rgba(15,27,46,.90)"
+    });
+
+    const title = document.createElement("strong");
+    title.textContent = "🔐 Message Recovery";
+    Object.assign(title.style, { flex: "1", fontSize: "14px" });
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "✕";
+    Object.assign(close.style, {
+        width: "30px",
+        height: "30px",
+        border: "1px solid rgba(148,163,184,.22)",
+        borderRadius: "9px",
+        background: "rgba(15,23,42,.76)",
+        color: "#eaf3ff",
+        fontSize: "15px",
+        cursor: "pointer"
+    });
+
+    header.append(title, close);
+
+    const body = document.createElement("div");
+    Object.assign(body.style, {
+        maxHeight: "calc(56vh - 54px)",
+        overflow: "auto",
+        padding: "13px",
+        fontSize: "12px",
+        lineHeight: "1.5"
+    });
+
+    const description = document.createElement("div");
+    description.textContent =
+        "Use this between two Lucky Chat devices to recover readable " +
+        "messages without transferring private encryption keys. " +
+        "Export on the device that can read the old messages, then import " +
+        "the .lcr file on the other device.";
+
+    Object.assign(description.style, {
+        marginBottom: "12px",
+        color: "#b7c7db"
+    });
+
+    const exportButton = document.createElement("button");
+    exportButton.type = "button";
+    exportButton.textContent = "Export readable messages";
+    Object.assign(exportButton.style, {
+        width: "100%",
+        padding: "10px 12px",
+        marginBottom: "8px",
+        borderRadius: "10px",
+        border: "1px solid rgba(96,165,250,.30)",
+        background: "rgba(30,64,175,.42)",
+        color: "#eef6ff",
+        cursor: "pointer",
+        fontSize: "12px"
+    });
+
+    const importButton = document.createElement("button");
+    importButton.type = "button";
+    importButton.textContent = "Import recovery pack";
+    Object.assign(importButton.style, {
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: "10px",
+        border: "1px solid rgba(148,163,184,.25)",
+        background: "rgba(15,23,42,.72)",
+        color: "#eef6ff",
+        cursor: "pointer",
+        fontSize: "12px"
+    });
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".lcr,application/octet-stream,text/plain";
+    fileInput.hidden = true;
+
+    const status = document.createElement("div");
+    Object.assign(status.style, {
+        marginTop: "11px",
+        minHeight: "18px",
+        color: "#9cc7ff",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word"
+    });
+
+    const note = document.createElement("div");
+    note.textContent =
+        "The transfer file is encrypted to the target account. " +
+        "The target device stores only the encrypted recovery pack locally. " +
+        "The original server messages are not modified by this recovery tool.";
+    Object.assign(note.style, {
+        marginTop: "12px",
+        color: "#7f95ad",
+        fontSize: "10px"
+    });
+
+    body.append(
+        description,
+        exportButton,
+        importButton,
+        fileInput,
+        status,
+        note
+    );
+
+    panel.append(header, body);
+    document.body.append(button, panel);
+
+    const show = () => {
+        panel.style.display = "block";
+        button.style.display = "none";
+        luckySetRecoveryStatus("");
+    };
+
+    const hide = () => {
+        panel.style.display = "none";
+        button.style.display = "block";
+        if (fileInput) fileInput.value = "";
+    };
+
+    button.addEventListener("click", show);
+    close.addEventListener("click", hide);
+
+    exportButton.addEventListener("click", async () => {
+        exportButton.disabled = true;
+        importButton.disabled = true;
+        luckySetRecoveryStatus("Preparing encrypted recovery pack…");
+        try {
+            const result = await luckyExportConversationRecoveryPack();
+            luckySetRecoveryStatus(
+                "Exported " +
+                result.count +
+                " readable message(s).\n" +
+                "File: " +
+                result.fileName
+            );
+        } catch (error) {
+            console.error("Lucky recovery export failed:", error);
+            luckySetRecoveryStatus(
+                error?.message || "Could not export recovery pack",
+                true
+            );
+        } finally {
+            exportButton.disabled = false;
+            importButton.disabled = false;
+        }
+    });
+
+    importButton.addEventListener("click", () => {
+        fileInput.value = "";
+        fileInput.click();
+    });
+
+    fileInput.addEventListener("change", async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+
+        exportButton.disabled = true;
+        importButton.disabled = true;
+        luckySetRecoveryStatus("Opening encrypted recovery pack…");
+
+        try {
+            const count = await luckyImportConversationRecoveryPack(file);
+            luckySetRecoveryStatus(
+                "Imported " +
+                count +
+                " recovered message(s).\n" +
+                "Reloading this conversation…"
+            );
+
+            await loadMessages();
+
+            luckySetRecoveryStatus(
+                "Recovery complete. " +
+                count +
+                " message(s) are now available on this device."
+            );
+        } catch (error) {
+            console.error("Lucky recovery import failed:", error);
+            luckySetRecoveryStatus(
+                error?.message || "Could not import recovery pack",
+                true
+            );
+        } finally {
+            exportButton.disabled = false;
+            importButton.disabled = false;
+            fileInput.value = "";
+        }
+    });
+
+    luckyRecoveryPanel = panel;
+    luckyRecoveryButton = button;
+    luckyRecoveryBody = body;
+    luckyRecoveryStatus = status;
+    luckyRecoveryFileInput = fileInput;
+}
+
+ensureLuckyRecoveryPanel();

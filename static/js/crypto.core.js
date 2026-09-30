@@ -867,6 +867,201 @@ async decryptMessage(value, currentUsername) {
 },
 
 
+    /*
+     * Encrypted message-recovery transfer.
+     *
+     * This does NOT transfer private keys. The source device decrypts messages
+     * locally, creates a plaintext recovery payload, then encrypts that payload
+     * to the target account's current public key using a fresh AES-GCM key whose
+     * key is wrapped with RSA-OAEP. The transferred file therefore contains no
+     * usable plaintext unless opened by the intended target account.
+     */
+    async encryptRecoveryTransfer(payload, recipientUsername, senderUsername) {
+        const sender = String(
+            senderUsername || this.accountUsername || ""
+        ).trim();
+        const recipient = String(recipientUsername || "").trim();
+
+        await this.ensureAccountContext(sender);
+        await this.ensureReady();
+
+        if (!recipient) {
+            throw new Error("Recovery transfer recipient is required");
+        }
+
+        const recipientPublicKeys = await this.getPublicKeys(recipient);
+        const recipientKeyRecord =
+            recipientPublicKeys[recipientPublicKeys.length - 1];
+
+        if (!recipientKeyRecord?.publicKey) {
+            throw new Error("Recipient encryption key is unavailable");
+        }
+
+        const recipientKeyId =
+            recipientKeyRecord.keyId ||
+            await this.publicKeyId(recipientKeyRecord.publicKey);
+
+        const transferKey = await this.generateMessageKey();
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const plaintext = new TextEncoder().encode(
+            JSON.stringify(payload)
+        );
+
+        const ciphertext = await window.crypto.subtle.encrypt(
+            {
+                name: "AES-GCM",
+                iv,
+                tagLength: 128
+            },
+            transferKey,
+            plaintext
+        );
+
+        const rawTransferKey = await window.crypto.subtle.exportKey(
+            "raw",
+            transferKey
+        );
+
+        const wrappedKey = await window.crypto.subtle.encrypt(
+            { name: "RSA-OAEP" },
+            recipientKeyRecord.publicKey,
+            rawTransferKey
+        );
+
+        return "LCRT1:" + JSON.stringify({
+            v: 1,
+            alg: "RSA-OAEP-3072-SHA256/AES-256-GCM",
+            sender,
+            recipient,
+            recipientKeyId,
+            iv: this.arrayBufferToBase64(iv.buffer),
+            wrappedKey: this.arrayBufferToBase64(wrappedKey),
+            ciphertext: this.arrayBufferToBase64(ciphertext)
+        });
+    },
+
+    async decryptRecoveryTransfer(value, currentUsername) {
+        const username = String(currentUsername || "").trim();
+        await this.ensureAccountContext(username);
+        await this.ensureDecryptReady();
+
+        const raw = String(value || "").trim();
+        if (!raw.startsWith("LCRT1:")) {
+            throw new Error("Invalid Lucky Chat recovery transfer format");
+        }
+
+        let envelope;
+        try {
+            envelope = JSON.parse(raw.slice("LCRT1:".length));
+        } catch (_) {
+            throw new Error("Recovery transfer is invalid");
+        }
+
+        if (
+            envelope?.v !== 1 ||
+            envelope?.alg !== "RSA-OAEP-3072-SHA256/AES-256-GCM" ||
+            !envelope.recipient ||
+            !envelope.wrappedKey ||
+            !envelope.iv ||
+            !envelope.ciphertext
+        ) {
+            throw new Error("Unsupported or incomplete recovery transfer");
+        }
+
+        if (String(envelope.recipient).trim() !== username) {
+            throw new Error(
+                "This recovery transfer belongs to another Lucky Chat account"
+            );
+        }
+
+        const candidates = [
+            this.keyPair,
+            ...(Array.isArray(this.keyHistory) ? this.keyHistory : [])
+        ].filter(pair => pair?.privateKey && pair?.publicKey);
+
+        let lastError = null;
+        const orderedCandidates = [];
+
+        for (const pair of candidates) {
+            try {
+                const id = await this.publicKeyId(pair.publicKey);
+                if (
+                    envelope.recipientKeyId &&
+                    id === String(envelope.recipientKeyId).trim()
+                ) {
+                    orderedCandidates.unshift({ pair, id });
+                } else {
+                    orderedCandidates.push({ pair, id });
+                }
+            } catch (_) {
+                orderedCandidates.push({ pair, id: null });
+            }
+        }
+
+        for (const candidate of orderedCandidates) {
+            try {
+                const rawTransferKey = await window.crypto.subtle.decrypt(
+                    { name: "RSA-OAEP" },
+                    candidate.pair.privateKey,
+                    this.base64ToArrayBuffer(envelope.wrappedKey)
+                );
+
+                const transferKey = await window.crypto.subtle.importKey(
+                    "raw",
+                    rawTransferKey,
+                    { name: "AES-GCM" },
+                    false,
+                    ["decrypt"]
+                );
+
+                const plaintextBuffer = await window.crypto.subtle.decrypt(
+                    {
+                        name: "AES-GCM",
+                        iv: new Uint8Array(
+                            this.base64ToArrayBuffer(envelope.iv)
+                        ),
+                        tagLength: 128
+                    },
+                    transferKey,
+                    this.base64ToArrayBuffer(envelope.ciphertext)
+                );
+
+                let payload;
+                try {
+                    payload = JSON.parse(
+                        new TextDecoder().decode(plaintextBuffer)
+                    );
+                } catch (_) {
+                    throw new Error("Recovered transfer payload is invalid");
+                }
+
+                if (
+                    payload?.v !== 1 ||
+                    payload?.type !== "lucky-message-recovery" ||
+                    String(payload.targetUsername || "").trim() !== username
+                ) {
+                    throw new Error("Recovered transfer belongs to another account");
+                }
+
+                return {
+                    payload,
+                    sender: String(envelope.sender || "").trim(),
+                    recipient: String(envelope.recipient || "").trim(),
+                    recipientKeyId:
+                        String(envelope.recipientKeyId || "").trim() || null
+                };
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        throw new Error(
+            lastError?.message ||
+            "Recovery transfer cannot be decrypted with this account's local keys"
+        );
+    },
+
+
     clearCachedPublicKey(username) {
         const name = String(username || "").trim();
         if (name) this.publicKeyCache.delete(name);
