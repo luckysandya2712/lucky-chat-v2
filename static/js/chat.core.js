@@ -1729,6 +1729,282 @@ async function getLuckyDecryptServerKeyIds(currentUser) {
     return luckyDecryptServerKeyDiagnosticsPromise;
 }
 
+
+// Temporary on-screen diagnostics for Android-only testing.
+// This panel exposes only message IDs and public-key identifiers. It never
+// displays or exports private keys, recovery codes, cookies, or ciphertext.
+let luckyDecryptDiagnosticPanel = null;
+let luckyDecryptDiagnosticPanelBody = null;
+let luckyDecryptDiagnosticRestoreButton = null;
+
+function luckyDecryptDiagnosticConclusion(diagnostic) {
+    const envelopeIds = Array.isArray(diagnostic?.envelopeKeyIds)
+        ? diagnostic.envelopeKeyIds
+        : [];
+    const localIds = Array.isArray(diagnostic?.localKeyIds)
+        ? diagnostic.localKeyIds
+        : [];
+    const serverIds = Array.isArray(diagnostic?.serverKeyIds)
+        ? diagnostic.serverKeyIds
+        : [];
+
+    if (!envelopeIds.length) {
+        return "No key ID was embedded in this message format.";
+    }
+
+    const localMatch = envelopeIds.some(id => localIds.includes(id));
+    const serverMatch = envelopeIds.some(id => serverIds.includes(id));
+
+    if (localMatch) {
+        return "A matching local key ID exists. The failure needs deeper crypto inspection.";
+    }
+
+    if (serverMatch) {
+        return "Server still lists the message key, but this device has no matching local private key.";
+    }
+
+    if (diagnostic?.serverKeyIds === null) {
+        return "Server key history could not be read during this diagnostic.";
+    }
+
+    return "The message key ID is not present in the server key history returned for this account.";
+}
+
+function ensureLuckyDecryptDiagnosticPanel() {
+    if (luckyDecryptDiagnosticPanel?.isConnected) {
+        return;
+    }
+
+    const panel = document.createElement("div");
+    panel.id = "luckyDecryptDiagnosticPanel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-label", "Lucky Chat decryption diagnostics");
+
+    Object.assign(panel.style, {
+        position: "fixed",
+        left: "50%",
+        bottom: "104px",
+        transform: "translateX(-50%)",
+        width: "min(94vw, 560px)",
+        maxHeight: "52vh",
+        zIndex: "2147483640",
+        display: "none",
+        boxSizing: "border-box",
+        overflow: "hidden",
+        border: "1px solid rgba(96,165,250,.35)",
+        borderRadius: "16px",
+        background: "rgba(6,14,27,.97)",
+        color: "#e8f1ff",
+        boxShadow: "0 20px 70px rgba(0,0,0,.42)",
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
+        fontFamily: "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+    });
+
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "10px 12px",
+        borderBottom: "1px solid rgba(148,163,184,.16)",
+        background: "rgba(15,27,46,.88)"
+    });
+
+    const title = document.createElement("strong");
+    title.textContent = "🔎 Decryption Key Diagnostic";
+    Object.assign(title.style, {
+        flex: "1",
+        fontSize: "14px"
+    });
+
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.textContent = "Copy";
+    Object.assign(copyButton.style, {
+        border: "1px solid rgba(148,163,184,.25)",
+        borderRadius: "9px",
+        padding: "6px 9px",
+        background: "rgba(30,64,175,.42)",
+        color: "#eaf3ff",
+        fontSize: "12px",
+        cursor: "pointer"
+    });
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.textContent = "✕";
+    closeButton.setAttribute("aria-label", "Close decryption diagnostics");
+    Object.assign(closeButton.style, {
+        width: "30px",
+        height: "30px",
+        border: "1px solid rgba(148,163,184,.22)",
+        borderRadius: "9px",
+        background: "rgba(15,23,42,.76)",
+        color: "#eaf3ff",
+        fontSize: "15px",
+        cursor: "pointer"
+    });
+
+    header.append(title, copyButton, closeButton);
+
+    const body = document.createElement("div");
+    Object.assign(body.style, {
+        maxHeight: "calc(52vh - 52px)",
+        overflow: "auto",
+        padding: "10px 12px",
+        fontSize: "11px",
+        lineHeight: "1.45",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        fontFamily: "ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace"
+    });
+
+    const footer = document.createElement("div");
+    footer.textContent = "Read-only diagnostic • public key IDs only";
+    Object.assign(footer.style, {
+        padding: "8px 12px",
+        borderTop: "1px solid rgba(148,163,184,.12)",
+        color: "#8ea3bd",
+        fontSize: "10px"
+    });
+
+    panel.append(header, body, footer);
+    document.body.appendChild(panel);
+
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.textContent = "🔎 Keys";
+    restore.setAttribute("aria-label", "Show decryption key diagnostics");
+    Object.assign(restore.style, {
+        position: "fixed",
+        right: "12px",
+        bottom: "92px",
+        zIndex: "2147483640",
+        display: "none",
+        border: "1px solid rgba(96,165,250,.38)",
+        borderRadius: "12px",
+        padding: "8px 11px",
+        background: "rgba(6,14,27,.94)",
+        color: "#e8f1ff",
+        boxShadow: "0 10px 28px rgba(0,0,0,.3)",
+        fontSize: "12px",
+        cursor: "pointer"
+    });
+    document.body.appendChild(restore);
+
+    const showPanel = () => {
+        panel.style.display = "block";
+        restore.style.display = "none";
+    };
+
+    closeButton.addEventListener("click", () => {
+        panel.style.display = "none";
+        restore.style.display = "block";
+    });
+
+    restore.addEventListener("click", showPanel);
+
+    copyButton.addEventListener("click", async () => {
+        try {
+            const entries = Array.isArray(window.luckyDecryptDiagnostic?.keyDiagnostics)
+                ? window.luckyDecryptDiagnostic.keyDiagnostics.slice(-25)
+                : [];
+            const payload = JSON.stringify(entries, null, 2);
+
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(payload);
+            } else {
+                const area = document.createElement("textarea");
+                area.value = payload;
+                area.style.position = "fixed";
+                area.style.opacity = "0";
+                document.body.appendChild(area);
+                area.focus();
+                area.select();
+                document.execCommand("copy");
+                area.remove();
+            }
+
+            const previous = copyButton.textContent;
+            copyButton.textContent = "Copied";
+            setTimeout(() => {
+                copyButton.textContent = previous;
+            }, 1200);
+        } catch (error) {
+            console.warn("⚠️ Could not copy Lucky decrypt diagnostics:", error);
+        }
+    });
+
+    luckyDecryptDiagnosticPanel = panel;
+    luckyDecryptDiagnosticPanelBody = body;
+    luckyDecryptDiagnosticRestoreButton = restore;
+}
+
+function renderLuckyDecryptDiagnosticPanel() {
+    try {
+        ensureLuckyDecryptDiagnosticPanel();
+
+        const entries = Array.isArray(window.luckyDecryptDiagnostic?.keyDiagnostics)
+            ? window.luckyDecryptDiagnostic.keyDiagnostics.slice(-8)
+            : [];
+
+        if (!entries.length) return;
+
+        const chunks = [];
+
+        for (const diagnostic of entries) {
+            const envelopeIds = Array.isArray(diagnostic?.envelopeKeyIds)
+                ? diagnostic.envelopeKeyIds
+                : [];
+            const localIds = Array.isArray(diagnostic?.localKeyIds)
+                ? diagnostic.localKeyIds
+                : [];
+            const serverIds = Array.isArray(diagnostic?.serverKeyIds)
+                ? diagnostic.serverKeyIds
+                : [];
+
+            const present = Array.isArray(diagnostic?.envelopeIdsPresentLocally)
+                ? diagnostic.envelopeIdsPresentLocally
+                : [];
+            const missing = Array.isArray(diagnostic?.envelopeIdsMissingLocally)
+                ? diagnostic.envelopeIdsMissingLocally
+                : [];
+            const onServer = Array.isArray(diagnostic?.envelopeIdsOnServer)
+                ? diagnostic.envelopeIdsOnServer
+                : [];
+
+            chunks.push(
+                [
+                    `Message: ${String(diagnostic?.messageId || "?")}`,
+                    `Format: ${String(diagnostic?.format || "?")}`,
+                    `Error: ${String(diagnostic?.error || "Unknown")}`,
+                    `Envelope key ID(s): ${envelopeIds.length ? envelopeIds.join(", ") : "(none)"}`,
+                    `Local key ID(s): ${localIds.length ? localIds.join(", ") : "(none)"}`,
+                    `Server key ID(s): ${
+                        diagnostic?.serverKeyIds === null
+                            ? "(unavailable)"
+                            : (serverIds.length ? serverIds.join(", ") : "(none)")
+                    }`,
+                    `Local match: ${present.length ? "YES" : "NO"}`,
+                    `Server match: ${onServer.length ? "YES" : "NO"}`,
+                    `Missing locally: ${missing.length ? missing.join(", ") : "(none)"}`,
+                    `Conclusion: ${luckyDecryptDiagnosticConclusion(diagnostic)}`
+                ].join("\n")
+            );
+        }
+
+        luckyDecryptDiagnosticPanelBody.textContent = chunks.join(
+            "\n\n────────────────────────────────\n\n"
+        );
+
+        luckyDecryptDiagnosticPanel.style.display = "block";
+        luckyDecryptDiagnosticRestoreButton.style.display = "none";
+    } catch (error) {
+        console.warn("⚠️ Could not render Lucky decrypt diagnostic panel:", error);
+    }
+}
+
 async function collectLuckyDecryptKeyDiagnostics(ciphertext, currentUser, messageId, error) {
     try {
         if (typeof LuckyCrypto === "undefined") return null;
@@ -1813,6 +2089,7 @@ async function collectLuckyDecryptKeyDiagnostics(ciphertext, currentUser, messag
         }
 
         console.error("🔎 LUCKY DECRYPT KEY DIAGNOSTIC:", diagnostic);
+        renderLuckyDecryptDiagnosticPanel();
         return diagnostic;
     } catch (diagnosticError) {
         console.warn("⚠️ Lucky decrypt key diagnostic failed:", diagnosticError);
