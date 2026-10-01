@@ -410,16 +410,13 @@ const LuckyCrypto = {
             return;
         }
 
-        // Never silently generate a replacement when the account already has a
-        // server-side identity. That would strand older encrypted messages.
+        // A fresh browser profile (for example, Chrome Incognito) has a separate
+        // IndexedDB and therefore cannot see this account's existing private key.
+        // Do not reuse another account's local identity and do not require the old
+        // private key just to establish a new device session. Generate a distinct
+        // device key and publish it. The backend retains the previous public key in
+        // its public-key history, so older-device identities remain addressable.
         const serverState = await this.getServerPublicKeyState(username);
-
-        if (serverState.hasServerKey) {
-            throw new Error(
-                "This account already has server-side encryption keys, but no local " +
-                "private key is available. Use the account's recovery backup before continuing."
-            );
-        }
 
         this.keyPair = await this.generateKeyPair();
         this.keyHistory = [];
@@ -431,7 +428,9 @@ const LuckyCrypto = {
         }, accountStorageKey);
 
         console.log(
-            "🔑 New account-scoped encryption key pair generated for",
+            serverState.hasServerKey
+                ? "🔑 New Lucky Chat device key generated for existing account"
+                : "🔑 New account-scoped encryption key pair generated for",
             username
         );
     },
@@ -638,8 +637,13 @@ async encryptMessage(text, recipientUsername, senderUsername) {
     if (!recipient) throw new Error("Recipient username is required");
 
     const recipientPublicKeys = await this.getPublicKeys(recipient);
-    const senderPublicKey = this.keyPair.publicKey;
-    const senderKeyId = await this.publicKeyId(senderPublicKey);
+
+    // Multi-device account support: every active/archived public identity of the
+    // sender receives a wrapped copy of the message key. A fresh browser profile
+    // may have a new current device key, while an older browser still retains its
+    // previous private key. Keeping both sender identities in the envelope lets
+    // the account's other sessions continue to read the messages it sent.
+    const senderPublicKeys = await this.getPublicKeys(sender);
 
     const aesKey = await this.generateMessageKey();
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -660,11 +664,19 @@ async encryptMessage(text, recipientUsername, senderUsername) {
         aesKey
     );
 
-    const senderWrappedKey = await window.crypto.subtle.encrypt(
-        { name: "RSA-OAEP" },
-        senderPublicKey,
-        rawAesKey
-    );
+    const senderWrappedKeys = [];
+    for (const senderKey of senderPublicKeys) {
+        const wrapped = await window.crypto.subtle.encrypt(
+            { name: "RSA-OAEP" },
+            senderKey.publicKey,
+            rawAesKey
+        );
+
+        senderWrappedKeys.push({
+            id: senderKey.keyId,
+            wrapped: this.arrayBufferToBase64(wrapped)
+        });
+    }
 
     const recipientWrappedKeys = [];
     for (const recipientKey of recipientPublicKeys) {
@@ -688,10 +700,7 @@ async encryptMessage(text, recipientUsername, senderUsername) {
         iv: this.arrayBufferToBase64(iv.buffer),
         ciphertext: this.arrayBufferToBase64(ciphertext),
         keys: {
-            [sender]: [{
-                id: senderKeyId,
-                wrapped: this.arrayBufferToBase64(senderWrappedKey)
-            }],
+            [sender]: senderWrappedKeys,
             [recipient]: recipientWrappedKeys
         }
     };
