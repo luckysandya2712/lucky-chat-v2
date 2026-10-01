@@ -1895,7 +1895,8 @@ function ensureLuckyDecryptDiagnosticPanel() {
     document.body.appendChild(restore);
 
     const showPanel = () => {
-        panel.style.display = "block";
+        // Internal diagnostic UI is intentionally hidden in the normal product UI.
+        panel.style.display = "none";
         restore.style.display = "none";
     };
 
@@ -1999,7 +2000,9 @@ function renderLuckyDecryptDiagnosticPanel() {
             "\n\n────────────────────────────────\n\n"
         );
 
-        luckyDecryptDiagnosticPanel.style.display = "block";
+        // Diagnostics remain available internally for future maintenance, but
+        // the temporary Android "Keys" UI is hidden from normal users.
+        luckyDecryptDiagnosticPanel.style.display = "none";
         luckyDecryptDiagnosticRestoreButton.style.display = "none";
     } catch (error) {
         console.warn("⚠️ Could not render Lucky decrypt diagnostic panel:", error);
@@ -8814,6 +8817,7 @@ function ensureLuckyRecoveryPanel() {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = "🔐 Recovery";
+    button.hidden = true;
     button.setAttribute(
         "aria-label",
         "Open Lucky Chat message recovery tools"
@@ -8979,14 +8983,16 @@ function ensureLuckyRecoveryPanel() {
     document.body.append(button, panel);
 
     const show = () => {
-        panel.style.display = "block";
+        // Recovery tools remain implemented for maintenance, but are hidden from
+        // normal users after the recovery feature has been verified.
+        panel.style.display = "none";
         button.style.display = "none";
-        luckySetRecoveryStatus("");
+        if (fileInput) fileInput.value = "";
     };
 
     const hide = () => {
         panel.style.display = "none";
-        button.style.display = "block";
+        button.style.display = "none";
         if (fileInput) fileInput.value = "";
     };
 
