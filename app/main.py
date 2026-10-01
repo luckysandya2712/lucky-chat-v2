@@ -684,6 +684,11 @@ def _ensure_crypto_key_columns():
                 "ALTER TABLE users ADD COLUMN crypto_key_backup TEXT"
             )
 
+        if "crypto_device_pairing" not in columns:
+            statements.append(
+                "ALTER TABLE users ADD COLUMN crypto_device_pairing TEXT"
+            )
+
         if statements:
             with engine.begin() as connection:
                 for statement in statements:
@@ -1534,6 +1539,16 @@ class CryptoBackupPayload(BaseModel):
     backup: str
 
 
+class CryptoDevicePairRequestPayload(BaseModel):
+    request_id: str
+    device_public_key: str
+
+
+class CryptoDevicePairApprovalPayload(BaseModel):
+    request_id: str
+    transfer: str
+
+
 class StatusLikePayload(BaseModel):
     liked: bool = True
 
@@ -1607,6 +1622,315 @@ async def save_crypto_backup(
         print("CRYPTO BACKUP SAVE ERROR:", exc)
         traceback.print_exc()
         return {"success": False, "error": "Could not save crypto backup"}
+    finally:
+        db.close()
+
+
+# =========================================================
+# Lucky Chat — authenticated multi-device crypto pairing
+# =========================================================
+# The server stores only a short-lived request containing a NEW DEVICE'S
+# public key and, after explicit approval, a short-lived transfer blob that
+# is already encrypted to that public key. Private keys are never sent to the
+# server in plaintext.
+# =========================================================
+
+_CRYPTO_DEVICE_PAIRING_TTL_SECONDS = 10 * 60
+_CRYPTO_DEVICE_PAIRING_MAX_PENDING = 3
+_CRYPTO_DEVICE_PAIRING_MAX_RESULTS = 3
+_CRYPTO_DEVICE_PAIRING_MAX_BLOB = 250_000
+
+
+def _crypto_pairing_state_load(db, user_id):
+    raw = db.execute(
+        sqlalchemy_text(
+            "SELECT crypto_device_pairing FROM users WHERE id = :user_id"
+        ),
+        {"user_id": user_id},
+    ).scalar()
+
+    state = {}
+    if raw:
+        try:
+            parsed = json.loads(str(raw))
+            if isinstance(parsed, dict):
+                state = parsed
+        except Exception:
+            state = {}
+
+    return {
+        "pending": state.get("pending")
+        if isinstance(state.get("pending"), list)
+        else [],
+        "results": state.get("results")
+        if isinstance(state.get("results"), list)
+        else [],
+    }
+
+
+def _crypto_pairing_prune(state, now=None):
+    now = float(now if now is not None else time.time())
+
+    def keep(item):
+        if not isinstance(item, dict):
+            return False
+        try:
+            return float(item.get("expires_at", 0)) > now
+        except Exception:
+            return False
+
+    state["pending"] = [item for item in state["pending"] if keep(item)][-_CRYPTO_DEVICE_PAIRING_MAX_PENDING:]
+    state["results"] = [item for item in state["results"] if keep(item)][-_CRYPTO_DEVICE_PAIRING_MAX_RESULTS:]
+    return state
+
+
+def _crypto_pairing_state_save(db, user_id, state):
+    payload = json.dumps(
+        {
+            "pending": state.get("pending", [])[-_CRYPTO_DEVICE_PAIRING_MAX_PENDING:],
+            "results": state.get("results", [])[-_CRYPTO_DEVICE_PAIRING_MAX_RESULTS:],
+        },
+        separators=(",", ":"),
+    )
+
+    db.execute(
+        sqlalchemy_text(
+            "UPDATE users SET crypto_device_pairing = :payload WHERE id = :user_id"
+        ),
+        {"payload": payload, "user_id": user_id},
+    )
+    db.commit()
+
+
+@app.post("/crypto/device-pair/request")
+async def request_crypto_device_pair(
+    data: CryptoDevicePairRequestPayload,
+    request: Request,
+):
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    request_id = str(data.request_id or "").strip()
+    device_public_key = str(data.device_public_key or "").strip()
+    if len(request_id) < 12 or len(request_id) > 200:
+        return {"success": False, "error": "Invalid device-pair request id"}
+    if not device_public_key or len(device_public_key) > 20_000:
+        return {"success": False, "error": "Invalid device public key"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        now = time.time()
+        state = _crypto_pairing_prune(_crypto_pairing_state_load(db, user.id), now)
+
+        for item in state["pending"]:
+            if (
+                str(item.get("request_id") or "") == request_id
+                and str(item.get("device_public_key") or "") == device_public_key
+            ):
+                _crypto_pairing_state_save(db, user.id, state)
+                return {
+                    "success": True,
+                    "request_id": request_id,
+                    "status": "pending",
+                    "expires_in": max(0, int(float(item.get("expires_at", now)) - now)),
+                }
+
+        state["results"] = [
+            item for item in state["results"]
+            if str(item.get("request_id") or "") != request_id
+        ]
+        state["pending"].append({
+            "request_id": request_id,
+            "device_public_key": device_public_key,
+            "created_at": int(now),
+            "expires_at": int(now + _CRYPTO_DEVICE_PAIRING_TTL_SECONDS),
+        })
+        state["pending"] = state["pending"][-_CRYPTO_DEVICE_PAIRING_MAX_PENDING:]
+        _crypto_pairing_state_save(db, user.id, state)
+
+        return {
+            "success": True,
+            "request_id": request_id,
+            "status": "pending",
+            "expires_in": _CRYPTO_DEVICE_PAIRING_TTL_SECONDS,
+        }
+    except Exception as exc:
+        db.rollback()
+        print("CRYPTO DEVICE PAIR REQUEST ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not create device-pair request"}
+    finally:
+        db.close()
+
+
+@app.get("/crypto/device-pair/pending")
+async def get_pending_crypto_device_pairs(request: Request):
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        state = _crypto_pairing_prune(_crypto_pairing_state_load(db, user.id))
+        return {
+            "success": True,
+            "requests": [
+                {
+                    "request_id": str(item.get("request_id") or ""),
+                    "device_public_key": str(item.get("device_public_key") or ""),
+                    "created_at": int(item.get("created_at") or 0),
+                    "expires_at": int(item.get("expires_at") or 0),
+                }
+                for item in state["pending"]
+            ],
+        }
+    except Exception as exc:
+        db.rollback()
+        print("CRYPTO DEVICE PAIR PENDING ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not load device-pair requests"}
+    finally:
+        db.close()
+
+
+@app.get("/crypto/device-pair/status/{request_id}")
+async def get_crypto_device_pair_status(request_id: str, request: Request):
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    request_id = str(request_id or "").strip()
+    if len(request_id) < 12 or len(request_id) > 200:
+        return {"success": False, "error": "Invalid device-pair request id"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        state = _crypto_pairing_prune(_crypto_pairing_state_load(db, user.id))
+
+        for item in state["results"]:
+            if str(item.get("request_id") or "") == request_id:
+                return {
+                    "success": True,
+                    "status": "approved",
+                    "transfer": str(item.get("transfer") or ""),
+                }
+
+        for item in state["pending"]:
+            if str(item.get("request_id") or "") == request_id:
+                return {"success": True, "status": "pending"}
+
+        return {"success": True, "status": "expired"}
+    except Exception as exc:
+        db.rollback()
+        print("CRYPTO DEVICE PAIR STATUS ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not read device-pair status"}
+    finally:
+        db.close()
+
+
+@app.post("/crypto/device-pair/approve")
+async def approve_crypto_device_pair(
+    data: CryptoDevicePairApprovalPayload,
+    request: Request,
+):
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    request_id = str(data.request_id or "").strip()
+    transfer = str(data.transfer or "").strip()
+    if len(request_id) < 12 or len(request_id) > 200:
+        return {"success": False, "error": "Invalid device-pair request id"}
+    if not transfer or len(transfer) > _CRYPTO_DEVICE_PAIRING_MAX_BLOB:
+        return {"success": False, "error": "Invalid device-pair transfer"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+
+        state = _crypto_pairing_prune(_crypto_pairing_state_load(db, user.id))
+        target = None
+        remaining = []
+        for item in state["pending"]:
+            if str(item.get("request_id") or "") == request_id:
+                target = item
+            else:
+                remaining.append(item)
+
+        if target is None:
+            _crypto_pairing_state_save(db, user.id, state)
+            return {
+                "success": False,
+                "error": "Device-pair request is expired or no longer pending",
+            }
+
+        state["pending"] = remaining
+        now = int(time.time())
+        state["results"].append({
+            "request_id": request_id,
+            "transfer": transfer,
+            "created_at": now,
+            "expires_at": now + _CRYPTO_DEVICE_PAIRING_TTL_SECONDS,
+        })
+        state["results"] = state["results"][-_CRYPTO_DEVICE_PAIRING_MAX_RESULTS:]
+        _crypto_pairing_state_save(db, user.id, state)
+        return {"success": True, "status": "approved"}
+    except Exception as exc:
+        db.rollback()
+        print("CRYPTO DEVICE PAIR APPROVAL ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not approve device-pair request"}
+    finally:
+        db.close()
+
+
+@app.post("/crypto/device-pair/deny")
+async def deny_crypto_device_pair(request: Request):
+    username = request.session.get("username")
+    if not username:
+        return {"success": False, "error": "Not logged in"}
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    request_id = str(body.get("request_id") or "").strip()
+    if len(request_id) < 12 or len(request_id) > 200:
+        return {"success": False, "error": "Invalid device-pair request id"}
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_by_username(db, username)
+        if not user:
+            return {"success": False, "error": "User not found"}
+        state = _crypto_pairing_prune(_crypto_pairing_state_load(db, user.id))
+        state["pending"] = [
+            item for item in state["pending"]
+            if str(item.get("request_id") or "") != request_id
+        ]
+        _crypto_pairing_state_save(db, user.id, state)
+        return {"success": True, "status": "denied"}
+    except Exception as exc:
+        db.rollback()
+        print("CRYPTO DEVICE PAIR DENY ERROR:", exc)
+        traceback.print_exc()
+        return {"success": False, "error": "Could not deny device-pair request"}
     finally:
         db.close()
 

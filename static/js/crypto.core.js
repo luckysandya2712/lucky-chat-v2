@@ -11,6 +11,11 @@ const LuckyCrypto = {
     accountUsername: null,
     accountStorageKey: null,
     publicKeyUploadAllowed: null,
+    deviceNeedsPairing: false,
+    devicePairingRequestId: null,
+    devicePairingPollTimer: null,
+    devicePairingWatcherTimer: null,
+    devicePairingPromptActive: false,
 
     getCookieValue(name) {
         try {
@@ -262,6 +267,19 @@ const LuckyCrypto = {
             if (this.publicKeyUploadAllowed === false) {
                 void this.synchronizePublicKeyIfSafe();
             }
+
+            // A fresh browser profile cannot contain this account's existing
+            // private keys. Start an authenticated, explicitly approved device
+            // pairing in the background so old encrypted messages can become
+            // readable without blocking normal chat startup.
+            if (this.deviceNeedsPairing || this.hasSavedDevicePairingState()) {
+                void this.startOrResumeDevicePairing();
+            }
+
+            // Existing sessions watch for a new browser requesting access. The
+            // actual transfer is encrypted to the requesting device's public key.
+            void this.watchForIncomingDevicePairings();
+
             console.log("✅ LuckyCrypto initialized");
             return true;
         })();
@@ -421,6 +439,14 @@ const LuckyCrypto = {
         this.keyPair = await this.generateKeyPair();
         this.keyHistory = [];
         this.publicKeyUploadAllowed = true;
+        this.deviceNeedsPairing = !!serverState.hasServerKey;
+
+        if (this.deviceNeedsPairing) {
+            this.saveDevicePairingState({
+                needsPairing: true,
+                requestId: null
+            });
+        }
 
         await this.saveKeyPairToDB({
             current: this.keyPair,
@@ -429,7 +455,7 @@ const LuckyCrypto = {
 
         console.log(
             serverState.hasServerKey
-                ? "🔑 New Lucky Chat device key generated for existing account"
+                ? "🔑 New Lucky Chat device key generated; waiting for secure pairing approval"
                 : "🔑 New account-scoped encryption key pair generated for",
             username
         );
@@ -518,6 +544,383 @@ const LuckyCrypto = {
             true,
             ["encrypt"]
         );
+    },
+
+
+    getDevicePairingStorageKey() {
+        const username = String(this.accountUsername || "").trim();
+        return username
+            ? "lucky:crypto:device-pair:" + encodeURIComponent(username)
+            : "";
+    },
+
+    readDevicePairingState() {
+        const key = this.getDevicePairingStorageKey();
+        if (!key) return null;
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === "object" ? parsed : null;
+        } catch (_) {
+            return null;
+        }
+    },
+
+    saveDevicePairingState(state) {
+        const key = this.getDevicePairingStorageKey();
+        if (!key) return;
+        try {
+            localStorage.setItem(key, JSON.stringify(state || {}));
+        } catch (_) {}
+    },
+
+    clearDevicePairingState() {
+        const key = this.getDevicePairingStorageKey();
+        if (!key) return;
+        try {
+            localStorage.removeItem(key);
+        } catch (_) {}
+    },
+
+    hasSavedDevicePairingState() {
+        const state = this.readDevicePairingState();
+        return !!state?.needsPairing || !!state?.requestId;
+    },
+
+    async requestDevicePairing() {
+        await this.ensureLocalKeyPair();
+        const publicKeyBase64 = await this.exportPublicKeyBase64();
+
+        let state = this.readDevicePairingState() || {};
+        if (!state.requestId) {
+            const random = window.crypto.getRandomValues(new Uint8Array(18));
+            state.requestId = this.arrayBufferToBase64(random.buffer)
+                .replace(/\+/g, "-")
+                .replace(/\//g, "_")
+                .replace(/=+$/g, "");
+        }
+
+        state.needsPairing = true;
+        this.saveDevicePairingState(state);
+        this.devicePairingRequestId = state.requestId;
+
+        const response = await fetch("/crypto/device-pair/request", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                request_id: state.requestId,
+                device_public_key: publicKeyBase64
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Device-pair request failed (HTTP " + response.status + ")");
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || "Device-pair request failed");
+        }
+
+        return result;
+    },
+
+    async encryptDevicePairingTransfer(state, recipientPublicKeyBase64, senderUsername) {
+        const sender = String(senderUsername || this.accountUsername || "").trim();
+        const recipientEncoded = String(recipientPublicKeyBase64 || "").trim();
+        if (!sender) throw new Error("Sender username is required");
+        if (!recipientEncoded) throw new Error("New device public key is missing");
+
+        await this.ensureAccountContext(sender);
+        await this.ensureReady();
+
+        const recipientPublicKey = await this.importPublicKey(recipientEncoded);
+        const recipientKeyId = await this.publicKeyId(recipientPublicKey);
+        const transferKey = await this.generateMessageKey();
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const plaintext = new TextEncoder().encode(JSON.stringify(state));
+
+        const ciphertext = await window.crypto.subtle.encrypt(
+            { name: "AES-GCM", iv, tagLength: 128 },
+            transferKey,
+            plaintext
+        );
+        const rawTransferKey = await window.crypto.subtle.exportKey("raw", transferKey);
+        const wrappedKey = await window.crypto.subtle.encrypt(
+            { name: "RSA-OAEP" },
+            recipientPublicKey,
+            rawTransferKey
+        );
+
+        return "LCMD1:" + JSON.stringify({
+            v: 1,
+            alg: "RSA-OAEP-3072-SHA256/AES-256-GCM",
+            sender,
+            recipientKeyId,
+            iv: this.arrayBufferToBase64(iv.buffer),
+            wrappedKey: this.arrayBufferToBase64(wrappedKey),
+            ciphertext: this.arrayBufferToBase64(ciphertext)
+        });
+    },
+
+    async decryptDevicePairingTransfer(value) {
+        await this.ensureLocalKeyPair();
+        const raw = String(value || "").trim();
+        if (!raw.startsWith("LCMD1:")) throw new Error("Invalid Lucky Chat device transfer format");
+
+        let envelope;
+        try {
+            envelope = JSON.parse(raw.slice("LCMD1:".length));
+        } catch (_) {
+            throw new Error("Device transfer is invalid");
+        }
+
+        if (
+            envelope?.v !== 1 ||
+            envelope?.alg !== "RSA-OAEP-3072-SHA256/AES-256-GCM" ||
+            !envelope?.wrappedKey || !envelope?.iv || !envelope?.ciphertext
+        ) {
+            throw new Error("Device transfer is incomplete");
+        }
+
+        const localKeyId = await this.publicKeyId(this.keyPair.publicKey);
+        if (envelope.recipientKeyId && localKeyId !== String(envelope.recipientKeyId).trim()) {
+            throw new Error("Device transfer was encrypted for another device");
+        }
+
+        const rawTransferKey = await window.crypto.subtle.decrypt(
+            { name: "RSA-OAEP" },
+            this.keyPair.privateKey,
+            this.base64ToArrayBuffer(envelope.wrappedKey)
+        );
+        const transferKey = await window.crypto.subtle.importKey(
+            "raw", rawTransferKey, { name: "AES-GCM" }, false, ["decrypt"]
+        );
+        const plaintextBuffer = await window.crypto.subtle.decrypt(
+            {
+                name: "AES-GCM",
+                iv: new Uint8Array(this.base64ToArrayBuffer(envelope.iv)),
+                tagLength: 128
+            },
+            transferKey,
+            this.base64ToArrayBuffer(envelope.ciphertext)
+        );
+        const state = JSON.parse(new TextDecoder().decode(plaintextBuffer));
+
+        if (!state || state.v !== 1 || !state.current?.publicKey || !state.current?.privateKey) {
+            throw new Error("Transferred encryption identity is invalid");
+        }
+        return state;
+    },
+
+    async importTransferredKeyPair(jwkPair) {
+        if (!jwkPair?.publicKey || !jwkPair?.privateKey) {
+            throw new Error("Transferred encryption key pair is incomplete");
+        }
+
+        const publicKey = await window.crypto.subtle.importKey(
+            "jwk", jwkPair.publicKey,
+            { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]
+        );
+        const privateKey = await window.crypto.subtle.importKey(
+            "jwk", jwkPair.privateKey,
+            { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]
+        );
+        return { publicKey, privateKey };
+    },
+
+    async mergeTransferredKeyState(state) {
+        await this.ensureLocalKeyPair();
+        const importedCurrent = await this.importTransferredKeyPair(state.current);
+        const importedHistory = [];
+
+        for (const pair of Array.isArray(state.history) ? state.history : []) {
+            try {
+                importedHistory.push(await this.importTransferredKeyPair(pair));
+            } catch (_) {}
+        }
+
+        const localCurrentId = await this.publicKeyId(this.keyPair.publicKey);
+        const mergedHistory = [];
+        const seenIds = new Set([localCurrentId]);
+
+        for (const pair of [importedCurrent, ...importedHistory, ...this.keyHistory]) {
+            try {
+                const id = await this.publicKeyId(pair.publicKey);
+                if (!id || seenIds.has(id)) continue;
+                seenIds.add(id);
+                mergedHistory.push(pair);
+            } catch (_) {}
+        }
+
+        this.keyHistory = mergedHistory.slice(0, 24);
+        await this.saveKeyPairToDB({
+            current: this.keyPair,
+            history: this.keyHistory
+        }, this.accountStorageKey);
+        return true;
+    },
+
+    async approveIncomingDevicePairing(item) {
+        const requestId = String(item?.request_id || "").trim();
+        const devicePublicKey = String(item?.device_public_key || "").trim();
+        if (!requestId || !devicePublicKey) return false;
+
+        let fingerprint = "unknown";
+        try {
+            fingerprint = (await this.keyIdFromPublicKeyBase64(devicePublicKey)).slice(0, 12);
+        } catch (_) {}
+
+        const approved = window.confirm(
+            "A new Lucky Chat browser wants access to this account's encrypted message history.\n\n" +
+            "Device key: " + fingerprint + "\n\nApprove this device?"
+        );
+
+        if (!approved) {
+            await fetch("/crypto/device-pair/deny", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ request_id: requestId })
+            }).catch(() => {});
+            return false;
+        }
+
+        const state = await this.exportBackupState();
+        const transfer = await this.encryptDevicePairingTransfer(
+            state, devicePublicKey, this.accountUsername
+        );
+
+        const response = await fetch("/crypto/device-pair/approve", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ request_id: requestId, transfer })
+        });
+
+        if (!response.ok) {
+            throw new Error("Device approval failed (HTTP " + response.status + ")");
+        }
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || "Device approval failed");
+        }
+        console.log("✅ Lucky Chat device approved:", requestId);
+        return true;
+    },
+
+    async pollIncomingDevicePairings() {
+        try {
+            const response = await fetch(
+                "/crypto/device-pair/pending?_=" + Date.now(),
+                { credentials: "same-origin", cache: "no-store" }
+            );
+            if (!response.ok) return [];
+            const result = await response.json();
+            if (!result.success || !Array.isArray(result.requests)) return [];
+
+            const currentPublicKeyId = this.keyPair?.publicKey
+                ? await this.publicKeyId(this.keyPair.publicKey)
+                : "";
+
+            const candidates = [];
+            for (const item of result.requests) {
+                try {
+                    const requestPublicKeyId = await this.keyIdFromPublicKeyBase64(item?.device_public_key);
+                    if (currentPublicKeyId && requestPublicKeyId === currentPublicKeyId) continue;
+                } catch (_) {}
+                candidates.push(item);
+            }
+            return candidates;
+        } catch (_) {
+            return [];
+        }
+    },
+
+    async watchForIncomingDevicePairings() {
+        if (this.devicePairingWatcherTimer) return;
+
+        const run = async () => {
+            if (document.hidden || this.devicePairingPromptActive) return;
+            const requests = await this.pollIncomingDevicePairings();
+            for (const item of requests) {
+                if (this.devicePairingPromptActive) break;
+                this.devicePairingPromptActive = true;
+                try {
+                    await this.approveIncomingDevicePairing(item);
+                } catch (error) {
+                    console.error("❌ Incoming device pairing failed:", error);
+                } finally {
+                    this.devicePairingPromptActive = false;
+                }
+                break;
+            }
+        };
+
+        await run();
+        this.devicePairingWatcherTimer = window.setInterval(run, 4000);
+    },
+
+    async startOrResumeDevicePairing() {
+        if (this.devicePairingPollTimer) return;
+
+        try {
+            const result = await this.requestDevicePairing();
+            this.devicePairingRequestId = String(
+                result.request_id || this.devicePairingRequestId || ""
+            );
+            const requestId = this.devicePairingRequestId;
+            if (!requestId) throw new Error("Device-pair request id is missing");
+
+            const poll = async () => {
+                try {
+                    const response = await fetch(
+                        "/crypto/device-pair/status/" +
+                        encodeURIComponent(requestId) +
+                        "?_=" + Date.now(),
+                        { credentials: "same-origin", cache: "no-store" }
+                    );
+                    if (!response.ok) return;
+                    const result = await response.json();
+                    if (!result.success) return;
+
+                    if (result.status === "approved") {
+                        const state = await this.decryptDevicePairingTransfer(result.transfer);
+                        await this.mergeTransferredKeyState(state);
+                        this.deviceNeedsPairing = false;
+                        this.clearDevicePairingState();
+                        if (this.devicePairingPollTimer) {
+                            clearInterval(this.devicePairingPollTimer);
+                            this.devicePairingPollTimer = null;
+                        }
+                        console.log("✅ Encryption identity synchronized from an approved Lucky Chat device");
+                        try {
+                            window.dispatchEvent(new CustomEvent("lucky-crypto-device-paired"));
+                        } catch (_) {}
+                    } else if (result.status === "expired") {
+                        // Keep the need flag so the next page load can request a fresh approval.
+                        this.deviceNeedsPairing = true;
+                        this.saveDevicePairingState({ needsPairing: true, requestId: null });
+                        if (this.devicePairingPollTimer) {
+                            clearInterval(this.devicePairingPollTimer);
+                            this.devicePairingPollTimer = null;
+                        }
+                        console.warn("⚠️ Lucky Chat device pairing request expired or was denied");
+                    }
+                } catch (error) {
+                    console.warn("⚠️ Device pairing status check failed:", error);
+                }
+            };
+
+            await poll();
+            if (!this.devicePairingPollTimer) {
+                this.devicePairingPollTimer = window.setInterval(poll, 3000);
+            }
+        } catch (error) {
+            console.warn("⚠️ Lucky Chat device pairing unavailable:", error);
+        }
     },
 
 

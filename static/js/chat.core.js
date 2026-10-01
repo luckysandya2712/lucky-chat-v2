@@ -575,6 +575,8 @@ let socket = null;
 let reconnectTimer = null;
 let socketHeartbeatTimer = null;
 let socketReconnectAttempt = 0;
+let luckyCryptoPairedHistoryRefreshPending = false;
+let luckyCryptoPairedHistoryRefreshInFlight = false;
 let socketLastActivityAt = 0;      // last frame received (incl. heartbeat acks)
 let socketHasOpenedBefore = false; // true after the first successful open
 let socketAllowed = false;         // set once initial history has loaded
@@ -3565,6 +3567,33 @@ async function handleSocketMessage(event) {
 
 } // closes handleSocketMessage()
 
+async function refreshHistoryAfterCryptoPairing() {
+    if (luckyCryptoPairedHistoryRefreshInFlight) return;
+
+    if (!socketAllowed) {
+        // Pairing can finish while the first history load is still running.
+        // Defer the second hydration until the initial load has completed.
+        luckyCryptoPairedHistoryRefreshPending = true;
+        return;
+    }
+
+    luckyCryptoPairedHistoryRefreshPending = false;
+    luckyCryptoPairedHistoryRefreshInFlight = true;
+
+    try {
+        await loadMessages();
+        console.log("✅ Chat history refreshed after crypto device pairing");
+    } catch (error) {
+        console.error("❌ History refresh after crypto pairing failed:", error);
+    } finally {
+        luckyCryptoPairedHistoryRefreshInFlight = false;
+    }
+}
+
+window.addEventListener("lucky-crypto-device-paired", () => {
+    void refreshHistoryAfterCryptoPairing();
+});
+
 async function initChatCore() {
     // Start the independent startup tasks immediately. The previous sequence
     // waited for crypto initialization before even requesting chat history,
@@ -3592,6 +3621,10 @@ async function initChatCore() {
 
     socketAllowed = true;
     connectSocket();
+
+    if (luckyCryptoPairedHistoryRefreshPending) {
+        void refreshHistoryAfterCryptoPairing();
+    }
 
     // Refresh status after the initial history request without blocking the UI.
     void updateFriendStatus();
