@@ -5802,11 +5802,31 @@ async function uploadChatVideo() {
     const file = videoInput?.files?.[0];
     if (!file) return;
 
-    const allowed = new Set(["video/mp4", "video/webm", "video/ogg"]);
+    const allowedMimeTypes = new Set([
+        "video/mp4",
+        "video/webm",
+        "video/ogg",
+        "video/quicktime",
+    ]);
+    const allowedExtensions = new Set([
+        ".mp4",
+        ".webm",
+        ".ogg",
+        ".ogv",
+        ".mov",
+    ]);
     const maxSize = 30 * 1024 * 1024;
 
-    if (!allowed.has(file.type)) {
-        alert("Only MP4, WebM, and OGG videos are allowed");
+    const fileType = String(file.type || "").split(";", 1)[0].trim().toLowerCase();
+    const fileName = String(file.name || "").toLowerCase();
+    const dotIndex = fileName.lastIndexOf(".");
+    const fileExtension = dotIndex >= 0 ? fileName.slice(dotIndex) : "";
+    const isAllowedVideo =
+        allowedMimeTypes.has(fileType) ||
+        allowedExtensions.has(fileExtension);
+
+    if (!isAllowedVideo) {
+        alert("Only MP4, WebM, OGG, and MOV videos are allowed");
         if (videoInput) videoInput.value = "";
         return;
     }

@@ -894,7 +894,7 @@ def canonicalize_chat_media_type(media_type, media_url=None, media_name=None):
 
     source = str(media_url or media_name or "").strip().lower()
     suffix = Path(source.split("?", 1)[0].split("#", 1)[0]).suffix
-    if suffix in {".mp4", ".webm", ".ogv", ".ogg"}:
+    if suffix in {".mp4", ".webm", ".ogv", ".ogg", ".mov"}:
         return "video"
     if suffix in {".mp3", ".wav", ".m4a", ".aac", ".oga"}:
         return "audio"
@@ -928,7 +928,7 @@ def _prepare_server_side_forward_video(source_media_url, username):
 
     filename = Path(path).name
     suffix = Path(filename).suffix.lower()
-    if suffix not in {".mp4", ".webm", ".ogv"}:
+    if suffix not in {".mp4", ".webm", ".ogv", ".mov"}:
         raise ValueError("Unsupported video format")
 
     source_path = (UPLOAD_DIR / filename).resolve()
@@ -4253,14 +4253,30 @@ async def upload_chat_video(
         "video/mp4": ".mp4",
         "video/webm": ".webm",
         "video/ogg": ".ogv",
+        "video/quicktime": ".mov",
     }
 
     content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
 
+    # Some iPhone/browser combinations can omit or mislabel the MIME type.
+    # When the MIME type is unknown, use the filename extension only to select
+    # the expected container family; the binary signature check below remains
+    # authoritative before the file is accepted.
+    filename_suffix = Path(file.filename or "").suffix.lower()
+    extension_fallback = {
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".ogg": "video/ogg",
+        ".ogv": "video/ogg",
+        ".mov": "video/quicktime",
+    }
+    if content_type not in allowed_types:
+        content_type = extension_fallback.get(filename_suffix, content_type)
+
     if content_type not in allowed_types:
         return {
             "success": False,
-            "error": "Only MP4, WebM, and OGG videos are allowed"
+            "error": "Only MP4, WebM, OGG, and MOV videos are allowed"
         }
 
     max_size = 30 * 1024 * 1024
@@ -4298,8 +4314,10 @@ async def upload_chat_video(
         header = bytes(signature)
         valid = False
 
-        if content_type == "video/mp4":
-            # MP4 uses an ftyp box near the beginning of the file.
+        if content_type in {"video/mp4", "video/quicktime"}:
+            # MP4 and QuickTime MOV both use an ftyp box near the beginning.
+            # The binary signature check prevents an extension/MIME mismatch
+            # from bypassing validation.
             valid = len(header) >= 12 and header[4:8] == b"ftyp"
         elif content_type == "video/webm":
             valid = header.startswith(b"\x1a\x45\xdf\xa3")
